@@ -1,0 +1,2 @@
+-- query_id: sf_task_silent_failures
+-- shim: yes

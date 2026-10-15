@@ -1,0 +1,2 @@
+-- query_id: sf_task_ownership_orphans
+-- shim: yes

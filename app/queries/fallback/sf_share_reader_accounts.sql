@@ -1,0 +1,2 @@
+-- query_id: sf_share_reader_accounts
+-- shim: yes

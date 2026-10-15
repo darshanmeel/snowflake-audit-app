@@ -1,0 +1,2 @@
+-- query_id: sf_repl_group_health
+-- shim: yes

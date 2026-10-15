@@ -1,0 +1,2 @@
+-- query_id: sf_gov_privacy_policies_unattached
+-- shim: yes

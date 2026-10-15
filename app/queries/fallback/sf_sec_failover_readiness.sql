@@ -1,0 +1,2 @@
+-- query_id: sf_sec_failover_readiness
+-- shim: yes

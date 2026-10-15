@@ -1,0 +1,2 @@
+-- query_id: sf_acct_object_counts
+-- shim: yes

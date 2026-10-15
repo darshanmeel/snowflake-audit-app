@@ -1,0 +1,2 @@
+-- query_id: access_views_inventory
+-- shim: yes

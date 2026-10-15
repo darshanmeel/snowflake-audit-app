@@ -1,0 +1,2 @@
+-- query_id: sf_sec_network_policy_unattached
+-- shim: yes

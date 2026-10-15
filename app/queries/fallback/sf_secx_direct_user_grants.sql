@@ -1,0 +1,2 @@
+-- query_id: sf_secx_direct_user_grants
+-- shim: yes

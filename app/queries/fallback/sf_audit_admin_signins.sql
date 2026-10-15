@@ -1,0 +1,2 @@
+-- query_id: sf_audit_admin_signins
+-- shim: yes

@@ -1,0 +1,2 @@
+-- query_id: sf_task_suspended_or_stale
+-- shim: yes

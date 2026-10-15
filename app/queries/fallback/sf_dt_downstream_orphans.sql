@@ -1,0 +1,2 @@
+-- query_id: sf_dt_downstream_orphans
+-- shim: yes

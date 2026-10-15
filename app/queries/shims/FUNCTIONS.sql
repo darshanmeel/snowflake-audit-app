@@ -1,0 +1,46 @@
+-- shim: FUNCTIONS
+-- reads: INFORMATION_SCHEMA.FUNCTIONS (view, per database)
+-- each: database
+-- note: the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids
+-- columns: FUNCTION_ID VARCHAR, FUNCTION_NAME VARCHAR, FUNCTION_SCHEMA_ID VARCHAR, FUNCTION_SCHEMA VARCHAR, FUNCTION_CATALOG_ID VARCHAR, FUNCTION_CATALOG VARCHAR, FUNCTION_OWNER VARCHAR, ARGUMENT_SIGNATURE VARCHAR, DATA_TYPE VARCHAR, CHARACTER_MAXIMUM_LENGTH NUMBER(38,0), CHARACTER_OCTET_LENGTH NUMBER(38,0), NUMERIC_PRECISION NUMBER(38,0), NUMERIC_PRECISION_RADIX NUMBER(2,0), NUMERIC_SCALE NUMBER(38,0), FUNCTION_LANGUAGE VARCHAR, FUNCTION_DEFINITION VARCHAR, VOLATILITY VARCHAR, IS_NULL_CALL VARCHAR, CREATED TIMESTAMP_LTZ(6), LAST_ALTERED TIMESTAMP_LTZ(6), DELETED TIMESTAMP_LTZ(6), COMMENT VARCHAR, IS_EXTERNAL VARCHAR, API_INTEGRATION VARCHAR, CONTEXT_HEADERS VARCHAR, MAX_BATCH_ROWS NUMBER(38,0), COMPRESSION VARCHAR, IMPORTS VARCHAR, HANDLER VARCHAR, TARGET_PATH VARCHAR, RUNTIME_VERSION VARCHAR, PACKAGES VARCHAR, INSTALLED_PACKAGES VARCHAR, OWNER_ROLE_TYPE VARCHAR, IS_MEMOIZABLE VARCHAR, IS_DATA_METRIC VARCHAR, SECRETS VARCHAR, EXTERNAL_ACCESS_INTEGRATIONS VARCHAR, IS_AGGREGATE VARCHAR
+-- FUNCTIONS rebuilt from INFORMATION_SCHEMA.FUNCTIONS (view, per database): each column taken by name, mapped, or NULL where the source has none.
+SELECT function_catalog || '.' || function_schema || '.' || function_name || argument_signature AS function_id,
+       CAST(function_name AS VARCHAR) AS function_name,
+       function_catalog || '.' || function_schema AS function_schema_id,
+       CAST(function_schema AS VARCHAR) AS function_schema,
+       function_catalog AS function_catalog_id,
+       CAST(function_catalog AS VARCHAR) AS function_catalog,
+       CAST(function_owner AS VARCHAR) AS function_owner,
+       CAST(argument_signature AS VARCHAR) AS argument_signature,
+       CAST(data_type AS VARCHAR) AS data_type,
+       CAST(character_maximum_length AS NUMBER(38,0)) AS character_maximum_length,
+       CAST(character_octet_length AS NUMBER(38,0)) AS character_octet_length,
+       CAST(numeric_precision AS NUMBER(38,0)) AS numeric_precision,
+       CAST(numeric_precision_radix AS NUMBER(2,0)) AS numeric_precision_radix,
+       CAST(numeric_scale AS NUMBER(38,0)) AS numeric_scale,
+       CAST(function_language AS VARCHAR) AS function_language,
+       CAST(function_definition AS VARCHAR) AS function_definition,
+       CAST(volatility AS VARCHAR) AS volatility,
+       CAST(is_null_call AS VARCHAR) AS is_null_call,
+       CAST(created AS TIMESTAMP_LTZ(6)) AS created,
+       CAST(last_altered AS TIMESTAMP_LTZ(6)) AS last_altered,
+       CAST(NULL AS TIMESTAMP_LTZ(6)) AS deleted,
+       CAST(comment AS VARCHAR) AS comment,
+       CAST(is_external AS VARCHAR) AS is_external,
+       CAST(api_integration AS VARCHAR) AS api_integration,
+       CAST(context_headers AS VARCHAR) AS context_headers,
+       CAST(max_batch_rows AS NUMBER(38,0)) AS max_batch_rows,
+       CAST(compression AS VARCHAR) AS compression,
+       CAST(imports AS VARCHAR) AS imports,
+       CAST(handler AS VARCHAR) AS handler,
+       CAST(target_path AS VARCHAR) AS target_path,
+       CAST(runtime_version AS VARCHAR) AS runtime_version,
+       CAST(packages AS VARCHAR) AS packages,
+       CAST(installed_packages AS VARCHAR) AS installed_packages,
+       CAST(NULL AS VARCHAR) AS owner_role_type,
+       CAST(is_memoizable AS VARCHAR) AS is_memoizable,
+       CAST(is_data_metric AS VARCHAR) AS is_data_metric,
+       CAST(secrets AS VARCHAR) AS secrets,
+       CAST(external_access_integrations AS VARCHAR) AS external_access_integrations,
+       CAST(is_aggregate AS VARCHAR) AS is_aggregate
+FROM __ITEM__.INFORMATION_SCHEMA.FUNCTIONS

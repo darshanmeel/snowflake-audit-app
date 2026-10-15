@@ -1,0 +1,2 @@
+-- query_id: sf_wh_state_daily
+-- shim: yes

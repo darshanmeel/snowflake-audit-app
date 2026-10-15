@@ -1,0 +1,2 @@
+-- query_id: sf_sec_usage_view_access
+-- shim: yes

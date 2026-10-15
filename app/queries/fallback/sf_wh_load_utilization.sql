@@ -1,0 +1,2 @@
+-- query_id: sf_wh_load_utilization
+-- shim: yes

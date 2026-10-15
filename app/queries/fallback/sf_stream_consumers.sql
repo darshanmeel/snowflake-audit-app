@@ -1,0 +1,2 @@
+-- query_id: sf_stream_consumers
+-- shim: yes

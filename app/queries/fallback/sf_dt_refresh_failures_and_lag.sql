@@ -1,0 +1,2 @@
+-- query_id: sf_dt_refresh_failures_and_lag
+-- shim: yes

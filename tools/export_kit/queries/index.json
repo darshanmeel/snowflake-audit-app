@@ -20,7 +20,19 @@
    "params": {
     "top_n": 100000
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, SHOW GRANTS OF ROLE (per role), SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role)",
+    "note": "live users only; no password-change dates; the name stands in for the user id; current role grants to users; current grants to account and database roles; no inherited or future grants",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "USERS"
+    ]
+   }
   },
   "access_column_masks_inventory": {
    "domain": "governance_access",
@@ -30,7 +42,17 @@
     "ACCOUNT_USAGE.POLICY_REFERENCES"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions POLICY_REFERENCES (table function, per policy)",
+    "note": "masking, row access, projection and aggregation policies only; the name stands in for the policy id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "POLICY_REFERENCES"
+    ]
+   }
   },
   "access_grants_inventory": {
    "domain": "governance_access",
@@ -41,7 +63,18 @@
     "ACCOUNT_USAGE.GRANTS_TO_USERS"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role)",
+    "note": "current grants to account and database roles; no inherited or future grants; current role grants to users",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS"
+    ]
+   }
   },
   "access_login_concentration": {
    "domain": "governance_access",
@@ -72,7 +105,17 @@
     "ACCOUNT_USAGE.POLICY_REFERENCES"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions POLICY_REFERENCES (table function, per policy)",
+    "note": "masking, row access, projection and aggregation policies only; the name stands in for the policy id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "POLICY_REFERENCES"
+    ]
+   }
   },
   "access_tags_inventory": {
    "domain": "governance_access",
@@ -96,7 +139,19 @@
    "params": {
     "top_n": 100000
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions VIEWS (view, per database), TABLES (view, POLICY_REFERENCES (table function, per policy)",
+    "note": "the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; masking, row access, projection and aggregation policies only; the name stands in for the policy id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "POLICY_REFERENCES",
+     "TABLES",
+     "VIEWS"
+    ]
+   }
   },
   "cost_audit_self_usage": {
    "domain": "cost",
@@ -122,7 +177,20 @@
     "warn_hour_share_pct": 15,
     "crit_hour_share_pct": 25
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, QUERY_HISTORY, TASK_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures; task runs for the last 7 days at most, up to 10,000 a day, only tasks this role owns or can monitor (MONITOR EXECUTION shows all)",
+    "needs": "MONITOR USAGE",
+    "query_feed": true,
+    "shims": [
+     "METERING_DAILY_HISTORY",
+     "QUERY_HISTORY",
+     "TASK_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "cost_chargeback_by_account": {
    "domain": "cost",
@@ -221,7 +289,20 @@
    "params": {
     "top_n": 100
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; serverless task credits for 6 months at most; no database or schema names, and the task name stands in for its id; pipe credits for the last 14 days only; the pipe name stands in for its id",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "METERING_DAILY_HISTORY",
+     "PIPE_USAGE_HISTORY",
+     "SERVERLESS_TASK_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "cost_daily_spikes": {
    "domain": "cost",
@@ -649,7 +730,31 @@
     "ACCOUNT_USAGE.TASK_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW STREAMS IN ACCOUNT",
+     "SHOW TASKS IN ACCOUNT"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions DATABASES (view), SCHEMATA (view, per database), TABLES (view, STAGES (view, PIPES (view, FUNCTIONS (view, PROCEDURES (view, SEQUENCES (view, FILE_FORMATS (view, SHOW USERS, SHOW ROLES, TASK_HISTORY",
+    "note": "the databases this role can see; dropped databases are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; live users only; no password-change dates; the name stands in for the user id; account roles only (no database or instance roles); the name stands in for the role id; task runs for the last 7 days at most, up to 10,000 a day, only tasks this role owns or can monitor (MONITOR EXECUTION shows all)",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "DATABASES",
+     "FILE_FORMATS",
+     "FUNCTIONS",
+     "PIPES",
+     "PROCEDURES",
+     "ROLES",
+     "SCHEMATA",
+     "SEQUENCES",
+     "STAGES",
+     "TABLES",
+     "TASK_HISTORY",
+     "USERS"
+    ]
+   }
   },
   "sf_acct_observability_cost": {
    "domain": "cost",
@@ -959,7 +1064,20 @@
     "ACCOUNT_USAGE.ROLES"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role), SHOW SERVICES",
+    "note": "account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users; live services only; the name stands in for ids",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "ROLES",
+     "SERVICES"
+    ]
+   }
   },
   "sf_ai_spend_by_feature_reconciled": {
    "domain": "serving_ai",
@@ -1018,7 +1136,20 @@
     "warn_night_pct": 50,
     "crit_failures": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role), LOGIN_HISTORY",
+    "note": "account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users; sign-ins for the last 7 days at most, only the users this role can monitor, up to 10,000 a day",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "LOGIN_HISTORY",
+     "ROLES"
+    ]
+   }
   },
   "sf_audit_grant_activity": {
    "domain": "governance_access",
@@ -1550,7 +1681,23 @@
     "crit_increase_pct": 150,
     "crit_spend_usd": 1000
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, PIPE_USAGE_HISTORY, SERVERLESS_TASK_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY",
+    "note": "clustering credits for 6 months at most; no database or schema names, and the table name stands in for its id; materialized view credits for 6 months at most; no database or schema names, and the view name stands in for its id; search optimization credits for 6 months at most; no database or schema names, and the table name stands in for its id; pipe credits for the last 14 days only; the pipe name stands in for its id; serverless task credits for 6 months at most; no database or schema names, and the task name stands in for its id; replication credits for 6 months at most; the group name stands in for its id; query acceleration credits for 6 months at most; the warehouse name stands in for its id",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "AUTOMATIC_CLUSTERING_HISTORY",
+     "MATERIALIZED_VIEW_REFRESH_HISTORY",
+     "PIPE_USAGE_HISTORY",
+     "QUERY_ACCELERATION_HISTORY",
+     "REPLICATION_GROUP_USAGE_HISTORY",
+     "SEARCH_OPTIMIZATION_HISTORY",
+     "SERVERLESS_TASK_HISTORY"
+    ]
+   }
   },
   "sf_cost_source_freshness": {
    "domain": "cost",
@@ -1630,7 +1777,20 @@
    "params": {
     "crit_stale_days": 7
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW DYNAMIC TABLES IN ACCOUNT"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions TABLES (view, per database), DYNAMIC_TABLE_REFRESH_HISTORY",
+    "note": "the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; refreshes for the last 7 days, the latest 10,000 at most, only dynamic tables this role can monitor",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "DYNAMIC_TABLE_REFRESH_HISTORY",
+     "TABLES"
+    ]
+   }
   },
   "sf_dt_lag_keeps_warehouse_awake": {
    "domain": "jobs_pipelines",
@@ -1667,7 +1827,18 @@
     "warn_full_pct": 50,
     "min_refreshes": 5
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions TABLES (view, per database), DYNAMIC_TABLE_REFRESH_HISTORY",
+    "note": "the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; refreshes for the last 7 days, the latest 10,000 at most, only dynamic tables this role can monitor",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "DYNAMIC_TABLE_REFRESH_HISTORY",
+     "TABLES"
+    ]
+   }
   },
   "sf_dt_suspended_still_read": {
    "domain": "jobs_pipelines",
@@ -1751,7 +1922,18 @@
     "crit_gb": 500,
     "baseline_days": 90
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions DATA_TRANSFER_HISTORY, QUERY_HISTORY",
+    "note": "data transfer for the last 14 days at most; queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": "MONITOR USAGE",
+    "query_feed": true,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "QUERY_HISTORY"
+    ]
+   }
   },
   "sf_gov_dmf_coverage": {
    "domain": "governance_access",
@@ -1813,7 +1995,19 @@
     "warn_usage_roles": 5,
     "recent_days": 30
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW INTEGRATIONS"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role)",
+    "note": "current grants to account and database roles; no inherited or future grants",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES"
+    ]
+   }
   },
   "sf_gov_ownership_concentration": {
    "domain": "governance_access",
@@ -1829,7 +2023,19 @@
     "crit_admin_owned": 100,
     "warn_personal_owned": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role), SHOW ROLES",
+    "note": "current grants to account and database roles; no inherited or future grants; current role grants to users; account roles only (no database or instance roles); the name stands in for the role id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "ROLES"
+    ]
+   }
   },
   "sf_gov_policy_separation_of_duties": {
    "domain": "governance_access",
@@ -1858,7 +2064,19 @@
    "params": {
     "min_age_days": 14
    },
-   "needs_enterprise": true
+   "needs_enterprise": true,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW AGGREGATION POLICIES, SHOW PROJECTION POLICIES, POLICY_REFERENCES (table function, per policy)",
+    "note": "live policies only; no signature or body; the name stands in for ids; live policies only; no signature or body; the name stands in for ids; masking, row access, projection and aggregation policies only; the name stands in for the policy id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "AGGREGATION_POLICIES",
+     "POLICY_REFERENCES",
+     "PROJECTION_POLICIES"
+    ]
+   }
   },
   "sf_gov_public_role_grants": {
    "domain": "governance_access",
@@ -1868,7 +2086,17 @@
     "ACCOUNT_USAGE.GRANTS_TO_ROLES"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role)",
+    "note": "current grants to account and database roles; no inherited or future grants",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES"
+    ]
+   }
   },
   "sf_gov_role_hygiene": {
    "domain": "governance_access",
@@ -1882,7 +2110,19 @@
    "params": {
     "max_depth": 5
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role)",
+    "note": "account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "ROLES"
+    ]
+   }
   },
   "sf_gov_sensitive_columns_unprotected": {
    "domain": "governance_access",
@@ -1924,7 +2164,19 @@
    "params": {
     "warn_consumers": 10
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW SHARES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions SHOW SHARES",
+    "note": "live outbound shares only",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "SHARES"
+    ]
+   }
   },
   "sf_gov_shares_sensitive_columns": {
    "domain": "governance_access",
@@ -1983,7 +2235,18 @@
     "warn_queries": 20,
     "crit_queries": 500
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions QUERY_HISTORY, SHOW USERS",
+    "note": "queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures; live users only; no password-change dates; the name stands in for the user id",
+    "needs": null,
+    "query_feed": true,
+    "shims": [
+     "QUERY_HISTORY",
+     "USERS"
+    ]
+   }
   },
   "sf_govx_external_stage_credentials": {
    "domain": "governance_access",
@@ -1998,7 +2261,19 @@
    "params": {
     "warn_usage_roles": 5
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW STAGES IN ACCOUNT"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role)",
+    "note": "current grants to account and database roles; no inherited or future grants",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES"
+    ]
+   }
   },
   "sf_govx_schema_grant_control": {
    "domain": "governance_access",
@@ -2076,7 +2351,20 @@
     "warn_credits": 5,
     "crit_credits": 50
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, QUERY_HISTORY",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": "MONITOR USAGE",
+    "query_feed": true,
+    "shims": [
+     "QUERY_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_load_copy_errors": {
    "domain": "jobs_pipelines",
@@ -2090,7 +2378,17 @@
     "crit_failed_pct": 10,
     "crit_failed_files": 100
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions LOAD_HISTORY (view, per database)",
+    "note": "bulk COPY loads for the last 14 days only, no Snowpipe loads, no file sizes or stage paths, up to 10,000 files a database; only tables this role can see",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "COPY_HISTORY"
+    ]
+   }
   },
   "sf_load_copy_listing_overhead": {
    "domain": "jobs_pipelines",
@@ -2287,7 +2585,22 @@
    "params": {
     "warn_usd": 100
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW STREAMLITS IN ACCOUNT",
+     "SHOW NOTEBOOKS IN ACCOUNT"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role)",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; current grants to account and database roles; no inherited or future grants",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "METERING_DAILY_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_obj_udfs_procedures": {
    "domain": "governance_access",
@@ -2299,7 +2612,19 @@
     "ACCOUNT_USAGE.QUERY_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions FUNCTIONS (view, per database), PROCEDURES (view, QUERY_HISTORY",
+    "note": "the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids; queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": null,
+    "query_feed": true,
+    "shims": [
+     "FUNCTIONS",
+     "PROCEDURES",
+     "QUERY_HISTORY"
+    ]
+   }
   },
   "sf_org_account_inventory": {
    "domain": "governance_access",
@@ -2707,7 +3032,18 @@
     "warn_growth_pct": 50,
     "min_growth_usd": 10
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions PIPE_USAGE_HISTORY, PIPES (view, per database)",
+    "note": "pipe credits for the last 14 days only; the pipe name stands in for its id; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "PIPES",
+     "PIPE_USAGE_HISTORY"
+    ]
+   }
   },
   "sf_pipe_inactive": {
    "domain": "jobs_pipelines",
@@ -2959,7 +3295,21 @@
     "warn_usd": 100,
     "crit_usd": 1000
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW REPLICATION GROUPS"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions REPLICATION_GROUP_REFRESH_HISTORY_ALL, REPLICATION_GROUP_USAGE_HISTORY, DATABASE_REPLICATION_USAGE_HISTORY",
+    "note": "refreshes for the last 14 days only, for the groups this role holds a privilege on; the group name stands in for its id; replication credits for 6 months at most; the group name stands in for its id; database replication credits for the last 14 days only; the database name stands in for its id",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATABASE_REPLICATION_USAGE_HISTORY",
+     "REPLICATION_GROUP_REFRESH_HISTORY",
+     "REPLICATION_GROUP_USAGE_HISTORY"
+    ]
+   }
   },
   "sf_sec_account_security_settings": {
    "domain": "governance_access",
@@ -2987,7 +3337,20 @@
     "max_accountadmins": 5,
     "stale_days": 90
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role)",
+    "note": "live users only; no password-change dates; the name stands in for the user id; account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "ROLES",
+     "USERS"
+    ]
+   }
   },
   "sf_sec_data_movement_violations": {
    "domain": "governance_access",
@@ -3016,7 +3379,18 @@
     "crit_failures": 50,
     "spray_users": 5
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions LOGIN_HISTORY, SHOW USERS",
+    "note": "sign-ins for the last 7 days at most, only the users this role can monitor, up to 10,000 a day; live users only; no password-change dates; the name stands in for the user id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "LOGIN_HISTORY",
+     "USERS"
+    ]
+   }
   },
   "sf_sec_failover_readiness": {
    "domain": "governance_access",
@@ -3030,7 +3404,20 @@
     "ACCOUNT_USAGE.NETWORK_POLICIES"
    ],
    "params": {},
-   "needs_enterprise": true
+   "needs_enterprise": true,
+   "fallback": {
+    "pre": [
+     "SHOW REPLICATION GROUPS"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions SHOW REPLICATION GROUPS, SHOW NETWORK POLICIES",
+    "note": "live groups in this account only; live network policies only; no IP lists (SHOW gives only their counts); the name stands in for the id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "NETWORK_POLICIES",
+     "REPLICATION_GROUPS"
+    ]
+   }
   },
   "sf_sec_native_app_permissions": {
    "domain": "governance_access",
@@ -3076,7 +3463,20 @@
    "params": {
     "min_age_days": 14
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW PARAMETERS LIKE 'NETWORK_POLICY' IN ACCOUNT"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions SHOW NETWORK POLICIES, POLICY_REFERENCES (table function, per policy)",
+    "note": "live network policies only; no IP lists (SHOW gives only their counts); the name stands in for the id; masking, row access, projection and aggregation policies only; the name stands in for the policy id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "NETWORK_POLICIES",
+     "POLICY_REFERENCES"
+    ]
+   }
   },
   "sf_sec_new_login_sources": {
    "domain": "governance_access",
@@ -3092,7 +3492,21 @@
    "params": {
     "baseline_days": 90
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role), LOGIN_HISTORY",
+    "note": "live users only; no password-change dates; the name stands in for the user id; account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users; sign-ins for the last 7 days at most, only the users this role can monitor, up to 10,000 a day",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "LOGIN_HISTORY",
+     "ROLES",
+     "USERS"
+    ]
+   }
   },
   "sf_sec_outbound_privatelink_endpoints": {
    "domain": "governance_access",
@@ -3119,7 +3533,18 @@
    "params": {
     "min_driver_logins": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, LOGIN_HISTORY",
+    "note": "live users only; no password-change dates; the name stands in for the user id; sign-ins for the last 7 days at most, only the users this role can monitor, up to 10,000 a day",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "LOGIN_HISTORY",
+     "USERS"
+    ]
+   }
   },
   "sf_sec_privatelink_bypass": {
    "domain": "governance_access",
@@ -3182,7 +3607,20 @@
     "stale_days": 90,
     "crit_stale_days": 180
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role)",
+    "note": "live users only; no password-change dates; the name stands in for the user id; account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "ROLES",
+     "USERS"
+    ]
+   }
   },
   "sf_sec_trust_center_finding_age": {
    "domain": "governance_access",
@@ -3221,7 +3659,20 @@
     "warn_users": 10,
     "critical_users": 25
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role)",
+    "note": "live users only; no password-change dates; the name stands in for the user id; account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "ROLES",
+     "USERS"
+    ]
+   }
   },
   "sf_sec_users_without_mfa": {
    "domain": "governance_access",
@@ -3237,7 +3688,21 @@
    "params": {
     "warn_password_logins": 1
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role), LOGIN_HISTORY",
+    "note": "live users only; no password-change dates; the name stands in for the user id; account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users; sign-ins for the last 7 days at most, only the users this role can monitor, up to 10,000 a day",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "LOGIN_HISTORY",
+     "ROLES",
+     "USERS"
+    ]
+   }
   },
   "sf_secx_authentication_policy_posture": {
    "domain": "governance_access",
@@ -3268,7 +3733,19 @@
     "crit_direct_roles": 20,
     "warn_personal_privileges": 10
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, SHOW GRANTS OF ROLE (per role), SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role)",
+    "note": "live users only; no password-change dates; the name stands in for the user id; current role grants to users; current grants to account and database roles; no inherited or future grants",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "USERS"
+    ]
+   }
   },
   "sf_secx_external_access_calls": {
    "domain": "governance_access",
@@ -3345,7 +3822,17 @@
    "params": {
     "max_users_listed": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions LOGIN_HISTORY",
+    "note": "sign-ins for the last 7 days at most, only the users this role can monitor, up to 10,000 a day",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "LOGIN_HISTORY"
+    ]
+   }
   },
   "sf_secx_network_rule_exposure": {
    "domain": "governance_access",
@@ -3445,7 +3932,18 @@
     "max_secret_days": 180,
     "warn_usage_roles": 3
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW SECRETS, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role)",
+    "note": "live secrets only; no token expiry dates; the name stands in for ids; current grants to account and database roles; no inherited or future grants",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "SECRETS"
+    ]
+   }
   },
   "sf_secx_sensitive_lineage_untagged": {
    "domain": "governance_access",
@@ -3488,7 +3986,20 @@
    "params": {
     "warn_password_pct": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW SECURITY INTEGRATIONS"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions SHOW USERS, LOGIN_HISTORY",
+    "note": "live users only; no password-change dates; the name stands in for the user id; sign-ins for the last 7 days at most, only the users this role can monitor, up to 10,000 a day",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "LOGIN_HISTORY",
+     "USERS"
+    ]
+   }
   },
   "sf_secx_unused_policies": {
    "domain": "governance_access",
@@ -3516,7 +4027,20 @@
     "ACCOUNT_USAGE.ROLES"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW ROLES, SHOW GRANTS TO ROLE and SHOW GRANTS TO DATABASE ROLE (per role), SHOW GRANTS OF ROLE (per role), SHOW USERS",
+    "note": "account roles only (no database or instance roles); the name stands in for the role id; current grants to account and database roles; no inherited or future grants; current role grants to users; live users only; no password-change dates; the name stands in for the user id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "GRANTS_TO_ROLES",
+     "GRANTS_TO_USERS",
+     "ROLES",
+     "USERS"
+    ]
+   }
   },
   "sf_share_inbound_databases": {
    "domain": "governance_access",
@@ -3549,7 +4073,17 @@
     "warn_usd": 50,
     "crit_usd": 500
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW MANAGED ACCOUNTS"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions",
+    "note": "",
+    "needs": null,
+    "query_feed": false,
+    "shims": []
+   }
   },
   "sf_storage_archive_retrieval": {
    "domain": "storage",
@@ -3847,7 +4381,19 @@
     "warn_share_pct": 20,
     "min_share_gb": 10
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions STAGE_STORAGE_USAGE_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGES (view, per database)",
+    "note": "stage storage for 6 months at most; storage for 6 months at most; no hybrid table or archive storage; the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "STAGES",
+     "STAGE_STORAGE_USAGE_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "sf_storage_stale_stage_files": {
    "domain": "storage",
@@ -3913,7 +4459,20 @@
     "crit_consecutive_failures": 3,
     "crit_days_to_stale": 2
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW STREAMS IN ACCOUNT",
+     "SHOW TASKS IN ACCOUNT"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions TASK_HISTORY",
+    "note": "task runs for the last 7 days at most, up to 10,000 a day, only tasks this role owns or can monitor (MONITOR EXECUTION shows all)",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "TASK_HISTORY"
+    ]
+   }
   },
   "sf_stream_stale": {
    "domain": "jobs_pipelines",
@@ -4076,7 +4635,19 @@
     "warn_orphan_tasks": 5,
     "crit_orphan_tasks": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW TASKS IN ACCOUNT"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions SHOW ROLES",
+    "note": "account roles only (no database or instance roles); the name stands in for the role id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "ROLES"
+    ]
+   }
   },
   "sf_task_run_times": {
    "domain": "jobs_pipelines",
@@ -4115,7 +4686,19 @@
    "params": {
     "crit_failed_runs": 3
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions SHOW TASKS, TASK_HISTORY, SHOW USERS",
+    "note": "live tasks only; names stand in for database, schema and user ids; task runs for the last 7 days at most, up to 10,000 a day, only tasks this role owns or can monitor (MONITOR EXECUTION shows all); live users only; no password-change dates; the name stands in for the user id",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "TASKS",
+     "TASK_HISTORY",
+     "USERS"
+    ]
+   }
   },
   "sf_task_skipped_overlaps": {
    "domain": "jobs_pipelines",
@@ -4163,7 +4746,19 @@
    "params": {
     "stale_days": 14
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW TASKS IN ACCOUNT"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions TASK_HISTORY",
+    "note": "task runs for the last 7 days at most, up to 10,000 a day, only tasks this role owns or can monitor (MONITOR EXECUTION shows all)",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "TASK_HISTORY"
+    ]
+   }
   },
   "sf_task_warehouse_vs_serverless": {
    "domain": "jobs_pipelines",
@@ -4379,7 +4974,20 @@
     "warn_saving_credits": 20,
     "crit_saving_credits": 200
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, WAREHOUSE_LOAD_HISTORY (table function, per warehouse)",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; warehouse load for the last 14 days only, for the warehouses this role can see; the name stands in for the warehouse id",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "WAREHOUSE_LOAD_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_gen2_fit": {
    "domain": "compute",
@@ -4489,7 +5097,20 @@
     "low_hour_load": 0.25,
     "warn_queued_pct": 10
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, WAREHOUSE_LOAD_HISTORY (table function, per warehouse)",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; warehouse load for the last 14 days only, for the warehouses this role can see; the name stands in for the warehouse id",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "WAREHOUSE_LOAD_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_mixed_workload_contention": {
    "domain": "compute",
@@ -4508,7 +5129,20 @@
     "warn_lift": 2,
     "crit_lift": 4
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, QUERY_HISTORY",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": "MONITOR USAGE",
+    "query_feed": true,
+    "shims": [
+     "QUERY_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_multicluster_scaling": {
    "domain": "compute",
@@ -4591,7 +5225,21 @@
     "warn_credits": 50,
     "crit_credits": 500
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, QUERY_ACCELERATION_HISTORY, QUERY_HISTORY",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; query acceleration credits for 6 months at most; the warehouse name stands in for its id; queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": "MONITOR USAGE",
+    "query_feed": true,
+    "shims": [
+     "QUERY_ACCELERATION_HISTORY",
+     "QUERY_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_resize_left_upsized": {
    "domain": "compute",
@@ -4692,7 +5340,20 @@
     "SHOW.WAREHOUSES"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, WAREHOUSE_LOAD_HISTORY (table function, per warehouse)",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; warehouse load for the last 14 days only, for the warehouses this role can see; the name stands in for the warehouse id",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "WAREHOUSE_LOAD_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_undersized": {
    "domain": "compute",
@@ -4723,7 +5384,17 @@
     "ACCOUNT_USAGE.TABLES"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions TABLES (view, per database)",
+    "note": "the objects this role can see, in its own databases (not shared ones); dropped objects are not listed; the name stands in for ids",
+    "needs": null,
+    "query_feed": false,
+    "shims": [
+     "TABLES"
+    ]
+   }
   }
  },
  "tag_sources": {

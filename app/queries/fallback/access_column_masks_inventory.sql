@@ -1,0 +1,2 @@
+-- query_id: access_column_masks_inventory
+-- shim: yes

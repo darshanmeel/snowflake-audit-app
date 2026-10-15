@@ -1,0 +1,2 @@
+-- query_id: sf_sec_users_without_mfa
+-- shim: yes

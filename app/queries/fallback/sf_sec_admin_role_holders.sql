@@ -1,0 +1,2 @@
+-- query_id: sf_sec_admin_role_holders
+-- shim: yes

@@ -325,25 +325,45 @@ what-if is not applied on top of it. The app shows where each price came from ne
 
 ### When the role cannot read ACCOUNT_USAGE
 
-31 checks have a second version in `app/queries/fallback/` that reads the same thing from
-`INFORMATION_SCHEMA` table functions. The export runs it when the role cannot read the check's
+85 checks have a second version in `app/queries/fallback/` that reads the same thing from
+`INFORMATION_SCHEMA` and `SHOW`. The export runs it when the role cannot read the check's
 `ACCOUNT_USAGE` views, and the page says so under the sub-tabs. Most are the check's own SQL with each
-view swapped for a stand-in in `app/queries/shims/`: the view rebuilt from table functions, with the
-same columns (NULL where the function has none). Covered: spend (Overview, Cost trend, by service,
-by month, forecast, chargeback by warehouse), cloud services, data transfer, warehouse setup and
-resource monitors, query load, failed and costly queries, queue waits, compilation, sign-ins and
-database storage. `--use-fallbacks` runs them even when `ACCOUNT_USAGE` is readable, to test them.
+view swapped for a stand-in in `app/queries/shims/`: the view rebuilt from table functions,
+`INFORMATION_SCHEMA` views or `SHOW` output, with the same columns (NULL where the source has none).
+Covered: spend, cloud services, data transfer, serverless features, warehouses (setup, load, state),
+queries, sign-ins, tasks, dynamic tables, pipes and bulk loads, storage, replication, objects
+(databases, schemas, tables, views, functions, procedures, stages), users, roles, grants, policies,
+secrets, shares and services. `--use-fallbacks` runs them even when `ACCOUNT_USAGE` is readable, to
+test them.
+
+What the role needs. Without it the check reads "the role can't see it", never "nothing found":
+- **MONITOR USAGE:** spend, storage, data transfer and serverless credits. The table functions
+  return nothing without it.
+- **MANAGE GRANTS** (SECURITYADMIN has it): users, roles, grants, tasks, tags, secrets, policies,
+  shares, services and resource monitors. Without it, `SHOW` lists only what the role holds a
+  privilege on, which would look complete.
+- **APPLY MASKING / ROW ACCESS / PROJECTION / AGGREGATION POLICY:** which columns and tables the
+  policies are set on.
+- Nothing extra for queries, sign-ins, task runs, warehouse load and the per-database object lists;
+  they show what the role can see.
 
 What they leave out:
 - **Spend:** warehouses and serverless features only. AI, containers and other services have no
-  table function, and adaptive warehouses are left out of the warehouse function. Pipe and data
-  transfer history covers 14 days; the rest 6 months. The cloud-services adjustment is worked out
-  with the daily 10% rule.
-- **Queries and sign-ins:** 7 days, only what the role can see, and no spill, partition, cache or
+  table function, and adaptive warehouses are left out of the warehouse function. Pipe, transfer and
+  database replication history covers 14 days; the rest 6 months. The cloud-services adjustment is
+  worked out with the daily 10% rule.
+- **Queries, sign-ins, task runs, dynamic table refreshes:** 7 days. No spill, partition, cache or
   per-query credit figures, so idle-time checks read "not assessed".
-- **Ids:** there are no warehouse or database ids, so the name stands in.
-- **Not covered:** checks that also need views with no table function (users, grants, tags,
-  policies, access history, query attribution, task versions) still read "the role can't see it".
+- **Loads:** bulk COPY for 14 days only; no Snowpipe loads or file sizes.
+- **Objects:** live ones only, in the role's own databases. One call per database; a database that
+  fails is left out and the note says how many.
+- **Grants:** current grants to account and database roles, one `SHOW` per role; no revoked,
+  inherited or future grants.
+- **Ids:** there are no ids, so the name stands in.
+- **Not covered:** 22 checks whose answer depends on a column the sources lack (spill, pruning,
+  password age, IP lists, policy settings and bodies, revoked grants, Snowpipe loads) and the checks
+  that need views with no equivalent (access history, query attribution, tag references, table
+  storage metrics, warehouse events, AI usage, organization views).
 
 Each stand-in runs once per export, before the checks. Small results (up to 5,000 rows) are passed
 to the checks as literal rows, since Snowflake aborts with an internal error (300010) when one

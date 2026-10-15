@@ -1,0 +1,2 @@
+-- query_id: sf_sec_stale_users
+-- shim: yes

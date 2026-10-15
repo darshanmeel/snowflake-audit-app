@@ -1,0 +1,2 @@
+-- query_id: sf_load_bulk_copy_vs_snowpipe
+-- shim: yes

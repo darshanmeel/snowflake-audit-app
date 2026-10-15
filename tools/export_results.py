@@ -219,12 +219,36 @@ def has_monitor_usage(cur, ctx: dict) -> bool:
         return False
 
 
+def account_privileges(cur) -> set[str]:
+    """The account-level privileges of the roles in this session, or {"ACCOUNTADMIN"} when it is one of
+    them. MANAGE GRANTS is what lets SHOW list every user, role, grant and policy."""
+    try:
+        cur.execute("SELECT f.value::STRING FROM TABLE(FLATTEN(PARSE_JSON(CURRENT_AVAILABLE_ROLES()))) f "
+                    "WHERE IS_ROLE_IN_SESSION(f.value::STRING)")
+        roles = [r[0] for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001 -- unreadable reads as no privileges, never a failed export
+        return set()
+    if "ACCOUNTADMIN" in roles:
+        return {"ACCOUNTADMIN"}
+    privileges = {"MANAGE GRANTS"} if "SECURITYADMIN" in roles else set()
+    # SHOW GRANTS ON ACCOUNT is quick; SHOW GRANTS TO ROLE can take a minute on a role with many grants.
+    rows = show_rows(cur, ["SHOW GRANTS ON ACCOUNT"], "account privileges")[0] or []
+    return privileges | {str(r.get("privilege")).upper() for r in rows
+                         if str(r.get("granted_to")).upper() == "ROLE" and r.get("grantee_name") in roles}
+
+
 def fallback_blocked(head: dict, ctx: dict) -> str | None:
     """Why a fallback cannot give a true answer for this role, or None. A table function that needs
-    MONITOR USAGE returns no rows without it, which would read as "nothing found"."""
-    if "MONITOR USAGE" in head.get("needs", "").upper() and not ctx.get("monitor_usage"):
+    MONITOR USAGE returns no rows without it, and SHOW without MANAGE GRANTS lists only the objects the
+    role holds a privilege on; either would read as "nothing found"."""
+    needs = [n.strip().upper() for n in head.get("needs", "").split(",") if n.strip()]
+    privileges = ctx.get("account_privileges") or set()
+    missing = [n for n in needs if "ACCOUNTADMIN" not in privileges and not (
+        ctx.get("monitor_usage") if n == "MONITOR USAGE" else n in privileges)]
+    if missing:
         return (f"role_cannot_see: the INFORMATION_SCHEMA fallback ({head.get('reads')}) needs ACCOUNTADMIN "
-                f"or the MONITOR USAGE privilege, and returns nothing without it")
+                f"or the {' and '.join(missing)} privilege{'s' if len(missing) > 1 else ''}, and without it "
+                f"returns only part or nothing")
     return None
 
 
@@ -262,10 +286,13 @@ QUERY_FEED_SCANS = "__IS_QUERY_HISTORY_SCANS__"
 QUERY_FEED_SLICES = 28  # six-hour slices over the 7 days QUERY_HISTORY keeps
 
 
+RUN_ALL_IN_FLIGHT = 40  # statements one session keeps running at once
+
+
 def run_all(cur, sqls: list[str], label: str) -> list[tuple[str | None, str | None]]:
-    """Run the statements at once (async on a live session), each under the session's statement timeout.
-    Returns (query id, None) or (None, error) per statement, in order. Rows are not fetched: they stay
-    in Snowflake's result cache for RESULT_SCAN."""
+    """Run the statements at once (async on a live session, at most RUN_ALL_IN_FLIGHT running), each
+    under the session's statement timeout. Returns (query id, None) or (None, error) per statement, in
+    order. Rows are not fetched: they stay in Snowflake's result cache for RESULT_SCAN."""
     out: list[tuple[str | None, str | None]] = []
     if not hasattr(cur, "execute_async"):
         for sql in sqls:
@@ -276,24 +303,106 @@ def run_all(cur, sqls: list[str], label: str) -> list[tuple[str | None, str | No
                 out.append((None, _short(exc, 200)))
         return out
     conn = cur.connection
-    ids = []
-    for sql in sqls:
-        cur.execute_async(sql)
-        ids.append(cur.sfqid)
-    done: dict[str, tuple[str | None, str | None]] = {}
-    while len(done) < len(ids):
-        for sfqid in ids:
-            if sfqid in done:
-                continue
+    done: dict[int, tuple[str | None, str | None]] = {}
+    running: dict[int, str] = {}
+    nxt = 0
+    last_report = time.monotonic()
+    while len(done) < len(sqls):
+        while nxt < len(sqls) and len(running) < RUN_ALL_IN_FLIGHT:
+            try:
+                cur.execute_async(sqls[nxt])
+                running[nxt] = cur.sfqid
+            except Exception as exc:  # noqa: BLE001 -- e.g. a compile error on submit
+                done[nxt] = (None, _short(exc, 200))
+            nxt += 1
+        for i, sfqid in list(running.items()):
             try:
                 if not conn.is_still_running(conn.get_query_status_throw_if_error(sfqid)):
-                    done[sfqid] = (sfqid, None)
+                    done[i] = (sfqid, None)
+                    del running[i]
             except Exception as exc:  # noqa: BLE001 -- one statement failing drops only its own part
-                done[sfqid] = (None, _short(exc, 200))
-        if len(done) < len(ids):
-            print(f"{label}: {len(done)} of {len(ids)} done", flush=True)
-            time.sleep(5)
-    return [done[i] for i in ids]
+                done[i] = (None, _short(exc, 200))
+                del running[i]
+        if len(done) < len(sqls):
+            if time.monotonic() - last_report > 10:
+                print(f"{label}: {len(done)} of {len(sqls)} done", flush=True)
+                last_report = time.monotonic()
+            time.sleep(0.5 if len(sqls) > 1 else 1)
+    return [done[i] for i in range(len(sqls))]
+
+
+def _ident(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def show_rows(cur, sqls: list[str], label: str) -> list[list[dict] | None]:
+    """Run SHOW statements at once and fetch their rows as {column: value}; None for one that failed."""
+    out: list[list[dict] | None] = []
+    for sql, (sfqid, _err) in zip(sqls, run_all(cur, sqls, label)):
+        if not sfqid:
+            out.append(None)
+            continue
+        try:
+            if hasattr(cur, "get_results_from_sfqid") and hasattr(cur, "execute_async"):
+                cur.get_results_from_sfqid(sfqid)
+            else:
+                cur.execute(sql)
+            rows = cur.fetchall()
+            names = [c[0] for c in cur.description]  # set only once the rows are fetched
+            out.append([dict(zip(names, row)) for row in rows])
+        except Exception:  # noqa: BLE001 -- unreadable reads as not listed
+            out.append(None)
+    return out
+
+
+# What one call of an `each:` shim is made for, listed with SHOW.
+SHIM_ITEM_KINDS = {"database": "database", "warehouse": "warehouse", "role": "role",
+                   "database_role": "database role", "policy": "policy"}
+_POLICY_KINDS = ("MASKING", "ROW ACCESS", "PROJECTION", "AGGREGATION")
+
+
+def shim_items(cur, kind: str, ctx: dict) -> list[tuple[str, ...]]:
+    """The objects an `each:` shim makes one call for, as name parts: the role's own databases (not
+    shared or application ones), its warehouses, account roles, database roles, or data policies."""
+    cache = ctx.setdefault("shim_items", {})
+    if kind in cache:
+        return cache[kind]
+    if kind == "database":
+        rows = show_rows(cur, ["SHOW TERSE DATABASES"], "databases")[0] or []
+        items = [(r["name"],) for r in rows if str(r.get("kind") or "").upper() == "STANDARD"]
+    elif kind == "warehouse":
+        items = [(r["name"],) for r in show_rows(cur, ["SHOW WAREHOUSES"], "warehouses")[0] or []]
+    elif kind == "role":
+        items = [(r["name"],) for r in show_rows(cur, ["SHOW ROLES"], "roles")[0] or []]
+    elif kind == "database_role":
+        dbs = shim_items(cur, "database", ctx)
+        lists = show_rows(cur, [f"SHOW DATABASE ROLES IN DATABASE {_ident(db)}" for (db,) in dbs], "database roles")
+        items = [(db, r["name"]) for (db,), rows in zip(dbs, lists) for r in rows or []]
+    elif kind == "policy":
+        lists = show_rows(cur, [f"SHOW {k} POLICIES IN ACCOUNT" for k in _POLICY_KINDS], "policies")
+        items = [(r["database_name"], r["schema_name"], r["name"]) for rows in lists for r in rows or []]
+    else:
+        raise ValueError(f"unknown shim item kind {kind!r}")
+    cache[kind] = items
+    return items
+
+
+def _item_sql(text: str, kind: str, parts: tuple[str, ...]) -> str:
+    """A shim's statement for one object: its quoted name, name as a string, and SHOW keyword."""
+    ident = ".".join(_ident(p) for p in parts)
+    return (text.replace("__ITEM_LITERAL__", _literal(ident)).replace("__ITEM_NAME__", _literal(parts[-1]))
+            .replace("__ITEM_DB__", _literal(parts[0])).replace("__ITEM_KIND__", kind.upper().replace("_", " "))
+            .replace("__ITEM__", ident))
+
+
+def _empty_sql(columns: str) -> str:
+    """A typed empty result from a shim's `columns:` header ("NAME TYPE, ...")."""
+    cols = re.findall(r"([A-Za-z0-9_]+) ([A-Za-z_]+(?:\(\d+(?:,\s*\d+)?\))?)", columns)
+    return "SELECT " + ", ".join(f'CAST(NULL AS {t}) AS "{n}"' for n, t in cols) + " WHERE FALSE"
+
+
+SHIM_SHOW_CHUNK = 50  # reads of SHOW results joined into one statement
+SHIM_UNION_CHUNK = 100  # results joined per statement when one shim ran in parts
 
 
 def run_query_feed(cur, ctx: dict, sql_dir: Path = SQL_DIR) -> None:
@@ -332,40 +441,111 @@ def run_query_feed(cur, ctx: dict, sql_dir: Path = SQL_DIR) -> None:
 
 def run_shims(cur, ctx: dict, views: list[str], sql_dir: Path = SQL_DIR) -> None:
     """Run each shim the fallbacks need once, all at once, and keep its query id in ctx["shim_ids"], so
-    every fallback reads it with RESULT_SCAN instead of calling the table functions again. A shim that
-    needs MONITOR USAGE the role lacks is not run; a failure is kept and named by each check."""
+    every fallback reads it instead of calling the table functions again. A shim with `each:` runs once
+    per database, warehouse, role or policy (after its `show:` statement when it has one), and the parts
+    are joined; a part that fails drops only that object, and ctx["shim_gaps"] says how many. A shim
+    that needs a privilege the role lacks is not run; a failure is kept and named by each check."""
     shims = load_shims(sql_dir)
-    ctx.setdefault("shim_ids", {})
-    ctx.setdefault("shim_errors", {})
-    todo, sqls = [], []
+    for key in ("shim_ids", "shim_errors", "shim_gaps", "shim_sql"):
+        ctx.setdefault(key, {})
+    started = time.monotonic()
+    plans: dict[str, tuple[dict, str, list]] = {}
     for view in views:
         head, body = shims[view]
         if fallback_blocked(head, ctx):
             continue
         try:
-            sql = render(body, days=7, params={}, ctx=ctx, sql_dir=sql_dir)
-            assert_read_only(sql)
-        except Exception as exc:  # noqa: BLE001 -- e.g. the query feed it reads did not run
+            items: list = [None]
+            if head.get("each"):
+                items = [(k, parts) for k in (x.strip() for x in head["each"].split(","))
+                         for parts in shim_items(cur, k, ctx)]
+            plans[view] = (head, body, items)
+        except Exception as exc:  # noqa: BLE001 -- the listing failing reads as the role gap
             ctx["shim_errors"][view] = _short(exc, 200)
-            continue
-        todo.append(view)
-        sqls.append(sql)
-    if not sqls:
+    if not plans:
         return
-    started = time.monotonic()
-    try:
-        results = run_all(cur, sqls, "INFORMATION_SCHEMA stand-ins for the fallbacks")
-    except Exception as exc:  # noqa: BLE001 -- the fallback checks then read "role can't see" with this reason
-        results = [(None, _short(exc, 200))] * len(sqls)
-    for view, (sfqid, err) in zip(todo, results):
-        if sfqid:
-            ctx["shim_ids"][view] = sfqid
-            ctx.setdefault("shim_sql", {})[view] = shim_rows_sql(cur, sfqid)
+    # 1. The SHOW statements, all at once.
+    show_jobs = [(view, i, _item_sql(head["show"], *item) if item else head["show"])
+                 for view, (head, _b, items) in plans.items() if head.get("show") for i, item in enumerate(items)]
+    for *_, sql in show_jobs:
+        assert_read_only(sql)
+    show_ids = dict(zip([(v, i) for v, i, _ in show_jobs],
+                        run_all(cur, [s for *_, s in show_jobs], "SHOW for the INFORMATION_SCHEMA stand-ins")))
+    # 2. The bodies: one statement per object, or one per chunk of SHOW reads.
+    jobs: list[tuple[str, str, int]] = []
+    failed: dict[str, list[str]] = {}
+    lost: dict[str, int] = {}
+    for view, (head, body, items) in plans.items():
+        parts = []
+        for i, item in enumerate(items):
+            sql = _item_sql(body, *item) if item else body
+            if head.get("show"):
+                sfqid, err = show_ids[(view, i)]
+                if not sfqid:
+                    failed.setdefault(view, []).append(err or "failed")
+                    lost[view] = lost.get(view, 0) + 1
+                    continue
+                sql = sql.replace("__SHOW__", f"TABLE(RESULT_SCAN({_literal(sfqid)}))")
+            try:
+                sql = render(sql, days=7, params={}, ctx=ctx, sql_dir=sql_dir)
+                assert_read_only(sql)
+            except Exception as exc:  # noqa: BLE001 -- e.g. the query feed it reads did not run
+                failed.setdefault(view, []).append(_short(exc, 200))
+                lost[view] = lost.get(view, 0) + 1
+                continue
+            parts.append(sql)
+        if head.get("show"):
+            jobs += [(view, " UNION ALL ".join(f"SELECT * FROM ({p})" for p in parts[k:k + SHIM_SHOW_CHUNK]),
+                      len(parts[k:k + SHIM_SHOW_CHUNK])) for k in range(0, len(parts), SHIM_SHOW_CHUNK)]
         else:
-            ctx["shim_errors"][view] = err
-            print(f"warning: the INFORMATION_SCHEMA stand-in for {view} failed: {err}", file=sys.stderr)
+            jobs += [(view, p, 1) for p in parts]
+    results = run_all(cur, [sql for _, sql, _n in jobs], "INFORMATION_SCHEMA stand-ins for the fallbacks") if jobs else []
+    ids: dict[str, list[str]] = {view: [] for view in plans}
+    for (view, _sql, n), (sfqid, err) in zip(jobs, results):
+        if sfqid:
+            ids[view].append(sfqid)
+        else:
+            failed.setdefault(view, []).append(err or "failed")
+            lost[view] = lost.get(view, 0) + n
+    # 3. Join the parts of each shim, a hundred results a statement, until one is left.
+    while any(len(v) > 1 for v in ids.values()):
+        joins = [(view, " UNION ALL ".join(f"SELECT * FROM TABLE(RESULT_SCAN({_literal(i)}))"
+                                             for i in v[k:k + SHIM_UNION_CHUNK]))
+                 for view, v in ids.items() if len(v) > 1 for k in range(0, len(v), SHIM_UNION_CHUNK)]
+        for view in {v for v, _ in joins}:
+            ids[view] = []
+        for (view, _sql), (sfqid, err) in zip(joins, run_all(cur, [s for _, s in joins], "joining the stand-ins")):
+            if sfqid:
+                ids[view].append(sfqid)
+            else:
+                ids[view] = [None]  # a join failing loses the whole shim
+                failed.setdefault(view, []).append(err or "failed")
+        for view in [v for v, x in ids.items() if None in x]:
+            ids[view] = []
+    for view, (head, _b, items) in plans.items():
+        errs = failed.get(view) or []
+        if ids[view]:
+            ctx["shim_ids"][view] = ids[view][0]
+            ctx["shim_sql"][view] = shim_rows_sql(cur, ids[view][0])
+        elif items == [] and head.get("columns"):
+            ctx["shim_ids"][view] = "empty"
+            ctx["shim_sql"][view] = "(" + _empty_sql(head["columns"]) + ")"
+        else:
+            ctx["shim_errors"][view] = errs[0] if errs else "nothing to read"
+            print(f"warning: the INFORMATION_SCHEMA stand-in for {view} failed: {ctx['shim_errors'][view]}",
+                  file=sys.stderr)
+            continue
+        if lost.get(view) and head.get("each"):
+            kinds = " or ".join(SHIM_ITEM_KINDS.get(k.strip(), k.strip()) for k in head["each"].split(","))
+            ctx["shim_gaps"][view] = f"{lost[view]} of {len(items)} ({kinds}) could not be read: {errs[0]}"
     print(f"INFORMATION_SCHEMA stand-ins: {len(ctx['shim_ids'])} of {len(views)} ran, "
           f"{time.monotonic() - started:.1f}s", flush=True)
+
+
+def shim_gap_note(text: str, ctx: dict) -> str | None:
+    """The note a fallback adds when a shim it reads lost some of its parts."""
+    gaps = [f"{v}: {ctx['shim_gaps'][v]}" for v in shims_in(text) if (ctx.get("shim_gaps") or {}).get(v)]
+    return "; ".join(gaps) or None
 
 
 SHIM_INLINE_ROWS = 5000
@@ -970,6 +1150,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
         fallbacks = {q: t for q, t in load_fallbacks(sql_dir).items() if q in checks}
         ctx["info_schema_db"] = info_schema_db(cur) if fallbacks else None
         ctx["monitor_usage"] = has_monitor_usage(cur, ctx) if ctx["info_schema_db"] else False
+        ctx["account_privileges"] = account_privileges(cur) if ctx["info_schema_db"] else set()
         to_run = [fb for q, fb in fallbacks.items()
                   if use_fallbacks or unreadable_sources(app_registry.by_id(q), visibility)]
         if ctx["info_schema_db"] and any(uses_query_feed(fb) for fb in to_run):
@@ -1017,6 +1198,8 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
                 note = head.get("fallback_note")
                 if uses_query_feed(fb) and query_feed_gap(ctx):
                     note = f"{note}; {query_feed_gap(ctx)}"
+                if shim_gap_note(fb, ctx):
+                    note = f"{note}; {shim_gap_note(fb, ctx)}"
                 try:
                     if fallback_blocked(head, ctx):
                         raise ExportConfigError(fallback_blocked(head, ctx))
@@ -1122,6 +1305,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
         "export_date": now.date().isoformat(), "lag_hours": LAG_HOURS, "visibility": visibility,
         "edition": edition, "statement_timeout_s": int(_statement_timeout_s),
         "monitor_usage": ctx.get("monitor_usage"),
+        "manage_grants": bool({"ACCOUNTADMIN", "MANAGE GRANTS"} & (ctx.get("account_privileges") or set())),
         "windows": [w for w, _ in plan], "window_coverage": {str(w): d for w, d in plan},
         "window_aliases": {str(a): str(s) for a, s in aliases.items()}, "days": int(windows),
         "account": {"id": ctx["account_id"], "name": ctx["account_name"], "account_name": ctx.get("true_account_name"),

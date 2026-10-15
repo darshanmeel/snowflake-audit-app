@@ -1,0 +1,2 @@
+-- query_id: access_grants_inventory
+-- shim: yes

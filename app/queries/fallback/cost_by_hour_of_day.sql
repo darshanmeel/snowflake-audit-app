@@ -1,0 +1,2 @@
+-- query_id: cost_by_hour_of_day
+-- shim: yes

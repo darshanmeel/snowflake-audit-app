@@ -1,0 +1,2 @@
+-- query_id: sf_govx_admin_role_daily_use
+-- shim: yes

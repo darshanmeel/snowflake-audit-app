@@ -1,0 +1,2 @@
+-- query_id: sf_cost_serverless_features
+-- shim: yes

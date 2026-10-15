@@ -13,9 +13,12 @@ unchanged.
   with `--use-fallbacks`). Its header adds `fallback_note`, shown under the page's sub-tabs.
 - `fallback/<query_id>.sql` with only `-- query_id` and `-- shim: yes`: the check's own SQL, with each
   ACCOUNT_USAGE view swapped for its stand-in (`tools/export_results.py` `expand_shims`).
-- `shims/<VIEW>.sql`: an ACCOUNT_USAGE view rebuilt from INFORMATION_SCHEMA table functions, with the
-  view's columns (NULL where a function has none). Header: `reads`, `needs: MONITOR USAGE` when the
-  functions return nothing without it, and `note` (what it leaves out, shown on the page). The export
+- `shims/<VIEW>.sql`: an ACCOUNT_USAGE view rebuilt from INFORMATION_SCHEMA table functions, views or
+  SHOW output, with the view's columns (NULL where the source has none). Header: `reads`, `needs` (the
+  privileges without which it returns only part: MONITOR USAGE, MANAGE GRANTS, APPLY ... POLICY),
+  `note` (what it leaves out, shown on the page), and for one call per object `each` (database,
+  warehouse, role, database_role, policy), `show` (a SHOW run first, read as `__SHOW__`) and `columns`
+  (the empty result when there is nothing to call). `__ITEM__` is the object's quoted name. The export
   runs each one once before the checks; `__SHIM_6_MONTHS__` and `__SHIM_14_DAYS__` are the oldest
   days the functions accept.
 - `common/is_query_history_feed.sql`: one six-hour slice of the query history the query fallbacks

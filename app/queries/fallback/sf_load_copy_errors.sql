@@ -1,0 +1,2 @@
+-- query_id: sf_load_copy_errors
+-- shim: yes

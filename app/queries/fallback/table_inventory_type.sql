@@ -1,0 +1,2 @@
+-- query_id: table_inventory_type
+-- shim: yes

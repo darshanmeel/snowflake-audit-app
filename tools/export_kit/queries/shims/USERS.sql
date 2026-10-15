@@ -1,0 +1,45 @@
+-- shim: USERS
+-- reads: SHOW USERS
+-- show: SHOW USERS
+-- needs: MANAGE GRANTS
+-- note: live users only; no password-change dates; the name stands in for the user id
+-- USERS rebuilt from SHOW USERS: each column taken by name, mapped, or NULL where the source has none.
+SELECT "name" AS user_id,
+       CAST("name" AS VARCHAR) AS name,
+       CAST("created_on" AS TIMESTAMP_LTZ(6)) AS created_on,
+       CAST(NULL AS TIMESTAMP_LTZ(6)) AS deleted_on,
+       CAST("login_name" AS VARCHAR) AS login_name,
+       CAST("display_name" AS VARCHAR) AS display_name,
+       CAST("first_name" AS VARCHAR) AS first_name,
+       CAST("last_name" AS VARCHAR) AS last_name,
+       CAST("email" AS VARCHAR) AS email,
+       CAST(TRY_TO_BOOLEAN("must_change_password"::STRING) AS BOOLEAN) AS must_change_password,
+       CAST(TRY_TO_BOOLEAN("has_password"::STRING) AS BOOLEAN) AS has_password,
+       CAST("comment" AS VARCHAR) AS comment,
+       TO_VARIANT(TRY_TO_BOOLEAN("disabled"::STRING)) AS disabled,
+       TO_VARIANT(TRY_TO_BOOLEAN("snowflake_lock"::STRING)) AS snowflake_lock,
+       CAST("default_warehouse" AS VARCHAR) AS default_warehouse,
+       CAST("default_namespace" AS VARCHAR) AS default_namespace,
+       CAST("default_role" AS VARCHAR) AS default_role,
+       CAST(TRY_TO_BOOLEAN("ext_authn_duo"::STRING) AS BOOLEAN) AS ext_authn_duo,
+       CAST("ext_authn_uid" AS VARCHAR) AS ext_authn_uid,
+       CAST(TRY_TO_BOOLEAN("has_mfa"::STRING) AS BOOLEAN) AS has_mfa,
+       CAST(IFF(TRY_TO_NUMBER("mins_to_bypass_mfa"::STRING) > 0, DATEADD(minute, TRY_TO_NUMBER("mins_to_bypass_mfa"::STRING), CURRENT_TIMESTAMP()), NULL) AS TIMESTAMP_LTZ(6)) AS bypass_mfa_until,
+       CAST("last_success_login" AS TIMESTAMP_LTZ(6)) AS last_success_login,
+       CAST("expires_at_time" AS TIMESTAMP_LTZ(6)) AS expires_at,
+       CAST("locked_until_time" AS TIMESTAMP_LTZ(6)) AS locked_until_time,
+       CAST(TRY_TO_BOOLEAN("has_rsa_public_key"::STRING) AS BOOLEAN) AS has_rsa_public_key,
+       CAST(NULL AS TIMESTAMP_LTZ(6)) AS password_last_set_time,
+       CAST("owner" AS VARCHAR) AS owner,
+       CAST("default_secondary_roles" AS VARCHAR) AS default_secondary_role,
+       CAST(TRY_TO_BOOLEAN("has_pat"::STRING) AS BOOLEAN) AS has_pat,
+       CAST(TRY_TO_BOOLEAN("has_workload_identity"::STRING) AS BOOLEAN) AS has_workload_identity,
+       CAST("type" AS VARCHAR) AS type,
+       CAST(NULL AS VARCHAR) AS database_name,
+       CAST(NULL AS NUMBER(38,0)) AS database_id,
+       CAST(NULL AS VARCHAR) AS schema_name,
+       CAST(NULL AS NUMBER(38,0)) AS schema_id,
+       CAST(TRY_TO_BOOLEAN("is_from_organization_user"::STRING) AS BOOLEAN) AS is_from_organization_user,
+       CAST(NULL AS VARCHAR) AS provisioned_by,
+       CAST(NULL AS BOOLEAN) AS is_email_verified
+FROM __SHOW__

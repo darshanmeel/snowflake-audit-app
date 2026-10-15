@@ -1,0 +1,2 @@
+-- query_id: sf_pipe_cost_and_files
+-- shim: yes

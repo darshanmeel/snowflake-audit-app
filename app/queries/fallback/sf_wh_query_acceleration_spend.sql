@@ -1,0 +1,2 @@
+-- query_id: sf_wh_query_acceleration_spend
+-- shim: yes

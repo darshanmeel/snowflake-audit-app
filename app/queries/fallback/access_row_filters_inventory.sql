@@ -1,0 +1,2 @@
+-- query_id: access_row_filters_inventory
+-- shim: yes

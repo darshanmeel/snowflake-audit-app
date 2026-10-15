@@ -1,0 +1,2 @@
+-- query_id: sf_obj_udfs_procedures
+-- shim: yes

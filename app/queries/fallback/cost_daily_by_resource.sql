@@ -1,0 +1,2 @@
+-- query_id: cost_daily_by_resource
+-- shim: yes

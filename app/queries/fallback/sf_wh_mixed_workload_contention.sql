@@ -1,0 +1,2 @@
+-- query_id: sf_wh_mixed_workload_contention
+-- shim: yes

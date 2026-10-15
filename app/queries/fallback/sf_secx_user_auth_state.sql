@@ -1,0 +1,2 @@
+-- query_id: sf_secx_user_auth_state
+-- shim: yes

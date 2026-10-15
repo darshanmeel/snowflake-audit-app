@@ -1,0 +1,2 @@
+-- query_id: sf_ai_spcs_public_endpoints
+-- shim: yes

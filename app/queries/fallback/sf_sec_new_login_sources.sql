@@ -1,0 +1,2 @@
+-- query_id: sf_sec_new_login_sources
+-- shim: yes

@@ -1,0 +1,2 @@
+-- query_id: sf_secx_sso_oauth_integrations
+-- shim: yes

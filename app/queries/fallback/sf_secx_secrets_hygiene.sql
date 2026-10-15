@@ -1,0 +1,2 @@
+-- query_id: sf_secx_secrets_hygiene
+-- shim: yes

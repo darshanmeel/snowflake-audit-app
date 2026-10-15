@@ -1,0 +1,2 @@
+-- query_id: sf_wh_consolidation_candidates
+-- shim: yes

@@ -1,0 +1,2 @@
+-- query_id: sf_govx_external_stage_credentials
+-- shim: yes
