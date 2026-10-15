@@ -106,8 +106,90 @@ def load_checks(sql_dir: Path = SQL_DIR) -> dict[str, str]:
 
 def load_fallbacks(sql_dir: Path = SQL_DIR) -> dict[str, str]:
     """{query_id: sql text} for every fallback/*.sql file: the same check read from INFORMATION_SCHEMA,
-    run when the role cannot read the check's ACCOUNT_USAGE views. Same columns as the check."""
-    return {p.stem: p.read_text(encoding="utf-8") for p in sorted((sql_dir / "fallback").glob("*.sql"))}
+    run when the role cannot read the check's ACCOUNT_USAGE views. Same columns as the check. A file
+    with `-- shim: yes` is the check's own SQL with its views swapped for shims (expand_shims)."""
+    out = {}
+    for p in sorted((sql_dir / "fallback").glob("*.sql")):
+        text = p.read_text(encoding="utf-8")
+        out[p.stem] = expand_shims(p.stem, text, sql_dir) if parse_header(text).get("shim") == "yes" else text
+    return out
+
+
+# A string literal, a comment, or an ACCOUNT_USAGE view: only the view is swapped.
+_VIEW_TOKEN_RE = re.compile(r"'(?:[^']|'')*'|--[^\n]*|/\*.*?\*/|\bSNOWFLAKE\.ACCOUNT_USAGE\.([A-Z_]+)\b", re.S | re.I)
+SHIM_RANGES = {
+    # The oldest day the 6-month table functions accept, and the 14-day ones.
+    "__SHIM_6_MONTHS__": "DATEADD(day, 1, DATEADD(month, -6, CURRENT_DATE()))",
+    "__SHIM_14_DAYS__": "DATEADD(day, -14, CURRENT_DATE())",
+}
+
+
+def load_shims(sql_dir: Path = SQL_DIR) -> dict[str, tuple[dict, str]]:
+    """{VIEW: (header, body)} for every shims/*.sql file: an ACCOUNT_USAGE view rebuilt from
+    INFORMATION_SCHEMA table functions, with the view's columns (NULL where the function has none)."""
+    out = {}
+    for p in sorted((sql_dir / "shims").glob("*.sql")):
+        text = p.read_text(encoding="utf-8")
+        body = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("--")).strip()
+        for key, value in SHIM_RANGES.items():
+            body = body.replace(key, value)
+        out[p.stem.upper()] = (parse_header(text), body)
+    return out
+
+
+def expand_shims(qid: str, stub: str, sql_dir: Path = SQL_DIR) -> str:
+    """The check's own SQL, includes pasted in, with each ACCOUNT_USAGE view replaced by __SHIM_<VIEW>__:
+    the result of that shim, which the export runs once before the checks (run_shims). The header gets
+    the shims' names, reads, needs and notes, and the check's pre-steps."""
+    shims = load_shims(sql_dir)
+    check = (sql_dir / "checks" / f"{qid}.sql").read_text(encoding="utf-8")
+    lines = check.splitlines()
+    start = 0
+    while start < len(lines) and (lines[start].startswith("--") or not lines[start].strip()):
+        start += 1  # the check's header; the fallback gets its own
+    body = _INCLUDE_RE.sub(lambda m: (sql_dir / "common" / f"{m.group(1)}.sql").read_text(encoding="utf-8").strip(),
+                           "\n".join(lines[start:]))
+    used: list[str] = []
+
+    def swap(m):
+        view = m.group(1)
+        if not view:
+            return m.group(0)
+        if view.upper() not in shims:
+            raise ExportConfigError(f"fallback/{qid}.sql: no shim for ACCOUNT_USAGE.{view.upper()}")
+        if view.upper() not in used:
+            used.append(view.upper())
+        return f"__SHIM_{view.upper()}__"
+
+    body = _VIEW_TOKEN_RE.sub(swap, body)
+    heads = [shims[v][0] for v in used]
+    stub_head = parse_header(stub)
+    notes = [h.get("note") for h in heads if h.get("note")] + ([stub_head["fallback_note"]] if stub_head.get("fallback_note") else [])
+    lines = [f"-- query_id: {qid}",
+             "-- shims: " + ", ".join(used),
+             "-- reads: INFORMATION_SCHEMA table functions " + ", ".join(dict.fromkeys(
+                 fn.strip() for h in heads
+                 for fn in re.sub(r"INFORMATION_SCHEMA\.|\(table functions?\)", "", h.get("reads", "")).split(","))),
+             "-- fallback_note: " + "; ".join(notes)]
+    if any("MONITOR USAGE" in h.get("needs", "") for h in heads):
+        lines.append("-- needs: MONITOR USAGE")
+    if app_registry.by_id(qid).pre:
+        lines.append("-- pre: " + "; ".join(app_registry.by_id(qid).pre))
+    return "\n".join(lines) + "\n" + body.strip() + "\n"
+
+
+_SHIM_TOKEN_RE = re.compile(r"__SHIM_([A-Z_]+)__")
+
+
+def shims_in(text: str) -> list[str]:
+    """The shims a fallback reads."""
+    return sorted(set(_SHIM_TOKEN_RE.findall(text)))
+
+
+def uses_query_feed(text: str) -> bool:
+    """Whether a fallback reads the shared INFORMATION_SCHEMA query feed, directly or through its shim."""
+    return any(t in text for t in ("__INCLUDE_is_query_history__", "__IS_QUERY_HISTORY_SCANS__",
+                                   "__SHIM_QUERY_HISTORY__"))
 
 
 def info_schema_db(cur) -> str | None:
@@ -180,40 +262,38 @@ QUERY_FEED_SCANS = "__IS_QUERY_HISTORY_SCANS__"
 QUERY_FEED_SLICES = 28  # six-hour slices over the 7 days QUERY_HISTORY keeps
 
 
-def run_all(cur, sqls: list[str], label: str) -> tuple[list[str], list[str]]:
+def run_all(cur, sqls: list[str], label: str) -> list[tuple[str | None, str | None]]:
     """Run the statements at once (async on a live session), each under the session's statement timeout.
-    Returns the query ids that finished and the errors of those that did not. Rows are not fetched:
-    they stay in Snowflake's result cache for RESULT_SCAN."""
-    ids: list[str] = []
-    errors: list[str] = []
+    Returns (query id, None) or (None, error) per statement, in order. Rows are not fetched: they stay
+    in Snowflake's result cache for RESULT_SCAN."""
+    out: list[tuple[str | None, str | None]] = []
     if not hasattr(cur, "execute_async"):
         for sql in sqls:
             try:
                 cur.execute(sql)
-                ids.append(cur.sfqid)
+                out.append((cur.sfqid, None))
             except Exception as exc:  # noqa: BLE001 -- one statement failing drops only its own part
-                errors.append(_short(exc, 200))
-        return ids, errors
+                out.append((None, _short(exc, 200)))
+        return out
     conn = cur.connection
-    pending = []
+    ids = []
     for sql in sqls:
         cur.execute_async(sql)
-        pending.append(cur.sfqid)
-    while pending:
-        for sfqid in list(pending):
-            try:
-                running = conn.is_still_running(conn.get_query_status_throw_if_error(sfqid))
-            except Exception as exc:  # noqa: BLE001 -- one statement failing drops only its own part
-                errors.append(_short(exc, 200))
-                pending.remove(sfqid)
+        ids.append(cur.sfqid)
+    done: dict[str, tuple[str | None, str | None]] = {}
+    while len(done) < len(ids):
+        for sfqid in ids:
+            if sfqid in done:
                 continue
-            if not running:
-                ids.append(sfqid)
-                pending.remove(sfqid)
-        if pending:
-            print(f"{label}: {len(ids) + len(errors)} of {len(sqls)} done", flush=True)
+            try:
+                if not conn.is_still_running(conn.get_query_status_throw_if_error(sfqid)):
+                    done[sfqid] = (sfqid, None)
+            except Exception as exc:  # noqa: BLE001 -- one statement failing drops only its own part
+                done[sfqid] = (None, _short(exc, 200))
+        if len(done) < len(ids):
+            print(f"{label}: {len(done)} of {len(ids)} done", flush=True)
             time.sleep(5)
-    return ids, errors
+    return [done[i] for i in ids]
 
 
 def run_query_feed(cur, ctx: dict, sql_dir: Path = SQL_DIR) -> None:
@@ -235,9 +315,11 @@ def run_query_feed(cur, ctx: dict, sql_dir: Path = SQL_DIR) -> None:
         assert_read_only(sql)
         sqls.append(sql)
     try:
-        ids, errors = run_all(cur, sqls, "query history for the INFORMATION_SCHEMA fallbacks")
+        results = run_all(cur, sqls, "query history for the INFORMATION_SCHEMA fallbacks")
     except Exception as exc:  # noqa: BLE001 -- the fallback checks then read "role can't see" with this reason
-        ids, errors = [], [_short(exc, 200)]
+        results = [(None, _short(exc, 200))] * QUERY_FEED_SLICES
+    ids = [i for i, _ in results if i]
+    errors = [e for _, e in results if e]
     ctx["query_feed_ids"] = ids
     ctx["query_feed_missing"] = len(errors)
     if errors:
@@ -246,6 +328,82 @@ def run_query_feed(cur, ctx: dict, sql_dir: Path = SQL_DIR) -> None:
               f"history failed: {errors[0]}", file=sys.stderr)
     print(f"query history for the INFORMATION_SCHEMA fallbacks: {len(ids)} of {QUERY_FEED_SLICES} six-hour "
           f"slices, {time.monotonic() - started:.1f}s", flush=True)
+
+
+def run_shims(cur, ctx: dict, views: list[str], sql_dir: Path = SQL_DIR) -> None:
+    """Run each shim the fallbacks need once, all at once, and keep its query id in ctx["shim_ids"], so
+    every fallback reads it with RESULT_SCAN instead of calling the table functions again. A shim that
+    needs MONITOR USAGE the role lacks is not run; a failure is kept and named by each check."""
+    shims = load_shims(sql_dir)
+    ctx.setdefault("shim_ids", {})
+    ctx.setdefault("shim_errors", {})
+    todo, sqls = [], []
+    for view in views:
+        head, body = shims[view]
+        if fallback_blocked(head, ctx):
+            continue
+        try:
+            sql = render(body, days=7, params={}, ctx=ctx, sql_dir=sql_dir)
+            assert_read_only(sql)
+        except Exception as exc:  # noqa: BLE001 -- e.g. the query feed it reads did not run
+            ctx["shim_errors"][view] = _short(exc, 200)
+            continue
+        todo.append(view)
+        sqls.append(sql)
+    if not sqls:
+        return
+    started = time.monotonic()
+    try:
+        results = run_all(cur, sqls, "INFORMATION_SCHEMA stand-ins for the fallbacks")
+    except Exception as exc:  # noqa: BLE001 -- the fallback checks then read "role can't see" with this reason
+        results = [(None, _short(exc, 200))] * len(sqls)
+    for view, (sfqid, err) in zip(todo, results):
+        if sfqid:
+            ctx["shim_ids"][view] = sfqid
+            ctx.setdefault("shim_sql", {})[view] = shim_rows_sql(cur, sfqid)
+        else:
+            ctx["shim_errors"][view] = err
+            print(f"warning: the INFORMATION_SCHEMA stand-in for {view} failed: {err}", file=sys.stderr)
+    print(f"INFORMATION_SCHEMA stand-ins: {len(ctx['shim_ids'])} of {len(views)} ran, "
+          f"{time.monotonic() - started:.1f}s", flush=True)
+
+
+SHIM_INLINE_ROWS = 5000
+_SHIM_TYPES = {0: "NUMBER(38, {scale})", 1: "FLOAT", 2: "VARCHAR", 3: "DATE", 6: "TIMESTAMP_LTZ",
+               7: "TIMESTAMP_LTZ", 8: "TIMESTAMP_LTZ", 13: "BOOLEAN"}
+
+
+def _value_literal(value) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, (dt.datetime, dt.date)):
+        return "'" + value.isoformat() + "'"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)) or type(value).__name__ == "Decimal":
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def shim_rows_sql(cur, sfqid: str) -> str:
+    """How the checks read a shim's result: its rows as literal VALUES when it is small, else RESULT_SCAN.
+    Snowflake aborts with an internal error (300010) when a statement reads table-function rows through
+    a CTE used twice; literal rows avoid that."""
+    scan = f"(SELECT * FROM TABLE(RESULT_SCAN({_literal(sfqid)})))"
+    try:
+        cur.execute(f"SELECT * FROM TABLE(RESULT_SCAN({_literal(sfqid)})) LIMIT {SHIM_INLINE_ROWS + 1}")
+        rows = cur.fetchall()
+        types = [_SHIM_TYPES[c.type_code].format(scale=c.scale or 0) for c in cur.description]
+        names = [c.name for c in cur.description]
+    except Exception:  # noqa: BLE001 -- an unknown type or a test cursor: read the result as is
+        return scan
+    if len(rows) > SHIM_INLINE_ROWS:
+        return scan
+    if not rows:
+        return "(SELECT " + ", ".join(f'CAST(NULL AS {t}) AS "{n}"' for t, n in zip(types, names)) + " WHERE FALSE)"
+    cols = ", ".join(f'CAST(column{i + 1} AS {t}) AS "{n}"' for i, (t, n) in enumerate(zip(types, names)))
+    values = ", ".join("(" + ", ".join(_value_literal(v) for v in row) + ")" for row in rows)
+    return f"(SELECT {cols} FROM VALUES {values})"
 
 
 def query_feed_gap(ctx: dict) -> str | None:
@@ -286,6 +444,13 @@ def render(text: str, *, days: int, params: dict, ctx: dict, sql_dir: Path = SQL
                                     + str(ctx.get("query_feed_error") or "not started"))
         sql = sql.replace(QUERY_FEED_SCANS, " UNION ALL ".join(
             f"SELECT * FROM TABLE(RESULT_SCAN({_literal(i)}))" for i in ctx["query_feed_ids"]))
+    for view in shims_in(sql):
+        # A shim ran once before the checks; read its result.
+        if not (ctx.get("shim_ids") or {}).get(view):
+            raise ExportConfigError(f"the INFORMATION_SCHEMA stand-in for {view} did not run: "
+                                    + str((ctx.get("shim_errors") or {}).get(view) or "not started"))
+        sql = sql.replace(f"__SHIM_{view}__", (ctx.get("shim_sql") or {}).get(view)
+                          or f"(SELECT * FROM TABLE(RESULT_SCAN({_literal(ctx['shim_ids'][view])})))")
     leftover = _PARAM_RE.findall(_COMMENT_RE.sub("", sql))
     if leftover:
         raise ExportConfigError(f"unresolved parameter(s): {sorted(set(leftover))}")
@@ -805,10 +970,12 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
         fallbacks = {q: t for q, t in load_fallbacks(sql_dir).items() if q in checks}
         ctx["info_schema_db"] = info_schema_db(cur) if fallbacks else None
         ctx["monitor_usage"] = has_monitor_usage(cur, ctx) if ctx["info_schema_db"] else False
-        if ctx["info_schema_db"] and any(
-                "__INCLUDE_is_query_history__" in fb and (use_fallbacks or unreadable_sources(app_registry.by_id(q), visibility))
-                for q, fb in fallbacks.items()):
+        to_run = [fb for q, fb in fallbacks.items()
+                  if use_fallbacks or unreadable_sources(app_registry.by_id(q), visibility)]
+        if ctx["info_schema_db"] and any(uses_query_feed(fb) for fb in to_run):
             run_query_feed(cur, ctx, sql_dir)
+        if ctx["info_schema_db"]:
+            run_shims(cur, ctx, sorted({v for fb in to_run for v in shims_in(fb)}), sql_dir)
         findings: dict[str, dict] = {}
         total_checks = len(checks)
         lock = threading.Lock()
@@ -848,7 +1015,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
                 fb = fallbacks[qid]
                 head = parse_header(fb)
                 note = head.get("fallback_note")
-                if "__INCLUDE_is_query_history__" in fb and query_feed_gap(ctx):
+                if uses_query_feed(fb) and query_feed_gap(ctx):
                     note = f"{note}; {query_feed_gap(ctx)}"
                 try:
                     if fallback_blocked(head, ctx):

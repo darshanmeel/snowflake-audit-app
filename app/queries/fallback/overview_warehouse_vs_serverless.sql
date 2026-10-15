@@ -1,0 +1,2 @@
+-- query_id: overview_warehouse_vs_serverless
+-- shim: yes

@@ -1,0 +1,2 @@
+-- query_id: sf_sec_security_config_changes
+-- shim: yes

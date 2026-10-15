@@ -1,0 +1,2 @@
+-- query_id: sf_cost_resource_monitor_coverage
+-- shim: yes

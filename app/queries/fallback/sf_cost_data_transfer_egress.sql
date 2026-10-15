@@ -1,0 +1,2 @@
+-- query_id: sf_cost_data_transfer_egress
+-- shim: yes

@@ -1,0 +1,2 @@
+-- query_id: query_costly_statements_grouped
+-- shim: yes

@@ -325,13 +325,29 @@ what-if is not applied on top of it. The app shows where each price came from ne
 
 ### When the role cannot read ACCOUNT_USAGE
 
-A few checks have a second version in `app/queries/fallback/` that reads the same thing from
+31 checks have a second version in `app/queries/fallback/` that reads the same thing from
 `INFORMATION_SCHEMA` table functions. The export runs it when the role cannot read the check's
-`ACCOUNT_USAGE` view, and the page says so under the sub-tabs. These keep less: query and sign-in
-history covers 7 days and only what the role can see; storage needs MONITOR USAGE; there are no
-warehouse or database ids, so the name stands in. Today: query load per warehouse, failed queries,
-queue waits, sign-ins and database storage growth. `--use-fallbacks` runs them even when
-`ACCOUNT_USAGE` is readable, to test them.
+`ACCOUNT_USAGE` views, and the page says so under the sub-tabs. Most are the check's own SQL with each
+view swapped for a stand-in in `app/queries/shims/`: the view rebuilt from table functions, with the
+same columns (NULL where the function has none). Covered: spend (Overview, Cost trend, by service,
+by month, forecast, chargeback by warehouse), cloud services, data transfer, warehouse setup and
+resource monitors, query load, failed and costly queries, queue waits, compilation, sign-ins and
+database storage. `--use-fallbacks` runs them even when `ACCOUNT_USAGE` is readable, to test them.
+
+What they leave out:
+- **Spend:** warehouses and serverless features only. AI, containers and other services have no
+  table function, and adaptive warehouses are left out of the warehouse function. Pipe and data
+  transfer history covers 14 days; the rest 6 months. The cloud-services adjustment is worked out
+  with the daily 10% rule.
+- **Queries and sign-ins:** 7 days, only what the role can see, and no spill, partition, cache or
+  per-query credit figures, so idle-time checks read "not assessed".
+- **Ids:** there are no warehouse or database ids, so the name stands in.
+- **Not covered:** checks that also need views with no table function (users, grants, tags,
+  policies, access history, query attribution, task versions) still read "the role can't see it".
+
+Each stand-in runs once per export, before the checks. Small results (up to 5,000 rows) are passed
+to the checks as literal rows, since Snowflake aborts with an internal error (300010) when one
+statement reads table-function rows twice.
 
 The query checks share one read of the query history. Before the checks, the export runs 28
 six-hour slices at once (the table function returns at most 10,000 queries a call), each its own

@@ -717,16 +717,14 @@ export function WindowCoverageNote({ meta, windowDays }: { meta?: Meta | null; w
 }
 
 // FallbackSourceNote: one line under the sub-tabs when any check on this screen was read from
-// INFORMATION_SCHEMA (the role cannot read ACCOUNT_USAGE): which ones, and what that leaves out.
+// INFORMATION_SCHEMA (the role cannot read ACCOUNT_USAGE); each check's own limits are in the tooltip.
 export function FallbackSourceNote({ findings }: { findings: Finding[] }) {
   const used = findings.filter((f) => f && f.source && f.source.source === "information_schema");
   if (!used.length) return null;
-  const notes: string[] = [];
-  used.forEach((f) => { const n = f.source && f.source.note; if (n && !notes.includes(n)) notes.push(n); });
-  const names = used.map((f) => getCheckLabel(f.query_id).title || f.query_id);
+  const detail = used.map((f) => `${getCheckLabel(f.query_id).title || f.query_id}: ${(f.source && f.source.note) || "partial"}`).join("\n");
   return (
-    <div className="window-coverage-note fallback-source-note">
-      {`From INFORMATION_SCHEMA, as this role cannot read ACCOUNT_USAGE: ${names.join(", ")}. ${notes.length === 1 ? notes[0].charAt(0).toUpperCase() + notes[0].slice(1) + "." : "Partial: last 7 days at most, only what this role can see."}`}
+    <div className="window-coverage-note fallback-source-note" title={detail}>
+      {"Some checks here read INFORMATION_SCHEMA, as this role cannot read ACCOUNT_USAGE: partial, only what the role can see and a shorter history. Hover for each check's limits."}
     </div>
   );
 }

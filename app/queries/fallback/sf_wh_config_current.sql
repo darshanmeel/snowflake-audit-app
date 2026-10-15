@@ -1,0 +1,2 @@
+-- query_id: sf_wh_config_current
+-- shim: yes

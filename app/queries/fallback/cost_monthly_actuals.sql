@@ -1,0 +1,2 @@
+-- query_id: cost_monthly_actuals
+-- shim: yes

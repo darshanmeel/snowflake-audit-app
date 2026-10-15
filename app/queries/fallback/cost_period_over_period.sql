@@ -1,0 +1,2 @@
+-- query_id: cost_period_over_period
+-- shim: yes

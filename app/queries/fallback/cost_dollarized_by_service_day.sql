@@ -1,0 +1,2 @@
+-- query_id: cost_dollarized_by_service_day
+-- shim: yes

@@ -11,8 +11,16 @@ unchanged.
 - `fallback/<query_id>.sql`: the same check read from `INFORMATION_SCHEMA` table functions, with the
   same columns. The export runs it when the role cannot read the check's `ACCOUNT_USAGE` views (or
   with `--use-fallbacks`). Its header adds `fallback_note`, shown under the page's sub-tabs.
-- `common/is_query_history_feed.sql`: the query history the query fallbacks share. The export runs
-  it once before the checks; `common/is_query_history.sql` reads its result with `RESULT_SCAN`.
+- `fallback/<query_id>.sql` with only `-- query_id` and `-- shim: yes`: the check's own SQL, with each
+  ACCOUNT_USAGE view swapped for its stand-in (`tools/export_results.py` `expand_shims`).
+- `shims/<VIEW>.sql`: an ACCOUNT_USAGE view rebuilt from INFORMATION_SCHEMA table functions, with the
+  view's columns (NULL where a function has none). Header: `reads`, `needs: MONITOR USAGE` when the
+  functions return nothing without it, and `note` (what it leaves out, shown on the page). The export
+  runs each one once before the checks; `__SHIM_6_MONTHS__` and `__SHIM_14_DAYS__` are the oldest
+  days the functions accept.
+- `common/is_query_history_feed.sql`: one six-hour slice of the query history the query fallbacks
+  share. The export runs 28 slices at once before the checks; `common/is_query_history.sql` and
+  `shims/QUERY_HISTORY.sql` read them with `RESULT_SCAN`.
 
 ## Writing a check
 

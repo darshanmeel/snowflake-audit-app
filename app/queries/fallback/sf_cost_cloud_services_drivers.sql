@@ -1,0 +1,2 @@
+-- query_id: sf_cost_cloud_services_drivers
+-- shim: yes

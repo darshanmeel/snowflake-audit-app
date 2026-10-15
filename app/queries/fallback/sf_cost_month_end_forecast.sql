@@ -1,0 +1,2 @@
+-- query_id: sf_cost_month_end_forecast
+-- shim: yes

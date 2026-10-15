@@ -1,0 +1,2 @@
+-- query_id: sf_load_copy_listing_overhead
+-- shim: yes

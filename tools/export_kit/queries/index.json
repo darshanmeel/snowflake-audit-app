@@ -60,7 +60,8 @@
     "reads": "INFORMATION_SCHEMA.LOGIN_HISTORY (table function)",
     "note": "last 7 days at most, only the users this role can monitor, up to 10,000 sign-ins a day",
     "needs": null,
-    "query_feed": false
+    "query_feed": false,
+    "shims": []
    }
   },
   "access_row_filters_inventory": {
@@ -137,7 +138,19 @@
     "crit_increase_pct": 50,
     "min_spend_usd": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGE_STORAGE_USAGE_HISTORY, DATA_TRANSFER_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; storage for 6 months at most; no hybrid table or archive storage; data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "METERING_DAILY_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "cost_chargeback_by_service": {
    "domain": "cost",
@@ -153,7 +166,19 @@
     "crit_increase_pct": 50,
     "min_spend_usd": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGE_STORAGE_USAGE_HISTORY, DATA_TRANSFER_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; storage for 6 months at most; no hybrid table or archive storage; data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "METERING_DAILY_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "cost_chargeback_by_warehouse": {
    "domain": "cost",
@@ -169,7 +194,19 @@
     "min_spend_usd": 20,
     "top_n": 20
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, QUERY_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution; queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": "MONITOR USAGE",
+    "query_feed": true,
+    "shims": [
+     "METERING_DAILY_HISTORY",
+     "QUERY_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "cost_daily_by_resource": {
    "domain": "cost",
@@ -201,7 +238,19 @@
     "min_spend_usd": 50,
     "min_baseline_days": 7
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGE_STORAGE_USAGE_HISTORY, DATA_TRANSFER_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; storage for 6 months at most; no hybrid table or archive storage; data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "METERING_DAILY_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "cost_dollarized_by_service_day": {
    "domain": "cost",
@@ -213,7 +262,19 @@
     "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGE_STORAGE_USAGE_HISTORY, DATA_TRANSFER_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; storage for 6 months at most; no hybrid table or archive storage; data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "METERING_DAILY_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "cost_failed_statement_waste": {
    "domain": "cost",
@@ -239,7 +300,19 @@
     "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGE_STORAGE_USAGE_HISTORY, DATA_TRANSFER_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; storage for 6 months at most; no hybrid table or archive storage; data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "METERING_DAILY_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "cost_period_over_period": {
    "domain": "cost",
@@ -255,7 +328,19 @@
     "crit_increase_pct": 50,
     "min_spend_usd": 50
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGE_STORAGE_USAGE_HISTORY, DATA_TRANSFER_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; storage for 6 months at most; no hybrid table or archive storage; data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "METERING_DAILY_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "overview_credits_by_service": {
    "domain": "cost",
@@ -265,7 +350,17 @@
     "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "METERING_DAILY_HISTORY"
+    ]
+   }
   },
   "overview_daily_credits_trend": {
    "domain": "cost",
@@ -275,7 +370,17 @@
     "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "METERING_DAILY_HISTORY"
+    ]
+   }
   },
   "overview_spend_estimate": {
    "domain": "cost",
@@ -287,7 +392,19 @@
     "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGE_STORAGE_USAGE_HISTORY, DATA_TRANSFER_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; storage for 6 months at most; no hybrid table or archive storage; data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "METERING_DAILY_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "overview_warehouse_vs_serverless": {
    "domain": "cost",
@@ -297,7 +414,17 @@
     "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "METERING_DAILY_HISTORY"
+    ]
+   }
   },
   "query_cache_coldstart": {
    "domain": "performance",
@@ -325,7 +452,17 @@
     "crit_total_hours": 5,
     "top_n": 500
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions QUERY_HISTORY",
+    "note": "queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": null,
+    "query_feed": true,
+    "shims": [
+     "QUERY_HISTORY"
+    ]
+   }
   },
   "query_failed_queries_daily": {
    "domain": "performance",
@@ -344,7 +481,8 @@
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
     "note": "last 7 days at most, only the queries this role can see",
     "needs": null,
-    "query_feed": true
+    "query_feed": true,
+    "shims": []
    }
   },
   "query_local_spillage": {
@@ -405,7 +543,8 @@
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
     "note": "last 7 days at most, only the queries this role can see",
     "needs": null,
-    "query_feed": true
+    "query_feed": true,
+    "shims": []
    }
   },
   "query_top_by_cost": {
@@ -458,7 +597,17 @@
     "ACCOUNT_USAGE.QUERY_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions QUERY_HISTORY",
+    "note": "queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": null,
+    "query_feed": true,
+    "shims": [
+     "QUERY_HISTORY"
+    ]
+   }
   },
   "sf_acct_budgets": {
    "domain": "cost",
@@ -1086,7 +1235,17 @@
     "crit_daily_billed_usd": 50,
     "warn_ratio_pct": 10
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "METERING_DAILY_HISTORY"
+    ]
+   }
   },
   "sf_cost_cloud_services_drivers": {
    "domain": "cost",
@@ -1101,7 +1260,18 @@
     "crit_share_pct": 50,
     "min_driver_usd": 10
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions QUERY_HISTORY, WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY",
+    "note": "queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures; warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule",
+    "needs": "MONITOR USAGE",
+    "query_feed": true,
+    "shims": [
+     "METERING_DAILY_HISTORY",
+     "QUERY_HISTORY"
+    ]
+   }
   },
   "sf_cost_contract_balance_burn": {
    "domain": "cost",
@@ -1133,7 +1303,17 @@
     "crit_usd": 500,
     "warn_increase_pct": 50
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions DATA_TRANSFER_HISTORY",
+    "note": "data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY"
+    ]
+   }
   },
   "sf_cost_invoice_vs_metered": {
    "domain": "cost",
@@ -1195,7 +1375,19 @@
     "monthly_budget_usd": 0,
     "min_days_elapsed": 3
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, DATABASE_STORAGE_USAGE_HISTORY, STAGE_STORAGE_USAGE_HISTORY, DATA_TRANSFER_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; storage for 6 months at most; no hybrid table or archive storage; data transfer for the last 14 days at most",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "DATA_TRANSFER_HISTORY",
+     "METERING_DAILY_HISTORY",
+     "STORAGE_USAGE"
+    ]
+   }
   },
   "sf_cost_native_app_inventory": {
    "domain": "cost",
@@ -1309,7 +1501,21 @@
     "crit_used_pct": 100,
     "crit_uncapped_share_pct": 50
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES",
+     "SHOW RESOURCE MONITORS"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "METERING_DAILY_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_cost_resource_monitor_projection": {
    "domain": "cost",
@@ -1381,7 +1587,17 @@
     "crit_idle_usd": 100,
     "warn_idle_pct": 40
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_dt_cost": {
    "domain": "jobs_pipelines",
@@ -1888,7 +2104,17 @@
     "crit_list_pct": 50,
     "min_list_minutes": 10
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions QUERY_HISTORY",
+    "note": "queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": null,
+    "query_feed": true,
+    "shims": [
+     "QUERY_HISTORY"
+    ]
+   }
   },
   "sf_load_small_files": {
    "domain": "jobs_pipelines",
@@ -2528,7 +2754,8 @@
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
     "note": "last 7 days at most, only the queries this role can see; no spill or cache figures",
     "needs": null,
-    "query_feed": true
+    "query_feed": true,
+    "shims": []
    }
   },
   "sf_query_blocked_lock_waits": {
@@ -2579,7 +2806,18 @@
     "warn_cs_credits": 5,
     "crit_cs_credits": 50
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY, QUERY_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": "MONITOR USAGE",
+    "query_feed": true,
+    "shims": [
+     "METERING_DAILY_HISTORY",
+     "QUERY_HISTORY"
+    ]
+   }
   },
   "sf_query_cost_by_statement_type": {
    "domain": "performance",
@@ -2918,7 +3156,17 @@
     "ACCOUNT_USAGE.QUERY_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions QUERY_HISTORY",
+    "note": "queries for the last 7 days at most, only those this role can see; no spill, partition or cache figures",
+    "needs": null,
+    "query_feed": true,
+    "shims": [
+     "QUERY_HISTORY"
+    ]
+   }
   },
   "sf_sec_stale_users": {
    "domain": "governance_access",
@@ -3476,7 +3724,8 @@
     "reads": "INFORMATION_SCHEMA.DATABASE_STORAGE_USAGE_HISTORY (table function)",
     "note": "the database name stands in for its id; no drop dates",
     "needs": "MONITOR USAGE",
-    "query_feed": false
+    "query_feed": false,
+    "shims": []
    }
   },
   "sf_storage_lifecycle_policy_failures": {
@@ -4073,7 +4322,19 @@
     "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_config_posture": {
    "domain": "compute",
@@ -4086,7 +4347,19 @@
     "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_consolidation_candidates": {
    "domain": "compute",
@@ -4144,7 +4417,19 @@
     "warn_waste_usd": 20,
     "crit_waste_usd": 200
    },
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [
+     "SHOW WAREHOUSES"
+    ],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY",
+    "note": "warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_keepalive_pollers": {
    "domain": "compute",
@@ -4369,7 +4654,18 @@
     "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {},
-   "needs_enterprise": false
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA table functions WAREHOUSE_METERING_HISTORY, AUTOMATIC_CLUSTERING_HISTORY, MATERIALIZED_VIEW_REFRESH_HISTORY, SEARCH_OPTIMIZATION_HISTORY, SERVERLESS_TASK_HISTORY, PIPE_USAGE_HISTORY, QUERY_ACCELERATION_HISTORY, REPLICATION_GROUP_USAGE_HISTORY, SERVERLESS_ALERT_HISTORY",
+    "note": "warehouses and serverless features only (no AI, containers or other services); adaptive warehouses left out; pipes for the last 14 days; cloud services adjusted by the daily 10% rule; warehouse credits for 6 months at most; adaptive warehouses left out; the warehouse name stands in for its id; no per-query attribution",
+    "needs": "MONITOR USAGE",
+    "query_feed": false,
+    "shims": [
+     "METERING_DAILY_HISTORY",
+     "WAREHOUSE_METERING_HISTORY"
+    ]
+   }
   },
   "sf_wh_starts_resumes": {
    "domain": "compute",

@@ -1,0 +1,2 @@
+-- query_id: query_workload_mix_hours
+-- shim: yes

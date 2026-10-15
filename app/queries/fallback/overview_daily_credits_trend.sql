@@ -1,0 +1,2 @@
+-- query_id: overview_daily_credits_trend
+-- shim: yes

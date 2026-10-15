@@ -1,0 +1,2 @@
+-- query_id: sf_query_compilation_heavy
+-- shim: yes

@@ -1,0 +1,2 @@
+-- query_id: sf_wh_spend_monthly
+-- shim: yes

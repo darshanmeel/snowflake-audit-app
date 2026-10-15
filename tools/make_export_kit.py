@@ -175,7 +175,13 @@ def build(kit: Path = KIT) -> Path:
         checks[qid]["fallback"] = {"pre": [x.strip() for x in head.get("pre", "").split(";") if x.strip()],
                                    "reads": head.get("reads"), "note": head.get("fallback_note"),
                                    "needs": head.get("needs"),
-                                   "query_feed": "__INCLUDE_is_query_history__" in text}
+                                   "query_feed": ex.uses_query_feed(text), "shims": ex.shims_in(text)}
+    # The ACCOUNT_USAGE stand-ins those fallbacks read: run once each, then read with RESULT_SCAN.
+    for p in sorted((ex.SQL_DIR / "shims").glob("*.sql")):
+        text = p.read_text(encoding="utf-8")
+        for key, value in ex.SHIM_RANGES.items():
+            text = text.replace(key, value)
+        _write(kit / "queries" / "shims" / p.name, inline(text))
     # The query history those fallbacks share: run once in slices, then read with RESULT_SCAN.
     _write(kit / "queries" / "common" / "is_query_history_feed.sql",
            inline((ex.SQL_DIR / "common" / "is_query_history_feed.sql").read_text(encoding="utf-8")))

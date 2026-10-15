@@ -1,0 +1,2 @@
+-- query_id: cost_daily_spikes
+-- shim: yes

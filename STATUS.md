@@ -8,7 +8,7 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
 - **Checks:** 279 in `app/queries/checks`, run by the exporter on `SNOWFLAKE.ACCOUNT_USAGE` and `ORGANIZATION_USAGE`.
 - **First live run (trial account, 3 days):** 152 ok, 122 empty, 4 not assessed, 1 failed (`sf_ai_model_serving_spend`, Snowflake error 100038). Prices came from `RATE_SHEET_DAILY` ($3.00 per credit, $2.00 per AI credit).
 - **Prices:** for credits, AI credits and storage the export takes the first of: the command-line price, the rate sheet, the 90-day invoice rate, then `config/settings.yml` (3.00 and 2.00).
-- **INFORMATION_SCHEMA fallbacks:** five checks have a second version in `app/queries/fallback/` (query load per warehouse, failed queries, queue waits, sign-ins, database storage growth), run when the role cannot read `ACCOUNT_USAGE` or with `--use-fallbacks`. The three query checks share one read of the query history (`common/is_query_history_feed.sql`), run once per export and read with `RESULT_SCAN`. Tested live on both the full export and the export kit.
+- **INFORMATION_SCHEMA fallbacks:** 31 checks have a second version, run when the role cannot read `ACCOUNT_USAGE` (or with `--use-fallbacks`). Most are the check's own SQL with each view swapped for a stand-in in `app/queries/shims/` (METERING_DAILY_HISTORY, STORAGE_USAGE, DATA_TRANSFER_HISTORY, WAREHOUSE_METERING_HISTORY, QUERY_HISTORY, LOGIN_HISTORY). The query history is read once in 28 six-hour slices run at once; each stand-in runs once per export. Metering and storage functions need MONITOR USAGE; without it those checks read "the role can't see it". Tested live on the full export and the kit; spend matches ACCOUNT_USAGE for the warehouses the function covers (adaptive warehouses are left out).
 - **App:** FastAPI + DuckDB backend; React/TypeScript UI built by Vite from `web/` into `app/web/dist`.
 - **How it works (Guide):** same layout as the Databricks app (home, tab pages, check pages ending in "Run it yourself", troubleshooting, glossary), plus concept pages and "Traps to know".
 - **Test queries:** `app/queries/verify/<section>.sql` (ai, cost, governance, pipelines, queries, storage, warehouses) recompute the app's figures by hand. How it works links them under "Test it yourself", and they ship in the export kit.
@@ -20,7 +20,8 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
 - **History:** squashed to one commit on 15 Oct 2026.
 
 ## Next
-1. **A run on a busy account.** The user is running an export with a narrow role (no `ACCOUNT_USAGE`, no organization views), where the fallbacks take over. Read its manifest: confirm the five fallbacks ran, and why database storage growth came back empty (likely `MONITOR USAGE`).
+1. **A run on a busy account.** The user's narrow role (no `ACCOUNT_USAGE`, no organization views) got 6 of 279 checks on the old version; the three query fallbacks timed out. Re-run it with the new fallbacks and read the manifest (`monitor_usage`, which fallbacks ran).
+   - More fallbacks: per-database INFORMATION_SCHEMA views (TABLES, TABLE_STORAGE_METRICS, PIPES), TASK_HISTORY, WAREHOUSE_LOAD_HISTORY (one call per warehouse), and SHOW USERS for the user checks.
    - Run `app/queries/verify/cost.sql` queries 1–3 next to Overview and Cost on a full-access export.
    - Add any real names seen in an export to the name grep before the next commit.
 2. **`sf_ai_model_serving_spend`** fails with error 100038 on the trial account. Find the column or type that differs from the docs.

@@ -1,0 +1,2 @@
+-- query_id: sf_cost_warehouse_idle_credits_daily
+-- shim: yes
