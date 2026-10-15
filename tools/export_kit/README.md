@@ -135,7 +135,7 @@ GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 
 A check reads one or more sources. If the role cannot read any one of them, the check is skipped.
 In the app it reads "–, the role can't see it", with the view or SHOW command it needed. It never
-shows $0 or "nothing found". Counts are checks out of 274; a check can need more than one grant.
+shows $0 or "nothing found". Counts were made at 274 checks, so a few newer checks are not in them; a check can need more than one grant.
 
 | Grant | What it opens | Without it you won't see |
 |---|---|---|

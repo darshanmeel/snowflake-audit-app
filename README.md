@@ -139,7 +139,7 @@ GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 
 A check reads one or more sources. If the role cannot read any one of them, the check is skipped.
 In the app it reads "–, the role can't see it", with the view or SHOW command it needed. It never
-shows $0 or "nothing found". Counts were made at 274 checks (see Open items); a check can need more than one grant.
+shows $0 or "nothing found". Counts were made at 274 checks, so a few newer checks are not in them; a check can need more than one grant.
 
 | Grant | What it opens | Without it you won't see |
 |---|---|---|
@@ -333,10 +333,12 @@ warehouse or database ids, so the name stands in. Today: query load per warehous
 queue waits, sign-ins and database storage growth. `--use-fallbacks` runs them even when
 `ACCOUNT_USAGE` is readable, to test them.
 
-The three query checks make 28 calls each (the table function returns at most 10,000 queries a
-call), so on a busy account they are the last to finish and can take several minutes. The export
-is not hung: the progress line for each prints when it ends, and the 15-minute statement limit
-stops them at worst.
+The three query checks share one read of the query history: the export runs it once before the
+checks (28 calls, since the table function returns at most 10,000 queries a call) and prints how
+many queries it got and how long it took. The checks then read that result with `RESULT_SCAN`, so
+each takes seconds. On a busy account the read itself can take a few minutes; the 15-minute
+statement limit stops it at worst, and the three checks then read "the role can't see it" with
+the reason.
 
 **Today is included, but partial.** The export takes in today up to the moment it runs, and the top
 bar then shows "today partial". `ACCOUNT_USAGE` views lag by minutes to hours (the organization

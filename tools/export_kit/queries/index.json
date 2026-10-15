@@ -58,7 +58,8 @@
    "fallback": {
     "pre": [],
     "reads": "INFORMATION_SCHEMA.LOGIN_HISTORY (table function)",
-    "note": "last 7 days at most, only the users this role can monitor, up to 10,000 sign-ins a day"
+    "note": "last 7 days at most, only the users this role can monitor, up to 10,000 sign-ins a day",
+    "query_feed": false
    }
   },
   "access_row_filters_inventory": {
@@ -340,7 +341,8 @@
    "fallback": {
     "pre": [],
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
-    "note": "last 7 days at most, only the queries this role can see"
+    "note": "last 7 days at most, only the queries this role can see",
+    "query_feed": true
    }
   },
   "query_local_spillage": {
@@ -399,7 +401,8 @@
    "fallback": {
     "pre": [],
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
-    "note": "last 7 days at most, only the queries this role can see"
+    "note": "last 7 days at most, only the queries this role can see",
+    "query_feed": true
    }
   },
   "query_top_by_cost": {
@@ -2520,7 +2523,8 @@
    "fallback": {
     "pre": [],
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
-    "note": "last 7 days at most, only the queries this role can see; no spill or cache figures"
+    "note": "last 7 days at most, only the queries this role can see; no spill or cache figures",
+    "query_feed": true
    }
   },
   "sf_query_blocked_lock_waits": {
@@ -3466,7 +3470,8 @@
    "fallback": {
     "pre": [],
     "reads": "INFORMATION_SCHEMA.DATABASE_STORAGE_USAGE_HISTORY (table function)",
-    "note": "needs ACCOUNTADMIN or MONITOR USAGE; the database name stands in for its id; no drop dates"
+    "note": "needs ACCOUNTADMIN or MONITOR USAGE; the database name stands in for its id; no drop dates",
+    "query_feed": false
    }
   },
   "sf_storage_lifecycle_policy_failures": {

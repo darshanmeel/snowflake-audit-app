@@ -371,6 +371,26 @@ def _literal(value) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+QUERY_FEED_ID = "__IS_QUERY_HISTORY_ID__"
+
+
+def run_query_feed(cur, ctx: dict, queries: Path) -> None:
+    """Run the fallbacks' INFORMATION_SCHEMA query history once and keep its query id, so each
+    fallback check reads it with RESULT_SCAN instead of calling the slow table function again."""
+    started = time.monotonic()
+    try:
+        sql = render((queries / "common" / "is_query_history_feed.sql").read_text(encoding="utf-8"),
+                     days=7, params={}, ctx=ctx)
+        assert_read_only(sql)
+        cur.execute(sql)
+        ctx["query_feed_id"] = getattr(cur, "sfqid", None)
+        print(f"query history for the INFORMATION_SCHEMA fallbacks: {cur.rowcount} queries, "
+              f"{time.monotonic() - started:.1f}s", flush=True)
+    except Exception as exc:  # noqa: BLE001 -- the fallback checks then read "role can't see" with this reason
+        ctx["query_feed_error"] = short(exc, 300)
+        print(f"warning: the INFORMATION_SCHEMA query history failed: {short(exc, 200)}", file=sys.stderr)
+
+
 def render(text: str, *, days: int, params: dict, ctx: dict) -> str:
     """Fill :params and the __PLACEHOLDERS__ into one runnable statement."""
     values = dict(params, period_days=days)
@@ -387,6 +407,12 @@ def render(text: str, *, days: int, params: dict, ctx: dict) -> str:
         "__WITH_SNOWFLAKE_TASKS__": _literal(bool(ctx.get("include_snowflake_tasks", False))),
     }.items():
         sql = sql.replace(key, value)
+    if QUERY_FEED_ID in sql:
+        # The fallback's shared query feed ran once before the checks; read its result.
+        if not ctx.get("query_feed_id"):
+            raise StopExport("the INFORMATION_SCHEMA query history did not run: "
+                             + str(ctx.get("query_feed_error") or "not started"))
+        sql = sql.replace(QUERY_FEED_ID, _literal(ctx["query_feed_id"]))
     leftover = _PARAM_RE.findall(_COMMENT_RE.sub("", sql))
     if leftover:
         raise StopExport(f"unresolved parameter(s): {sorted(set(leftover))}")
@@ -803,6 +829,11 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int | None = None,
         known = normalise_edition(edition["edition"])
         below_enterprise = known is not None and EDITION_RANK[known] < EDITION_RANK["ENTERPRISE"]
         ctx["info_schema_db"] = info_schema_db(cur) if any(m.get("fallback") for m in checks.values()) else None
+        if ctx["info_schema_db"] and any(
+                (m.get("fallback") or {}).get("query_feed")
+                and (use_fallbacks or any(s in visibility["unreadable"] for s in m["sources"]))
+                for m in checks.values()):
+            run_query_feed(cur, ctx, queries)
         findings: dict = {}
         stopped = False
         for i, (qid, meta) in enumerate(checks.items(), start=1):

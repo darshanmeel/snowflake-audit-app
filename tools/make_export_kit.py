@@ -173,7 +173,11 @@ def build(kit: Path = KIT) -> Path:
         head = ex.parse_header(text)
         _write(kit / "queries" / "fallback" / f"{qid}.sql", inline(text))
         checks[qid]["fallback"] = {"pre": [x.strip() for x in head.get("pre", "").split(";") if x.strip()],
-                                   "reads": head.get("reads"), "note": head.get("fallback_note")}
+                                   "reads": head.get("reads"), "note": head.get("fallback_note"),
+                                   "query_feed": "__INCLUDE_is_query_history__" in text}
+    # The query history those fallbacks share: run once, then read with RESULT_SCAN.
+    _write(kit / "queries" / "common" / "is_query_history_feed.sql",
+           inline((ex.SQL_DIR / "common" / "is_query_history_feed.sql").read_text(encoding="utf-8")))
     tag_sources = {}
     for name, text in ex.load_tag_sources().items():
         _write(kit / "queries" / "tag_sources" / f"{name}.sql", inline(text))

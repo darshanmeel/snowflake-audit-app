@@ -155,6 +155,27 @@ def _literal(value) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+QUERY_FEED_ID = "__IS_QUERY_HISTORY_ID__"
+
+
+def run_query_feed(cur, ctx: dict, sql_dir: Path = SQL_DIR) -> None:
+    """Run the fallbacks' INFORMATION_SCHEMA query history once and keep its query id in ctx, so each
+    fallback check reads it with RESULT_SCAN instead of calling the slow table function again. Not
+    fetched: the rows stay in Snowflake's result cache. A failure is kept and named by each check."""
+    started = time.monotonic()
+    text = (sql_dir / "common" / "is_query_history_feed.sql").read_text(encoding="utf-8")
+    try:
+        sql = render(text, days=7, params={}, ctx=ctx, sql_dir=sql_dir)
+        assert_read_only(sql)
+        cur.execute(sql)
+        ctx["query_feed_id"] = getattr(cur, "sfqid", None)
+        print(f"query history for the INFORMATION_SCHEMA fallbacks: {cur.rowcount} queries, "
+              f"{time.monotonic() - started:.1f}s", flush=True)
+    except Exception as exc:  # noqa: BLE001 -- the fallback checks then read "role can't see" with this reason
+        ctx["query_feed_error"] = _short(exc, 300)
+        print(f"warning: the INFORMATION_SCHEMA query history failed: {_short(exc, 200)}", file=sys.stderr)
+
+
 def render(text: str, *, days: int, params: dict, ctx: dict, sql_dir: Path = SQL_DIR) -> str:
     """Resolve includes, context placeholders and :params into one runnable statement."""
     def include(m):
@@ -177,6 +198,12 @@ def render(text: str, *, days: int, params: dict, ctx: dict, sql_dir: Path = SQL
     }
     for key, value in replacements.items():
         sql = sql.replace(key, value)
+    if QUERY_FEED_ID in sql:
+        # The fallback's shared query feed ran once before the checks; read its result.
+        if not ctx.get("query_feed_id"):
+            raise ExportConfigError("the INFORMATION_SCHEMA query history did not run: "
+                                    + str(ctx.get("query_feed_error") or "not started"))
+        sql = sql.replace(QUERY_FEED_ID, _literal(ctx["query_feed_id"]))
     leftover = _PARAM_RE.findall(_COMMENT_RE.sub("", sql))
     if leftover:
         raise ExportConfigError(f"unresolved parameter(s): {sorted(set(leftover))}")
@@ -695,6 +722,10 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
         edition = detect_edition(cur)
         fallbacks = {q: t for q, t in load_fallbacks(sql_dir).items() if q in checks}
         ctx["info_schema_db"] = info_schema_db(cur) if fallbacks else None
+        if ctx["info_schema_db"] and any(
+                "__INCLUDE_is_query_history__" in fb and (use_fallbacks or unreadable_sources(app_registry.by_id(q), visibility))
+                for q, fb in fallbacks.items()):
+            run_query_feed(cur, ctx, sql_dir)
         findings: dict[str, dict] = {}
         total_checks = len(checks)
         lock = threading.Lock()
