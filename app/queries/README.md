@@ -8,6 +8,11 @@ unchanged.
   returns exactly that check's columns, so its tab works as is. `sf_*` files are Snowflake-only checks.
 - `dims/<name>.sql`: name lookups (`dim_account`, `dim_warehouse`, `dim_task`).
 - `common/<name>.sql`: shared CTEs, pulled in with `__INCLUDE_<name>__`.
+- `fallback/<query_id>.sql`: the same check read from `INFORMATION_SCHEMA` table functions, with the
+  same columns. The export runs it when the role cannot read the check's `ACCOUNT_USAGE` views (or
+  with `--use-fallbacks`). Its header adds `fallback_note`, shown under the page's sub-tabs.
+- `common/is_query_history_feed.sql`: the query history the query fallbacks share. The export runs
+  it once before the checks; `common/is_query_history.sql` reads its result with `RESULT_SCAN`.
 
 ## Writing a check
 
