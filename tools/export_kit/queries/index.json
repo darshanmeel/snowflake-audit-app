@@ -59,6 +59,7 @@
     "pre": [],
     "reads": "INFORMATION_SCHEMA.LOGIN_HISTORY (table function)",
     "note": "last 7 days at most, only the users this role can monitor, up to 10,000 sign-ins a day",
+    "needs": null,
     "query_feed": false
    }
   },
@@ -342,6 +343,7 @@
     "pre": [],
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
     "note": "last 7 days at most, only the queries this role can see",
+    "needs": null,
     "query_feed": true
    }
   },
@@ -402,6 +404,7 @@
     "pre": [],
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
     "note": "last 7 days at most, only the queries this role can see",
+    "needs": null,
     "query_feed": true
    }
   },
@@ -2524,6 +2527,7 @@
     "pre": [],
     "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
     "note": "last 7 days at most, only the queries this role can see; no spill or cache figures",
+    "needs": null,
     "query_feed": true
    }
   },
@@ -3470,7 +3474,8 @@
    "fallback": {
     "pre": [],
     "reads": "INFORMATION_SCHEMA.DATABASE_STORAGE_USAGE_HISTORY (table function)",
-    "note": "needs ACCOUNTADMIN or MONITOR USAGE; the database name stands in for its id; no drop dates",
+    "note": "the database name stands in for its id; no drop dates",
+    "needs": "MONITOR USAGE",
     "query_feed": false
    }
   },

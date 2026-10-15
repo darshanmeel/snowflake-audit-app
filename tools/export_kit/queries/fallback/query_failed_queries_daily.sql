@@ -3,10 +3,11 @@
 -- fallback_note: last 7 days at most, only the queries this role can see
 -- Same columns as checks/query_failed_queries_daily.sql. The table function names failures
 -- FAILED_WITH_ERROR / FAILED_WITH_INCIDENT; the warehouse name stands in for its id.
-WITH -- The INFORMATION_SCHEMA fallback's query feed, shared by the fallback checks: the result of
--- common/is_query_history_feed.sql, which the export runs once before the checks.
+WITH -- The INFORMATION_SCHEMA fallback's query feed, shared by the fallback checks: the slices of
+-- common/is_query_history_feed.sql that the export ran before the checks, one row per query id.
 is_query_history AS (
-  SELECT * FROM TABLE(RESULT_SCAN(__IS_QUERY_HISTORY_ID__))
+  SELECT * FROM (__IS_QUERY_HISTORY_SCANS__)
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY query_id ORDER BY end_time DESC) = 1
 ),
 f AS (
   SELECT DATE(start_time) AS day,

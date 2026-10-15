@@ -125,6 +125,27 @@ def info_schema_db(cur) -> str | None:
     return next((n for n in names if n.upper() != "SNOWFLAKE"), names[0] if names else None)
 
 
+def has_monitor_usage(cur, ctx: dict) -> bool:
+    """Whether the role sees account-wide usage in INFORMATION_SCHEMA (ACCOUNTADMIN or MONITOR USAGE).
+    Every database has a storage row a day, and the table function returns none without the grant."""
+    info = '"' + str(ctx.get("info_schema_db") or "").replace('"', '""') + '".INFORMATION_SCHEMA'
+    try:
+        cur.execute(f"SELECT COUNT(*) FROM TABLE({info}.DATABASE_STORAGE_USAGE_HISTORY("
+                    f"DATE_RANGE_START => DATEADD(day, -3, CURRENT_DATE())))")
+        return bool(cur.fetchone()[0])
+    except Exception:  # noqa: BLE001 -- unreadable reads as no grant, never a failed export
+        return False
+
+
+def fallback_blocked(head: dict, ctx: dict) -> str | None:
+    """Why a fallback cannot give a true answer for this role, or None. A table function that needs
+    MONITOR USAGE returns no rows without it, which would read as "nothing found"."""
+    if "MONITOR USAGE" in head.get("needs", "").upper() and not ctx.get("monitor_usage"):
+        return (f"role_cannot_see: the INFORMATION_SCHEMA fallback ({head.get('reads')}) needs ACCOUNTADMIN "
+                f"or the MONITOR USAGE privilege, and returns nothing without it")
+    return None
+
+
 def load_dims(sql_dir: Path = SQL_DIR) -> dict[str, str]:
     return {p.stem: p.read_text(encoding="utf-8") for p in sorted((sql_dir / "dims").glob("*.sql"))}
 
@@ -155,25 +176,85 @@ def _literal(value) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-QUERY_FEED_ID = "__IS_QUERY_HISTORY_ID__"
+QUERY_FEED_SCANS = "__IS_QUERY_HISTORY_SCANS__"
+QUERY_FEED_SLICES = 28  # six-hour slices over the 7 days QUERY_HISTORY keeps
+
+
+def run_all(cur, sqls: list[str], label: str) -> tuple[list[str], list[str]]:
+    """Run the statements at once (async on a live session), each under the session's statement timeout.
+    Returns the query ids that finished and the errors of those that did not. Rows are not fetched:
+    they stay in Snowflake's result cache for RESULT_SCAN."""
+    ids: list[str] = []
+    errors: list[str] = []
+    if not hasattr(cur, "execute_async"):
+        for sql in sqls:
+            try:
+                cur.execute(sql)
+                ids.append(cur.sfqid)
+            except Exception as exc:  # noqa: BLE001 -- one statement failing drops only its own part
+                errors.append(_short(exc, 200))
+        return ids, errors
+    conn = cur.connection
+    pending = []
+    for sql in sqls:
+        cur.execute_async(sql)
+        pending.append(cur.sfqid)
+    while pending:
+        for sfqid in list(pending):
+            try:
+                running = conn.is_still_running(conn.get_query_status_throw_if_error(sfqid))
+            except Exception as exc:  # noqa: BLE001 -- one statement failing drops only its own part
+                errors.append(_short(exc, 200))
+                pending.remove(sfqid)
+                continue
+            if not running:
+                ids.append(sfqid)
+                pending.remove(sfqid)
+        if pending:
+            print(f"{label}: {len(ids) + len(errors)} of {len(sqls)} done", flush=True)
+            time.sleep(5)
+    return ids, errors
 
 
 def run_query_feed(cur, ctx: dict, sql_dir: Path = SQL_DIR) -> None:
-    """Run the fallbacks' INFORMATION_SCHEMA query history once and keep its query id in ctx, so each
-    fallback check reads it with RESULT_SCAN instead of calling the slow table function again. Not
-    fetched: the rows stay in Snowflake's result cache. A failure is kept and named by each check."""
+    """Read the fallbacks' INFORMATION_SCHEMA query history once, as 28 six-hour slices run at once, and
+    keep their query ids in ctx, so each fallback check reads them with RESULT_SCAN. A slice that fails
+    or times out drops only its six hours; the checks that read the feed say how many are missing."""
     started = time.monotonic()
     text = (sql_dir / "common" / "is_query_history_feed.sql").read_text(encoding="utf-8")
-    try:
-        sql = render(text, days=7, params={}, ctx=ctx, sql_dir=sql_dir)
+    # One fixed end for every slice; the oldest starts 5 minutes inside the 7-day limit when it runs.
+    base = "'" + dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S") + "'::TIMESTAMP_LTZ"
+    sqls = []
+    for i in range(QUERY_FEED_SLICES):
+        start = f"DATEADD(hour, -{6 * (i + 1)}, {base})"
+        if i == QUERY_FEED_SLICES - 1:
+            start = f"GREATEST({start}, DATEADD(minute, -10075, CURRENT_TIMESTAMP()))"
+        end = base if i == 0 else f"DATEADD(hour, -{6 * i}, {base})"
+        sql = render(text.replace("__SLICE_START__", start).replace("__SLICE_END__", end),
+                     days=7, params={}, ctx=ctx, sql_dir=sql_dir)
         assert_read_only(sql)
-        cur.execute(sql)
-        ctx["query_feed_id"] = getattr(cur, "sfqid", None)
-        print(f"query history for the INFORMATION_SCHEMA fallbacks: {cur.rowcount} queries, "
-              f"{time.monotonic() - started:.1f}s", flush=True)
+        sqls.append(sql)
+    try:
+        ids, errors = run_all(cur, sqls, "query history for the INFORMATION_SCHEMA fallbacks")
     except Exception as exc:  # noqa: BLE001 -- the fallback checks then read "role can't see" with this reason
-        ctx["query_feed_error"] = _short(exc, 300)
-        print(f"warning: the INFORMATION_SCHEMA query history failed: {_short(exc, 200)}", file=sys.stderr)
+        ids, errors = [], [_short(exc, 200)]
+    ctx["query_feed_ids"] = ids
+    ctx["query_feed_missing"] = len(errors)
+    if errors:
+        ctx["query_feed_error"] = errors[0]
+        print(f"warning: {len(errors)} of {QUERY_FEED_SLICES} six-hour slices of the INFORMATION_SCHEMA query "
+              f"history failed: {errors[0]}", file=sys.stderr)
+    print(f"query history for the INFORMATION_SCHEMA fallbacks: {len(ids)} of {QUERY_FEED_SLICES} six-hour "
+          f"slices, {time.monotonic() - started:.1f}s", flush=True)
+
+
+def query_feed_gap(ctx: dict) -> str | None:
+    """The note a feed-reading fallback adds when some slices failed."""
+    missing = ctx.get("query_feed_missing") or 0
+    if not missing or not ctx.get("query_feed_ids"):
+        return None
+    return (f"{missing * 6} of the last 168 hours are missing (a six-hour slice of the query history "
+            f"failed or timed out: {ctx.get('query_feed_error')})")
 
 
 def render(text: str, *, days: int, params: dict, ctx: dict, sql_dir: Path = SQL_DIR) -> str:
@@ -198,12 +279,13 @@ def render(text: str, *, days: int, params: dict, ctx: dict, sql_dir: Path = SQL
     }
     for key, value in replacements.items():
         sql = sql.replace(key, value)
-    if QUERY_FEED_ID in sql:
-        # The fallback's shared query feed ran once before the checks; read its result.
-        if not ctx.get("query_feed_id"):
+    if QUERY_FEED_SCANS in sql:
+        # The fallback's shared query feed ran before the checks, in slices; read them all.
+        if not ctx.get("query_feed_ids"):
             raise ExportConfigError("the INFORMATION_SCHEMA query history did not run: "
                                     + str(ctx.get("query_feed_error") or "not started"))
-        sql = sql.replace(QUERY_FEED_ID, _literal(ctx["query_feed_id"]))
+        sql = sql.replace(QUERY_FEED_SCANS, " UNION ALL ".join(
+            f"SELECT * FROM TABLE(RESULT_SCAN({_literal(i)}))" for i in ctx["query_feed_ids"]))
     leftover = _PARAM_RE.findall(_COMMENT_RE.sub("", sql))
     if leftover:
         raise ExportConfigError(f"unresolved parameter(s): {sorted(set(leftover))}")
@@ -722,6 +804,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
         edition = detect_edition(cur)
         fallbacks = {q: t for q, t in load_fallbacks(sql_dir).items() if q in checks}
         ctx["info_schema_db"] = info_schema_db(cur) if fallbacks else None
+        ctx["monitor_usage"] = has_monitor_usage(cur, ctx) if ctx["info_schema_db"] else False
         if ctx["info_schema_db"] and any(
                 "__INCLUDE_is_query_history__" in fb and (use_fallbacks or unreadable_sources(app_registry.by_id(q), visibility))
                 for q, fb in fallbacks.items()):
@@ -764,7 +847,12 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
                 # The role cannot read ACCOUNT_USAGE here: read the same check from INFORMATION_SCHEMA.
                 fb = fallbacks[qid]
                 head = parse_header(fb)
+                note = head.get("fallback_note")
+                if "__INCLUDE_is_query_history__" in fb and query_feed_gap(ctx):
+                    note = f"{note}; {query_feed_gap(ctx)}"
                 try:
+                    if fallback_blocked(head, ctx):
+                        raise ExportConfigError(fallback_blocked(head, ctx))
                     table, truncated = _run_check(
                         worker_cursor(), qid, fb, labels_days=labels_days, params=params_for(qid, thresholds),
                         ctx=ctx, max_rows=max_rows, sql_dir=sql_dir,
@@ -778,9 +866,10 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
                     entry = {"status": "not_assessed", "exported_rows": None, "truncated": False,
                              "truncated_windows": [], "columns": None, "not_assessed_rows": None,
                              "not_assessed_reason": "role_cannot_see", "cause": "no_access",
-                             "error": f"role_cannot_see; the INFORMATION_SCHEMA fallback failed too: {_short(exc, 300)}"}
+                             "error": (fallback_blocked(head, ctx) or
+                                       f"role_cannot_see; the INFORMATION_SCHEMA fallback failed too: {_short(exc, 300)}")}
                 entry.update({"source": "information_schema", "source_reads": head.get("reads"),
-                              "source_note": head.get("fallback_note"), "unreadable": blocked,
+                              "source_note": note, "unreadable": blocked,
                               "duration_s": round(time.monotonic() - started, 3), "domain": _domain(qid, text)})
             elif blocked:
                 # Not run: reading it would error, and "nothing found" would be a false all-clear.
@@ -865,6 +954,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
         "last_complete_day": ((now - dt.timedelta(hours=LAG_HOURS)).date() - dt.timedelta(days=1)).isoformat(),
         "export_date": now.date().isoformat(), "lag_hours": LAG_HOURS, "visibility": visibility,
         "edition": edition, "statement_timeout_s": int(_statement_timeout_s),
+        "monitor_usage": ctx.get("monitor_usage"),
         "windows": [w for w, _ in plan], "window_coverage": {str(w): d for w, d in plan},
         "window_aliases": {str(a): str(s) for a, s in aliases.items()}, "days": int(windows),
         "account": {"id": ctx["account_id"], "name": ctx["account_name"], "account_name": ctx.get("true_account_name"),

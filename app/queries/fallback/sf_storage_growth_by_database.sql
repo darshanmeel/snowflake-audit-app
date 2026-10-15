@@ -1,6 +1,7 @@
 -- query_id: sf_storage_growth_by_database
 -- reads: INFORMATION_SCHEMA.DATABASE_STORAGE_USAGE_HISTORY (table function)
--- fallback_note: needs ACCOUNTADMIN or MONITOR USAGE; the database name stands in for its id; no drop dates
+-- needs: MONITOR USAGE
+-- fallback_note: the database name stands in for its id; no drop dates
 -- Same columns as checks/sf_storage_growth_by_database.sql. The table function keeps 6 months and has
 -- no database id or drop date: a dropped database past retention shows as DROPPED__<id>.
 WITH d AS (

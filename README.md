@@ -333,12 +333,15 @@ warehouse or database ids, so the name stands in. Today: query load per warehous
 queue waits, sign-ins and database storage growth. `--use-fallbacks` runs them even when
 `ACCOUNT_USAGE` is readable, to test them.
 
-The three query checks share one read of the query history: the export runs it once before the
-checks (28 calls, since the table function returns at most 10,000 queries a call) and prints how
-many queries it got and how long it took. The checks then read that result with `RESULT_SCAN`, so
-each takes seconds. On a busy account the read itself can take a few minutes; the 15-minute
-statement limit stops it at worst, and the three checks then read "the role can't see it" with
-the reason.
+The query checks share one read of the query history. Before the checks, the export runs 28
+six-hour slices at once (the table function returns at most 10,000 queries a call), each its own
+statement under the 15-minute limit, and prints how many finished. The checks then read them with
+`RESULT_SCAN`, so each takes seconds. A slice that fails or times out leaves only its six hours out,
+and the page says how many hours are missing.
+
+Table functions that need `MONITOR USAGE` (storage, and the metering ones) return no rows without
+it rather than an error. The export tests for the grant once; without it those checks read "the
+role can't see it", never "nothing found". The manifest records the result as `monitor_usage`.
 
 **Today is included, but partial.** The export takes in today up to the moment it runs, and the top
 bar then shows "today partial". `ACCOUNT_USAGE` views lag by minutes to hours (the organization
