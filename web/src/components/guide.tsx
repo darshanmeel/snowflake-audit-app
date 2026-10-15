@@ -66,7 +66,7 @@ export const GUIDE_SECTIONS = [
   { slug: "window", title: "Windows and exports", teaser: "Most checks cover the last 7, 30 or 90 days up to the export, today partial. A snapshot check shows today's settings, not a period." },
   { slug: "status", title: "What each status means", teaser: "Critical and Warn are flagged. OK is a verified pass. Not assessed and Nothing to judge are never a pass." },
   { slug: "floors", title: "Materiality floors", teaser: "A row under its floor (\"Under $50\") is too small to matter: it reads OK instead of Critical or Warn and is left out of every count." },
-  { slug: "money", title: "How dollars are worked out", teaser: "Credits × your effective $ per credit, read from your invoice where the role can see it. Storage at your $ per TB." },
+  { slug: "money", title: "How dollars are worked out", teaser: "Credits × your effective $ per credit, from your rate sheet or invoice where the role can see it. Storage at your $ per TB." },
   { slug: "pricing", title: "Price basis", teaser: "The label next to a $ says where the price came from: invoice, export option, settings, or none. A discount never stacks on an invoice rate." },
   { slug: "money-kinds", title: "Money kinds", teaser: "Spend, change, waste, saving, gap, context and balance are different things. They are shown side by side and never added." },
   { slug: "steps", title: "Free, config and spend steps", teaser: "Free is a setting or a read. Config changes how something is configured. Spend costs money to carry out." },
@@ -628,7 +628,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     judge: "Growth, share and dormancy against config/thresholds.yml.",
     price: "Credits × each account's billed rate where the organization view gives it.",
     troubles: [
-      { see: "The organization sub-tabs are missing", why: "The role can't read ORGANIZATION_USAGE.", doit: "Use a role in the organization account (README, Give it access)." },
+      { see: "The organization sub-tabs are missing", why: "The role can't read ORGANIZATION_USAGE.", doit: "Use a role in the organization account (README, Roles and privileges)." },
     ],
     limits: [
       "Organization billing views lag up to 72 hours.",
@@ -1470,9 +1470,10 @@ export function guideFaqs() {
       q: "Is this my Snowflake invoice?",
       a: (
         <React.Fragment>
-          No. Every dollar is credits &times; your effective price per credit (read from your invoice
-          through the organization billing view where the role can see it, else the price given to the
-          export), minus a what-if discount you can set. Storage is at your price per TB per month.
+          No. Every dollar is credits &times; your effective price per credit: a price given to the export,
+          else your contract rate from the organization rate sheet, else your invoice rate, else the
+          default in settings. A what-if discount applies only to a price that is not from your invoice
+          or rate sheet. Storage is at your price per TB per month.
           Use it to compare and rank, not to reconcile an invoice line by line.{" "}
           <a {...guideLinkProps("how-money")}>How the dollar figures are worked out &rarr;</a>
         </React.Fragment>
@@ -1520,7 +1521,7 @@ export function guideFaqs() {
         <React.Fragment>
           <a {...appTabLinkProps("coverage", "sources")}>Coverage & Gaps &rarr;</a> lists which view
           each refused source needs, next to that source. Most need IMPORTED PRIVILEGES on the
-          SNOWFLAKE database; the README's "Give it access" has the full set.
+          SNOWFLAKE database; the README's "Roles and privileges" has the full set.
         </React.Fragment>
       ),
     },
@@ -1770,6 +1771,7 @@ export function GuideHome({ data, guideIndex, meta }: { data: GuideData; guideIn
             <span className="gd-eyebrow">{`How it works · ${data.findings.length} checks · ${allTables.length} Snowflake views and commands · ${ranCountsText(meta)}`}</span>
           </div>
           <h1 className="gd-display">What every tab shows, where its numbers come from, and what to do when they look wrong.</h1>
+          <p className="muted">This app reads your Snowflake usage views and shows what you spend, what is wasted and what is risky, at your price per credit. New here? Start on Overview, then Fix these first. Pick the lens for your role at the top left.</p>
           <label className="guide2-search">
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="9" cy="9" r="6"></circle><path d="M13.5 13.5L18 18"></path></svg>
             <input
@@ -2027,6 +2029,7 @@ export function GuideTabPage({ areaKey, data, guideIndex, findingsById, meta }: 
       </div>
 
       <div className="gd-section-head" id="gd-s3"><h2 className="gd-h2">Checks on this tab</h2><span className="muted">{`${ids.length} checks`}</span></div>
+      {ids.length > 0 && <p className="muted gd-small">Each check's page ends with the SQL it runs, to paste into a Snowflake worksheet.</p>}
       {ids.length === 0 ? (
         <p className="muted">
           {areaKey === "tags" ? "This page shows tag compliance, not a check. The tag checks live on Cost: " : "This page has no checks of its own; it rolls up the others."}
@@ -2200,7 +2203,7 @@ export function GuideTroubleshooting({ guideIndex }: { guideIndex: GuideIndex })
       <div className="gd-card gd-grants">
         <div>
           <h2 className="gd-h2 flush">Access for missing views</h2>
-          <p className="muted">An account admin grants the audit role read access once (README, "Give it access"). Everything is read-only. <a {...guideLinkProps("how-visibility")}>Editions, visibility and reason codes</a></p>
+          <p className="muted">An account admin grants the audit role read access once (README, "Roles and privileges"). Everything is read-only. <a {...guideLinkProps("how-visibility")}>Editions, visibility and reason codes</a></p>
         </div>
         <div className="gd-grants-grid">
           {GRANT_SCHEMAS.map((x) => <div key={x.s}><code className="gd-code">{x.s}</code><div className="gd-small">{x.d}</div></div>)}
@@ -2596,6 +2599,10 @@ export function GuideArticle({ f, data, filters, home, area }: GuideArticleProps
         </React.Fragment>
       )}
 
+      <h2 className="gd-h2">Run it yourself</h2>
+      <p className="muted gd-small">The exact query the export runs for this check, with the window and the export date filled in. Paste it into a Snowflake worksheet; it only reads.</p>
+      <GuideSqlViewer key={f.query_id} queryId={f.query_id} />
+
       {f.columns && f.columns.length > 0 && (
         <details className="gd-details">
           <summary>{`Columns (${f.columns.length})`}</summary>
@@ -2631,7 +2638,6 @@ export function GuideArticle({ f, data, filters, home, area }: GuideArticleProps
           {f.docs.map((k: string) => <DocsLink key={k} docsKey={k} docs={data.docs} />)}
         </div>
       )}
-      <GuideSqlViewer key={f.query_id} queryId={f.query_id} />
       {showReviewerBlock() && <ReviewerDetails f={f} />}
     </article>
   );

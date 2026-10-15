@@ -408,6 +408,8 @@ def _finding_json(spec: registry.QuerySpec, by_id: dict, docs: dict, thresholds:
         "caveats": _clean_prose(spec.caveats),
         "confidence": spec.confidence,
         "confidence_note": _clean_prose(spec.confidence_note),
+        # Every check is the app's own SQL (one flat folder), so the reviewer row reads "app".
+        "origin": "app",
         "requires": _clean_prose(spec.requires),
         "params": [_param_json(spec.query_id, p, thresholds) for p in spec.params],
         "next": next_list,
