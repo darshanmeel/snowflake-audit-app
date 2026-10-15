@@ -914,6 +914,12 @@ export function renderHowBody(slug: string, app: GuideApp, findings: GuideCheck[
             ("Reads" on its own page)
             {direct ? <span>, and the data on screen was computed on <span className="mono">{(direct.as_of || "").slice(0, 10)}</span></span> : null}.
           </p>
+          <p>
+            When the role cannot read ACCOUNT_USAGE, five checks (query load per warehouse, failed
+            queries, queue waits, sign-ins and database storage growth) read INFORMATION_SCHEMA table
+            functions instead. Those keep 7 days of query and sign-in history and only what the role can
+            see, and use names in place of ids; the page says so under its sub-tabs.
+          </p>
         </div>
       );
     }
@@ -1175,15 +1181,17 @@ export function guideConceptBody(slug: string, app: GuideApp, meta: Meta | null 
           <GuideMiniTable
             head={["Label", "Where the price came from"]}
             rows={[
-              ["invoice", "Derived from your invoice through the organization billing view: compute, consumption lines only, with no adjustments, overage or AI service types."],
-              ["cli", "The credit price given to the export (--credit-price, --storage-price)."],
-              ["settings", "credit_price_usd or storage_price_usd_tb_month in settings."],
+              ["invoice", "Your contract rate from the organization rate sheet (RATE_SHEET_DAILY) or, without it, your effective rate over the last 90 days of the invoice view (USAGE_IN_CURRENCY_DAILY): consumption lines only, with no adjustments or overage."],
+              ["cli", "The price given to the export (--credit-price, --ai-credit-price, --storage-price)."],
+              ["settings", "credit_price_usd, ai_credit_price_usd or storage_price_usd_tb_month in settings (3.00 per credit and 2.00 per AI credit by default)."],
               ["unpriced", "No price is known. The $ reads \"-\" and the credits are shown; never $0."],
               ["invoice currency", "Charges already in your invoice currency (for example paid Marketplace listings). They are never discounted and never added across currencies."],
             ]}
           />
           <p>
-            When more than one is available the order is: export option, then settings, then the invoice rate.
+            Credits, AI credits (Cortex AI, Copilot) and storage each have their own price. For each, the
+            export takes the first it finds: the export option, then the rate sheet, then the invoice
+            rate, then settings. Refresh keeps a price you typed in and reads the invoice again.
             The what-if discount is meant for a list price. A price read from the invoice is already discounted, so the
             discount is then ignored and the page says why; it is never stacked on top.
           </p>
@@ -1191,6 +1199,7 @@ export function guideConceptBody(slug: string, app: GuideApp, meta: Meta | null 
             <p>
               <b>This export: </b>{pb.label || pb.source_short || "unpriced"}
               {pb.credit_price_usd != null ? <span>, <span className="mono">{`$${Number(pb.credit_price_usd).toFixed(2)}`}</span> per credit</span> : null}
+              {pb.ai_credit_price_usd != null ? <span>, <span className="mono">{`$${Number(pb.ai_credit_price_usd).toFixed(2)}`}</span> per AI credit</span> : null}
               {pb.storage_price_usd_tb_month != null ? <span>, storage <span className="mono">{`$${Number(pb.storage_price_usd_tb_month).toFixed(2)}`}</span> per TB per month{pb.storage_source ? ` (${pb.storage_source})` : ""}</span> : null}
               {d && d.ignored ? `. Discount not applied: ${d.reason}.` : "."}
             </p>
@@ -2086,6 +2095,7 @@ export const STATUS_PATHS = [
       { h: "The role can't see the view", d: "The row names the view it couldn't read.", doit: "Grant IMPORTED PRIVILEGES on the SNOWFLAKE database (below)." },
       { h: "Not in this account", d: "The view needs a higher edition, or an organization account.", doit: "Read the reason on Coverage & Gaps; some checks need Enterprise edition." },
       { h: "Not in this export", d: "The check is newer than the export, or it failed.", doit: "Run the export again." },
+      { h: "Timed out", d: "A statement hit the export's 15-minute limit; the export moved on.", doit: "Export again with a higher --statement-timeout, or fewer days." },
     ],
   },
   {
@@ -2114,6 +2124,7 @@ export const SCREENS_DIFFER = [
   { r: "Data lag", ex: "Account views lag up to a few hours, query attribution up to 8 hours and the organization billing views up to 72 hours. Today is partial.", fix: "Compare full days." },
   { r: "Different price basis", ex: "One figure is priced from your invoice, another from a price given to the export or set in Settings. The label next to the $ names which.", fix: "Read the label; see Price basis." },
   { r: "Different money kind", ex: "Spend, change, waste, saving and storage per month are different things, so they are listed apart and never added.", fix: "Compare the same kind." },
+  { r: "Fallback source", ex: "Without ACCOUNT_USAGE, five checks read INFORMATION_SCHEMA: 7 days of history and only what the role can see.", fix: "Read the note under the sub-tabs; grant ACCOUNT_USAGE for the full window." },
   { r: "Cloud services", ex: "Cloud services are priced after the 10% daily adjustment, so they can read lower than their credits suggest.", fix: "See Cost › By service." },
 ];
 

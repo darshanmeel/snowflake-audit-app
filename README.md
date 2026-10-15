@@ -3,88 +3,28 @@
 A read-only audit of a Snowflake account. It shows where the credits and dollars go, what looks
 wasted, and how warehouses, queries, tasks, loading, storage, AI and access are set up.
 
-It runs 274 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
+It runs 279 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
 it) through one small warehouse. The results are saved in a local DuckDB file, and a web app on
 your own machine shows them. Nothing is ever written to Snowflake: the checks are `SELECT`, `WITH`
 and `SHOW` only. Only the export (and Refresh in the app) queries Snowflake; browsing the app does
 not.
 
-The checks have not yet run on a live account. Each one says so in its confidence note until one
-has. Every check has been run on the demo account and its figures recomputed from the source
-views; the test queries ("Check the numbers yourself") let you do the same on your own account.
+The checks have run on one small live trial account, and every check on the demo account, with
+its figures recomputed from the source views. Each still says "needs confirmation" in its
+confidence note until it has run on a busy account. The test queries ("Check the numbers
+yourself") let you check the figures on your own account.
 
-## What the app shows
+**Contents:** [What you need](#what-you-need) · [Make the key pair](#make-the-key-pair) ·
+[Roles and privileges](#roles-and-privileges) · [Set up once](#set-up-once) · [Run](#run) ·
+[Update to a new version](#update-to-a-new-version) · [What the app shows](#what-the-app-shows) ·
+[What the numbers mean](#what-the-numbers-mean) · [What it checks](#what-it-checks) ·
+[Settings](#settings) · [Export only, or load only](#export-only-or-load-only) ·
+[Masking names](#masking-names) · [If something fails](#if-something-fails) ·
+[Repository](#repository) · [Tests](#tests)
 
-**Pages**
-
-| Page | What it answers |
-|---|---|
-| Overview | Spend, change against the period before, possible waste and the top findings, charts first. |
-| Actions | What to fix first: priced savings in the window, storage savings per month, and CRITICAL findings with no dollar figure (an admin without MFA), as three separate lists. |
-| Cost | Trend, by service, who spent it, chargeback and tags, contract and rate, budgets and guardrails. |
-| Tags | Required-tag compliance per object type, and the spend no tag reaches. |
-| Waste & savings | Priced waste, flagged findings with no price yet, and how each figure is counted. |
-| Warehouses | Idle time and settings, sizing, load and scaling. |
-| Serverless features | By feature, clustering, materialized views and search optimization. |
-| Queries | Heavy, efficiency, failures, waiting, by source and team. |
-| Tasks & pipelines | Failures, cost and timing, hygiene, dynamic tables and streams. |
-| Data loading | Snowpipe and streaming; COPY, external and Iceberg. |
-| AI & apps | Cortex (functions, Search, Analyst, agents, Code, CoWork), containers, apps and notebooks, model serving. |
-| Access | Roles and grants, users and sign-ins, the account perimeter (network policies, private link, failover). |
-| Audit | Admin sessions and sign-ins, changes to objects and grants. |
-| PII & policies | Sensitive data, masking and row policies, who reads it and where it goes, data quality coverage. |
-| Lineage & usage | Dependencies and lineage, what is used and what is not. |
-| Sharing & org | Shares and listings, accounts, spend across accounts, replication and transfer. |
-| Storage | Growth and stages, unused and sprawl, Time Travel and Fail-safe, backups. |
-| All findings | Every check in one table, with its status and dollars. |
-| Coverage & Gaps | Which checks ran, what the role could read, the edition, how fresh each source is, known limits. |
-| How it works | One page per check and topic (below). |
-
-**On every page**
-
-- **Dollars** are credits times your effective price per credit. The export reads the price from the
-  organization billing view when your role can see it (see "Prices" below); otherwise pass
-  `--credit-price`. Spend, change and possible waste are shown apart and never added together.
-- **Filters:** last 7, 30 or 90 days; account; environment; warehouse; database and schema; owner;
-  tag. A check that has no warehouse (or database) column says "not filtered by warehouse".
-- **Links:** the address bar holds the page, sub-tab, open check, role and filters (for example
-  `#tab=cost&subtab=chargeback&role=cfo&w=30`), so a bookmark or a pasted link opens the same view.
-  A check's details have a Copy link button.
-- **A check that did not run** shows "–" and why (the role can't see it, needs a higher edition,
-  not in this export, failed), never $0. Rows under a check's money floor read "Under $X", not OK.
-- **Downloads:** every check as CSV (all rows, filters applied); any page as PDF; a printable
-  one-page summary from the Overview.
-- **Task panel:** click any task name to open its runs, failures, cost and what changed.
-- **Snowsight links:** the ↗ next to a warehouse, database, table, task, user, role or query opens it
-  in Snowsight. The paths are a best guess and may change.
-- **View as:** FinOps, Data engineer, Governance, CTO or CFO. The role only picks which pages show;
-  it is not a permission.
-
-**How it works** has one page per check (what it checks, how it is computed, the views
-it reads, the grant it needs, its traps, links to docs.snowflake.com and the check's own SQL to
-copy into a worksheet), test queries per section to check the app's numbers by hand, concept pages
-(the cloud services 10% adjustment, query attribution, latency and retention, Time Travel and
-Fail-safe, pricing basis, the kinds of dollars, editions and role visibility) and a walkthrough of
-every page.
-
-## What it checks
-
-274 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
-
-| Area | Checks |
-|---|---|
-| Cost, billing, contract and org | 62 |
-| Access, security, PII, audit and lineage | 82 |
-| Queries and performance | 30 |
-| Tasks, pipelines and loading | 34 |
-| Storage | 27 |
-| AI, containers and apps | 19 |
-| Warehouses | 20 |
-
-They read about 170 `ACCOUNT_USAGE`, `ORGANIZATION_USAGE`, `DATA_SHARING_USAGE` and Trust Center
-views and `SHOW` commands. Some things no usage view holds, so no check can show them: budget spend
-history (it needs a `CALL`), user-level authentication, password and session policy attachments,
-idle time and credits of queries under about 100 ms, and per-stage bytes on GCP.
+**In short:** make a key pair, run the grant script once as `ACCOUNTADMIN`, fill in `.env`, then
+`python tools/first_run.py` and `python -m app.api`, and open `http://127.0.0.1:8000/`. Start on
+Overview, then Fix these first; How it works (left rail) explains any number.
 
 ## What you need
 
@@ -199,7 +139,7 @@ GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 
 A check reads one or more sources. If the role cannot read any one of them, the check is skipped.
 In the app it reads "–, the role can't see it", with the view or SHOW command it needed. It never
-shows $0 or "nothing found". Counts are checks out of 274; a check can need more than one grant.
+shows $0 or "nothing found". Counts were made at 274 checks (see Open items); a check can need more than one grant.
 
 | Grant | What it opens | Without it you won't see |
 |---|---|---|
@@ -300,13 +240,32 @@ python tools/first_run.py         # last 30 days; add --windows 90 for 90
 python -m app.api
 ```
 
-Then open `http://127.0.0.1:8000/`.
+Then open `http://127.0.0.1:8000/`. Stop the app with Ctrl+C.
+
+Stop the app before you run `first_run.py` again: on Windows the load cannot replace
+`audit.duckdb` while the app has it open. Refresh in the app does not have this problem.
+
+`first_run.py` does two steps, and stops at the first one that fails, naming it:
+
+1. **Export:** runs every check and writes the results to files. This takes minutes.
+2. **Load:** builds the local `audit.duckdb` that the app reads.
+
+**Refresh** in the top bar runs both steps from the app, for newer data later:
+
+- Pick 7, 15, 30, 60 or 90 days. It runs every check on your warehouse, so it uses warehouse time
+  and takes minutes.
+- It writes a new database and switches the app to it. If it fails, the error shows in the same
+  panel and the old data stays.
+- It keeps the newest two results folders and deletes older ones, including those from
+  `first_run.py`.
+- It keeps a credit, AI or storage price you typed in for the last export, and reads an invoice or
+  rate-sheet price again.
 
 `--windows N` sets the days of history to pull (default 30). The app shows 7, 30 and 90 days, so
 anything over 90 pulls the same as 90, and a window longer than N shows only N days. Fewer days run
 faster on the big history views.
 
-The export prints one line per check (`[12/274] check_id: ok, 34 rows, 1.2s`), so a long run never
+The export prints one line per check (`[12/279] check_id: ok, 34 rows, 1.2s`), so a long run never
 looks hung. Every statement has a time limit (15 minutes; `--statement-timeout SECONDS` on
 `tools/export_results.py` changes it): a statement that hits it is recorded as timed out and the
 export goes on.
@@ -322,6 +281,26 @@ python tools/export_results.py --out <folder outside the repo> --windows 7 --val
 statement: report these), then the checks the role or account cannot read, with the one GRANT for
 each group and the checks it opens. Sources the role cannot read are normal and do not fail the
 run: the command exits 1 only when a statement itself has an error.
+
+**Export options.** `first_run.py` takes `--windows` and the three prices. For the rest, run the two
+steps by hand: `python tools/export_results.py --out <folder> [options]`, then
+`python tools/load_results.py <folder>`.
+
+| Option | What it does |
+|---|---|
+| `--out DIR` | Output folder, outside the repo. |
+| `--windows DAYS` | Days to export (30). |
+| `--credit-price`, `--ai-credit-price`, `--storage-price` | Prices in USD (see "Prices"). |
+| `--max-rows N` | Rows kept per check, worst first (50,000). |
+| `--statement-timeout SECONDS` | Time limit per statement (900). |
+| `--workers N` | Checks run at once, each on its own session (4). |
+| `--only ID ...` | Only these checks. |
+| `--mask KINDS`, `--mask-salt TEXT` | Replace names with tokens (see "Masking names"). |
+| `--use-fallbacks` | Run the INFORMATION_SCHEMA versions even when ACCOUNT_USAGE is readable. |
+| `--validate` | Compile every statement and probe every source; export nothing. |
+
+`load_results.py` with no folder loads the newest export in the data folder. `--db PATH` writes the
+database somewhere else.
 
 ### Prices
 
@@ -354,14 +333,10 @@ warehouse or database ids, so the name stands in. Today: query load per warehous
 queue waits, sign-ins and database storage growth. `--use-fallbacks` runs them even when
 `ACCOUNT_USAGE` is readable, to test them.
 
-`first_run.py` does two steps, and stops at the first one that fails, naming it:
-
-1. **Export:** runs every check and writes the results to files. This takes minutes.
-2. **Load:** builds the local `audit.duckdb` that the app reads.
-
-For newer data later, click Refresh in the app's top bar, or run `first_run.py` again. Refresh
-keeps a credit or storage price you typed in for the last export, and reads an invoice price
-again.
+The three query checks make 28 calls each (the table function returns at most 10,000 queries a
+call), so on a busy account they are the last to finish and can take several minutes. The export
+is not hung: the progress line for each prints when it ends, and the 15-minute statement limit
+stops them at worst.
 
 **Today is included, but partial.** The export takes in today up to the moment it runs, and the top
 bar then shows "today partial". `ACCOUNT_USAGE` views lag by minutes to hours (the organization
@@ -401,35 +376,139 @@ These files hold your account's data. Keep them out of the repo and do not share
 The data folder is outside the repo, so an update never touches it. The UI comes built in the zip;
 Node is only needed to change it.
 
-## API
+## What the app shows
 
-The app's data comes from a local HTTP API under `/api`. Every route only reads, except the
-Settings saves (`PUT /api/settings/...`) and `POST /api/refresh`, which starts an export.
-`http://127.0.0.1:8000/docs` lists them all.
+**Pages**
 
-## If something fails
-
-The export prints one line for a sign-in or setup failure: what Snowflake said, its error code, and
-the fix.
-
-| What you see | What to do |
+| Page | What it answers |
 |---|---|
-| Step 1 exits 2 and names a missing credential | Fill in `.env`, or set the variables. |
-| Step 1 exits 1 with `390144` or "JWT token is invalid" | The public key on the user does not match the private key file: `ALTER USER ... SET RSA_PUBLIC_KEY`. |
-| Step 1 exits 1 with `390100` or "Incorrect username or password" | Check `SNOWFLAKE_USER`, the key pair and that the user is enabled. |
-| Step 1 exits 1 and names the role or the warehouse | The role is not granted to the user, or has no `USAGE` on the warehouse. |
-| `ImportError` or "DLL load failed" | Run `python -m pip install -r requirements.txt` with the same `python`. |
-| The export ends with "N failed" | Open `results/<time>/report.md`. Usually a grant is missing or the view is not in your edition. The app shows those checks as not run, with the grant. |
-| Step 2 fails | The export is kept. Fix the problem, then run `python tools/load_results.py` (it loads the newest export; pass a folder to pick another). |
-| Step 2 fails on Windows with a permission error | The app has the database open. Stop it, then rerun the load. |
-| An export or load refuses a folder (exit 2) | The folder is inside the repo. Pick one outside it. |
-| The app shows "No database yet" | Run `python tools/first_run.py`. |
-| The app shows "config/settings.yml needs a fix" | Fix the setting and line it names. |
-| The page says "The UI is not built" | The zip ships it built; in a git checkout without it, run `cd web && npm ci && npm run build`. |
-| Spend by tag says the export cut a tag source | The account has more tagged objects than `--max-rows` (50,000). Export again with a higher `--max-rows`. |
-| The app shows old or unexpected data | The first line `python -m app.api` prints names the database it opened. Set `AUDIT_DB` to pick one. |
-| The load says `Out of Memory Error` | In `config/settings.local.yml`, lower `load.threads` (e.g. 1) and rerun the load. No new export needed. |
-| Port 8000 is busy | Set `AUDIT_API_PORT`, e.g. `$env:AUDIT_API_PORT=8010` in PowerShell. |
+| Overview | Spend, change against the period before, possible waste and the top findings, charts first. |
+| Actions | What to fix first: priced savings in the window, storage savings per month, and CRITICAL findings with no dollar figure (an admin without MFA), as three separate lists. |
+| Cost | Trend, by service, who spent it, chargeback and tags, contract and rate, budgets and guardrails. |
+| Tags | Required-tag compliance per object type, and the spend no tag reaches. |
+| Waste & savings | Priced waste, flagged findings with no price yet, and how each figure is counted. |
+| Warehouses | Idle time and settings, sizing, load and scaling. |
+| Serverless features | By feature, clustering, materialized views and search optimization. |
+| Queries | Heavy, efficiency, failures, waiting, by source and team. |
+| Tasks & pipelines | Failures, cost and timing, hygiene, dynamic tables and streams. |
+| Data loading | Snowpipe and streaming; COPY, external and Iceberg. |
+| AI & apps | Cortex (functions, Search, Analyst, agents, Code, CoWork), containers, apps and notebooks, model serving. |
+| Access | Roles and grants, users and sign-ins, the account perimeter (network policies, private link, failover). |
+| Audit | Admin sessions and sign-ins, changes to objects and grants. |
+| PII & policies | Sensitive data, masking and row policies, who reads it and where it goes, data quality coverage. |
+| Lineage & usage | Dependencies and lineage, what is used and what is not. |
+| Sharing & org | Shares and listings, accounts, spend across accounts, replication and transfer. |
+| Storage | Growth and stages, unused and sprawl, Time Travel and Fail-safe, backups. |
+| All findings | Every check in one table, with its status and dollars. |
+| Coverage & Gaps | Which checks ran, what the role could read, the edition, how fresh each source is, known limits. |
+| How it works | One page per check and topic (below). |
+
+**On every page**
+
+- **Dollars** are credits times your effective price per credit. The export reads the price from the
+  organization billing view when your role can see it (see "Prices" below); otherwise pass
+  `--credit-price`. Spend, change and possible waste are shown apart and never added together.
+- **Filters:** last 7, 30 or 90 days; account; environment; warehouse; database and schema; owner;
+  tag. A check that has no warehouse (or database) column says "not filtered by warehouse".
+- **Links:** the address bar holds the page, sub-tab, open check, role and filters (for example
+  `#tab=cost&subtab=chargeback&role=cfo&w=30`), so a bookmark or a pasted link opens the same view.
+  A check's details have a Copy link button.
+- **A check that did not run** shows "–" and why (the role can't see it, needs a higher edition,
+  not in this export, failed), never $0. Rows under a check's money floor read "Under $X", not OK.
+- **Downloads:** every check as CSV (all rows, filters applied); any page as PDF; a printable
+  one-page summary from the Overview.
+- **Task panel:** click any task name to open its runs, failures, cost and what changed.
+- **Snowsight links:** the ↗ next to a warehouse, database, table, task, user, role or query opens it
+  in Snowsight. The paths are a best guess and may change.
+- **View as** (the lens in the left rail) picks which pages show. It is not a permission: the data
+  is the same in every lens.
+
+| Lens | Pages |
+|---|---|
+| FinOps (default) | Overview, Fix these first; Cost, Tags, Budgets, Contract; Waste & savings, Warehouses, Serverless features, AI & apps, Storage, Sharing & org |
+| Data engineer | Overview, Fix these first; Tasks & pipelines, Data loading; Queries, Warehouses, Serverless features; Cost, Waste & savings, Storage |
+| Governance | Overview, Fix these first; Roles & grants, Users & sign-ins, Account perimeter; PII & policies, Lineage & usage, Sharing & org, Storage; Audit |
+| CTO | Every page, grouped as Cost, Reliability, Performance and Security |
+| CFO | Money, What to do; Cost, Chargeback & tags, Contract & rate, Budgets & guardrails, Waste & savings |
+
+Every lens also has Coverage & gaps, All findings and How it works.
+
+**How it works** has one page per check (what it checks, how it is computed, the views
+it reads, the grant it needs, its traps, links to docs.snowflake.com and the check's own SQL to
+copy into a worksheet), test queries per section to check the app's numbers by hand, concept pages
+(the cloud services 10% adjustment, query attribution, latency and retention, Time Travel and
+Fail-safe, pricing basis, the kinds of dollars, editions and role visibility) and a walkthrough of
+every page.
+
+## What the numbers mean
+
+**Dollars** are credits times your effective price per credit (see [Prices](#prices)). Cloud
+services are priced after Snowflake's daily 10% adjustment, and storage at your price per TB per
+month. It is not your invoice line by line: Cost › Contract & rate compares the two where the role
+can read the organization billing views.
+
+**Statuses** drive every count, colour and total:
+
+| Status | Meaning |
+|---|---|
+| Critical | The worst kind of problem this check looks for. |
+| Warn | Flagged, but not the worst kind. |
+| OK | Ran on real data in this window and found nothing. A verified pass. |
+| Ranked | Sorted by size only. Big is not the same as wrong. |
+| Not assessed | Did not run: the role can't see a view, the edition is too low, or it failed. Never a pass; it reads "–" with the reason. |
+| No data | Ran, but nothing happened in this window. Not a verified zero. |
+| No data (filtered) | Rows exist, but your filters exclude them all. |
+| Reference | A list to look things up in, with no pass or fail. |
+
+**Possible waste** (Waste & savings) is credits billed for nothing, priced: warehouses running with
+no query, failed statements, task runs that changed nothing, dynamic tables nobody reads, query
+retries, warehouses left at a bigger size, and provisioned AI throughput that was not used. Each
+check adds its money column over the rows it flagged Critical or Warn, and idle time is counted
+once, in the warehouse idle check. **Savings** (a resize, a shorter auto-suspend) and **storage per
+month** are separate figures. Spend, change, waste and savings are shown side by side and never
+added; none is a forecast.
+
+**Query attribution is not a total.** Per-query, per-user and per-team dollars come from
+`QUERY_ATTRIBUTION_HISTORY`, which leaves out idle time and queries under about 100 ms, is empty on
+adaptive warehouses, and lags up to 8 hours. They add up to less than the warehouse bill; the
+chargeback pages show the rest as its own row.
+
+**Materiality floors** in `config/materiality.yml` set a size per check below which a Critical or
+Warn row reads "Under $X" instead. Such rows are left out of counts and dollar totals. A dollar
+floor is per 30 days and scales with the window. Floors apply when the app reads the data, so a
+change needs only a page refresh.
+
+**Thresholds** in `config/thresholds.yml` change a check's own limits, such as the idle gap or the
+auto-suspend seconds. The export reads them, so after editing the file, export again.
+
+**Windows.** A window longer than the export reads "partial" in the top bar, never as complete.
+Snapshot checks (settings, grants, policies) show the current state and do not follow the window.
+
+**Row cap.** Each check keeps at most 50,000 rows, worst first (`--max-rows`). A capped check's
+totals can be low; Coverage & Gaps lists it.
+
+**Visibility.** `SHOW` commands and several views list only what the role can see. Coverage & Gaps
+says how many billed warehouses `SHOW WAREHOUSES` left out, and which sources the role could not
+read.
+
+## What it checks
+
+279 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
+
+| Area | Checks |
+|---|---|
+| Cost, billing, contract and org | 62 |
+| Access, security, PII, audit and lineage | 82 |
+| Queries and performance | 31 |
+| Tasks, pipelines and loading | 35 |
+| Storage | 28 |
+| AI, containers and apps | 19 |
+| Warehouses | 22 |
+
+They read about 170 `ACCOUNT_USAGE`, `ORGANIZATION_USAGE`, `DATA_SHARING_USAGE` and Trust Center
+views and `SHOW` commands. Some things no usage view holds, so no check can show them: budget spend
+history (it needs a `CALL`), user-level authentication, password and session policy attachments,
+idle time and credits of queries under about 100 ms, and per-stage bytes on GCP.
 
 ## Settings
 
@@ -549,11 +628,42 @@ How export masking works:
   masked. Snowsight links on masked names do not open the object. Settings that name objects
   (environment words for account names, cost-center tags on a warehouse) cannot match a token.
 
+## API
+
+The app's data comes from a local HTTP API under `/api`. Every route only reads, except the
+Settings saves (`PUT /api/settings/...`) and `POST /api/refresh`, which starts an export.
+`http://127.0.0.1:8000/docs` lists them all.
+
+## If something fails
+
+The export prints one line for a sign-in or setup failure: what Snowflake said, its error code, and
+the fix.
+
+| What you see | What to do |
+|---|---|
+| Step 1 exits 2 and names a missing credential | Fill in `.env`, or set the variables. |
+| Step 1 exits 1 with `390144` or "JWT token is invalid" | The public key on the user does not match the private key file: `ALTER USER ... SET RSA_PUBLIC_KEY`. |
+| Step 1 exits 1 with `390100` or "Incorrect username or password" | Check `SNOWFLAKE_USER`, the key pair and that the user is enabled. |
+| Step 1 exits 1 and names the role or the warehouse | The role is not granted to the user, or has no `USAGE` on the warehouse. |
+| `ImportError` or "DLL load failed" | Run `python -m pip install -r requirements.txt` with the same `python`. |
+| The export ends with "N failed" | Open `results/<time>/report.md`. Usually a grant is missing or the view is not in your edition. The app shows those checks as not run, with the grant. |
+| Step 2 fails | The export is kept. Fix the problem, then run `python tools/load_results.py` (it loads the newest export; pass a folder to pick another). |
+| Step 2 fails on Windows with a permission error | The app has the database open. Stop it, then rerun the load. |
+| An export or load refuses a folder (exit 2) | The folder is inside the repo. Pick one outside it. |
+| The app shows "No database yet" | Run `python tools/first_run.py`. |
+| The app shows "config/settings.yml needs a fix" | Fix the setting and line it names. |
+| The page says "The UI is not built" | The zip ships it built; in a git checkout without it, run `cd web && npm ci && npm run build`. |
+| Spend by tag says the export cut a tag source | The account has more tagged objects than `--max-rows` (50,000). Export again with a higher `--max-rows`. |
+| The app shows old or unexpected data | The first line `python -m app.api` prints names the database it opened. Set `AUDIT_DB` to pick one. |
+| The load says `Out of Memory Error` | In `config/settings.local.yml`, lower `load.threads` (e.g. 1) and rerun the load. No new export needed. |
+| Port 8000 is busy | Set `AUDIT_API_PORT`, e.g. `$env:AUDIT_API_PORT=8010` in PowerShell. |
+
 ## Open items
 
-- **First run on a live account.** Every check has run only on the fake and demo accounts so far,
-  and says so in its confidence note. Run the test queries in `app/queries/verify/` next to the app
-  on the first live export and compare.
+- **A run on a busy live account.** So far the checks have run on the fake and demo accounts and
+  on one small trial account with a few days of use, where many found nothing to judge. Run the
+  test queries in `app/queries/verify/` next to the app on the first busy export and compare.
+- **`sf_ai_model_serving_spend`** failed on the trial account with Snowflake error 100038.
 - **Who can read the usage views** assumes database-role grants appear in `GRANTS_TO_ROLES` as
   `granted_on = 'DATABASE_ROLE'` with the name `SNOWFLAKE.<ROLE>`. The docs do not show it; the
   first live run confirms it.
