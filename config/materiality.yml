@@ -1,0 +1,36 @@
+# Per-check materiality floors -- shape: {<query_id>: {column, min, unit, label}}.
+# Applied by the app AT READ TIME (app/core/materiality.py): a CRITICAL/WARN row whose named column
+# sits under `min` reads OK instead and is flagged below_floor, so counts, the worst status, the
+# sort order and money sums all ignore it; NOT_ASSESSED/OK rows are never touched. The row's own
+# exported `status` column is never rewritten. A query_id with no entry here, or whose named column
+# the built table does not carry, behaves exactly as before. A USD `min` is PER 30 DAYS: at 7d/90d
+# it scales with the window (min * window_days / 30) so a shorter window does not flag rows a
+# 30-day view would call immaterial, and vice versa. Tunable here without a re-export.
+#
+# A query already gated on this same size/count inside its own SQL (e.g. a :min_spend_usd param)
+# is left out here -- a config floor there would be structurally redundant with the header's own :warn_*/:crit_* param. A governance/
+# existence check (a broad grant, an unmasked PII column, a stale task) is left out too -- those
+# matter at any size. A check whose own status is already based on this same column (so the floor
+# would just override the check's own WARN/CRITICAL split) is left out as well -- raise warn_*/
+# crit_* in config/thresholds.yml instead if one of those is noisy.
+
+sf_wh_idle_minutes:
+  column: est_wasted_usd_list
+  min: 50
+  unit: USD
+  label: "$50 possible waste per 30 days"
+query_pruning_effectiveness:
+  column: read_bytes_sum
+  min: 100000000000
+  unit: bytes
+  label: "100 GB scanned"
+query_warehouse_pressure:
+  column: total_duration_s_sum
+  min: 3600
+  unit: seconds
+  label: "1 hour total statement time on the warehouse in the window"
+query_cache_coldstart:
+  column: query_count
+  min: 20
+  unit: count
+  label: "20 queries in the day+warehouse group"

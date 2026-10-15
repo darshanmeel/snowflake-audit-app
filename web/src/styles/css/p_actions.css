@@ -1,0 +1,74 @@
+/* Actions: flagged checks as a short list of fixes, list on the left, the selected fix on the right */
+.act-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.act-chip { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.act-chip.on { background: var(--text); color: var(--surface); border-color: var(--text); }
+.act-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1000px) { .act-layout { grid-template-columns: minmax(0, 1fr); } }
+.act-list { padding: 0; overflow: hidden; }
+.act-group { padding: 8px 16px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); background: var(--surface-2); border-bottom: 1px solid var(--border-subtle); }
+.act-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 120px 96px; gap: 12px; align-items: center; width: 100%; padding: 10px 16px; border: none; border-bottom: 1px solid var(--border-subtle); background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.act-row:hover { background: var(--surface-2); }
+.act-row.on { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--focus); }
+.act-row-title { line-height: var(--lh-sm); }
+.act-row-impact { text-align: right; white-space: nowrap; }
+.act-row-effort { font-size: var(--fs-xs); text-align: right; }
+.act-team { font-size: var(--fs-xs); padding: 1px 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
+.act-row .tone-crit, .act-detail .tone-crit { color: var(--st-crit-ink); }
+.act-row .tone-warn, .act-detail .tone-warn { color: var(--st-warn-ink); }
+.act-row .tone-muted, .act-detail .tone-muted { color: var(--text-3); }
+.act-detail { display: flex; flex-direction: column; gap: 8px; position: sticky; top: calc(var(--topbar-h, 64px) + 12px); }
+.act-detail-tags { display: flex; gap: 8px; align-items: center; font-size: var(--fs-xs); }
+.act-detail-title { margin: 0; font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: 600; }
+.act-detail-facts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin: 4px 0; }
+.act-detail-facts > div { background: var(--surface-2); border-radius: var(--radius-md); padding: 10px 12px; }
+.act-fact-label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
+.act-fact-value { font-size: var(--fs-md); margin-top: 2px; }
+.act-how { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-sm); }
+.act-evidence { display: flex; flex-direction: column; font-size: var(--fs-sm); }
+.act-evidence-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--border-subtle); }
+.act-evidence-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-evidence-fact { color: var(--text-2); font-size: var(--fs-xs); }
+.act-evidence-usd { text-align: right; }
+.act-links { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+/* Fix these first: three groups side by side when there is room, each row title over its affected count */
+.ff-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.ff-group { min-width: 0; }
+.act-row.ff-row { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; }
+.ff-row .act-row-effort { grid-column: 1 / -1; text-align: left; }
+.ff-more { font-size: var(--fs-xs); padding-top: 6px; }
+/* Fix these first: one ranked list per money kind, a $ bar scaled to the kind's largest; the
+   critical checks with no $ sit beside it as a count by area. */
+.ff-card { margin-bottom: 14px; }
+.ff-cols { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 18px 28px; align-items: start; }
+@media (max-width: 1000px) { .ff-cols { grid-template-columns: minmax(0, 1fr); } }
+.ff-cols > :only-child { grid-column: 1 / -1; }
+.ff-kind + .ff-kind { margin-top: 14px; }
+.ff-kind-head { display: flex; justify-content: space-between; gap: 10px; font-size: var(--fs-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); padding-bottom: 6px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 2px; }
+.ff-item {
+  display: grid; grid-template-columns: 20px minmax(0, 1.5fr) minmax(48px, 1fr) minmax(72px, auto); gap: 10px; align-items: center;
+  width: 100%; padding: 7px 0; border: 0; border-bottom: 1px solid var(--border-subtle); background: none; color: var(--text);
+  font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer;
+}
+.ff-item:hover { background: var(--surface-2); }
+.ff-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ff-item-rank { color: var(--text-faint); font-size: var(--fs-xs); text-align: right; }
+.ff-item-text { display: flex; flex-direction: column; min-width: 0; }
+.ff-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ff-item-aff { font-size: var(--fs-xs); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ff-item-track { height: 10px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.ff-item-fill { display: block; height: 100%; background: var(--c1); border-radius: 2px; }
+.ff-item-usd { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ff-item-usd.tone-crit { color: var(--st-crit-ink); }
+.ff-more { font-size: var(--fs-xs); margin-top: 6px; }
+@media (max-width: 640px) {
+  .ff-item { grid-template-columns: 18px minmax(0, 1fr) auto; }
+  .ff-item-track { grid-column: 2 / -1; grid-row: 2; }
+}
+/* Actions tiles: a long figure wraps its unit instead of overflowing the cell. */
+.act-kpis .ov-kpi-value { overflow-wrap: anywhere; }
+.act-kpis .ov-kpi-value-row { flex-wrap: wrap; row-gap: 2px; }
+.al-tabs .al-csv { margin-left: auto; }
+/* "The fix" heading row: eyebrow left, Copy right. */
+.fx-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* A CSV button with no rows must not look clickable. */
+.csv-download-btn:disabled { opacity: .5; cursor: default; }

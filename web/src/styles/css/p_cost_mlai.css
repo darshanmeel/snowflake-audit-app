@@ -1,0 +1,209 @@
+/* web/src/css/p_cost_mlai.css -- Cost + ML & AI page styles (this lane's own file). Every colour
+   is a token from styles.css, so this works unchanged in Paper/Ledger and light/dark. */
+
+/* ── metric grid: the per-sub-tab 3-4 headline cards (redesign section 4.7 "Headline cards per
+   sub-tab") -- a plain hairline card, a big mono value, one or two lines under it. ── */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.metric-label { font-size: var(--fs-sm); color: var(--text-3); font-weight: 500; }
+.metric-value { font-size: var(--fs-kpi); line-height: var(--lh-kpi); font-weight: 500; letter-spacing: -0.02em; color: var(--text); }
+.metric-note { font-size: var(--fs-sm); line-height: 1.4; color: var(--text-2); }
+.metric-card.tone-crit .metric-value { color: var(--st-crit-ink); }
+.metric-card.tone-warn .metric-value { color: var(--st-warn-ink); }
+.metric-card.tone-na .metric-value { color: var(--st-na-ink); }
+
+/* ── one-line caveat / basis note, an accent rule on the left rather than a full banner. ── */
+.caveat-note {
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--c1);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 10px 14px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-2);
+  margin-bottom: 14px;
+}
+.caveat-note b { color: var(--text); }
+
+/* ── a plain link styled like the rest of the app's inline actions, for a cross-tab "-> Area" note. ── */
+.link-out {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--link);
+  cursor: pointer;
+}
+.link-out:hover { text-decoration: underline; }
+
+/* ── ML & AI Endpoints: one card per endpoint (redesign section 6, 13-mlai-endpoints.png). ── */
+.endpoint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 14px;
+}
+.endpoint-card {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.endpoint-card.tone-critical { border-left-color: var(--st-crit); }
+.endpoint-card.tone-warn { border-left-color: var(--st-warn); }
+.endpoint-card.tone-ok { border-left-color: var(--st-ok); }
+.endpoint-card.tone-not_assessed { border-left-color: var(--st-na); }
+.ec-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ec-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+.ec-name { font-size: 15px; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+.ec-head .status-pill { flex: none; }
+.ec-sub { font-size: var(--fs-sm); color: var(--text-3); margin-top: 2px; }
+.ec-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ec-stat-label { display: block; font-size: 11px; color: var(--text-3); }
+.ec-stat-value { display: block; font-size: 15px; font-weight: 500; color: var(--text); }
+.ec-range-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); margin-bottom: 4px; }
+.daily-cost-range { display: flex; flex-direction: column; gap: 3px; }
+.dcr-track { position: relative; height: 12px; border-radius: 3px; background: var(--surface-2); }
+.dcr-span { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.dcr-warn { position: absolute; top: -3px; bottom: -3px; border-left: 1.5px dashed var(--text-3); }
+.dcr-scale { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; color: var(--text-3); }
+.ec-mode { font-size: var(--fs-sm); color: var(--text-2); }
+.ec-idle-note {
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: var(--text-2);
+  background: var(--st-crit-tint);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+.ec-idle-note b { color: var(--st-crit-ink); }
+
+/* ── Cost > Trend: calendar-month bars (window.MonthBars), coloured by change vs the trailing
+   3-month average -- the current, partial month is always hatched, never coloured by change. ── */
+.month-bars { display: flex; align-items: flex-end; gap: 4px; height: 132px; }
+.month-bar-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; gap: 4px; }
+.month-bar-track { width: 100%; height: 104px; display: flex; align-items: flex-end; }
+.month-bar-fill { width: 100%; min-height: 2px; border-radius: 3px 3px 0 0; }
+.month-bar-fill.partial {
+  background: repeating-linear-gradient(45deg, var(--text-faint), var(--text-faint) 3px, transparent 3px, transparent 7px);
+  opacity: .55;
+}
+.month-bar-label { font-size: 10px; color: var(--text-3); }
+.month-chart { display: flex; align-items: flex-end; gap: 20px; }
+.month-chart .month-bars { flex: 1 1 auto; min-width: 0; }
+.month-legend { flex: 0 0 auto; display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--text-2); padding-bottom: 18px; }
+.month-legend-title { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin-bottom: 2px; }
+.month-legend-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.month-legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+@media (max-width: 700px) {
+  .month-chart { flex-direction: column; align-items: stretch; }
+  .month-legend { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; padding-bottom: 0; }
+  .month-legend-title { width: 100%; }
+}
+
+/* ── Cost > Trend: When you spend (cost_by_hour_of_day), a plain weekday x hour grid. ── */
+.hour-heatmap { display: flex; flex-direction: column; gap: 2px; }
+.hh-row { display: flex; gap: 2px; align-items: center; }
+.hh-row-label { width: 30px; flex: none; font-size: 11px; color: var(--text-3); }
+.hh-hour-label { flex: 1; min-width: 0; font-size: 9px; color: var(--text-faint); text-align: center; }
+.hh-cell { flex: 1; min-width: 8px; aspect-ratio: 1 / 1; border-radius: 2px; }
+
+/* ── Cost > Product: fastest-growing SKUs, one row per SKU (name, sparkbars, growth %, $). ── */
+.sku-trend-list { display: flex; flex-direction: column; gap: 6px; }
+.sku-trend-row { display: grid; grid-template-columns: minmax(0, 1fr) 100px 64px 84px; align-items: center; gap: 12px; }
+.sku-trend-name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sku-spark { display: flex; align-items: flex-end; gap: 1px; width: 100px; height: 26px; flex: none; }
+.sku-spark-bar { flex: 1; min-height: 2px; background: var(--c1); border-radius: 1px; }
+.sku-trend-growth { font-size: 13px; font-weight: 500; text-align: right; color: var(--text-2); }
+.sku-trend-growth.tone-crit { color: var(--st-crit-ink); }
+.sku-trend-growth.tone-warn { color: var(--st-warn-ink); }
+.sku-trend-usd { font-size: 12px; color: var(--text-3); text-align: right; }
+
+/* ── Cost > Chargeback: a small sub-line (owner/run-as/cloud) under the entity name. ── */
+.cb-sub { font-size: 11px; margin-top: 2px; }
+
+/* Tags: one bar per required key */
+.tag-key-bars { display: grid; gap: 6px; margin: 8px 0 10px; }
+.tag-key-bar { display: grid; grid-template-columns: minmax(80px, 160px) 1fr; align-items: center; gap: 10px; }
+.tag-key-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Cost: the Metered -> Invoice -> Allocated strip above the Trend tiles. */
+.cost-recon { margin-bottom: 14px; }
+
+/* Cost > By service: this period's bar over the previous period's track, with a change chip. */
+.cost-split-3-1 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(200px, 1fr); gap: 14px; align-items: start; margin-bottom: 14px; }
+.cost-side-tiles { display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 900px) { .cost-split-3-1 { grid-template-columns: minmax(0, 1fr); } }
+.cost-tvp { display: flex; flex-direction: column; gap: 6px; }
+.cost-tvp-row { display: grid; grid-template-columns: minmax(90px, 200px) minmax(0, 1fr) auto 56px; align-items: center; gap: 10px; }
+.cost-tvp-name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cost-tvp-bars { position: relative; height: 16px; }
+.cost-tvp-prev { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border); }
+.cost-tvp-cur { position: absolute; left: 0; top: 4px; bottom: 4px; border-radius: 2px; background: var(--c1); }
+.cost-tvp-sw-prev { background: var(--surface-2); border: 1px solid var(--border); }
+.cost-tvp-value { font-size: 12px; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+.cost-delta { font-family: var(--f-mono); font-size: 11.5px; text-align: center; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.cost-delta.tone-crit { background: var(--st-crit-tint); color: var(--st-crit-ink); }
+.cost-delta.tone-warn { background: var(--st-warn-tint); color: var(--st-warn-ink); }
+.cost-delta.tone-good { background: var(--st-ok-tint); color: var(--st-ok-ink); }
+@media (max-width: 600px) { .cost-tvp-row { grid-template-columns: minmax(70px, 110px) minmax(0, 1fr) 48px; } .cost-tvp-value { display: none; } }
+
+/* Cost > Budgets: the coverage meters stacked in one card. */
+.cost-meters { display: flex; flex-direction: column; gap: 10px; }
+.chart-note-oneline.tone-crit { color: var(--st-crit-ink); }
+
+/* Tag rollup table: room between columns so header and cells never run together. */
+.tag-rollup-table th, .tag-rollup-table td { padding: 4px 10px; }
+.tag-rollup-table th:first-child, .tag-rollup-table td:first-child { padding-left: 0; }
+
+/* Tags: key x object-type matrix, shaded by the share missing the key (grey when not required). */
+.tag-matrix { border-collapse: separate; border-spacing: 3px; font-size: 12px; }
+.tag-matrix th { font-weight: 500; color: var(--text-3); text-align: center; padding: 2px 6px; white-space: nowrap; }
+.tag-matrix th.tm-key { text-align: left; color: var(--text); max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+.tag-matrix td { min-width: 76px; text-align: center; font-family: var(--f-mono); padding: 6px 8px; border-radius: 4px; color: var(--text); font-variant-numeric: tabular-nums; }
+.tag-matrix td.tm-na { color: var(--text-3); background: var(--surface-2); }
+.tag-examples { min-width: 240px; }
+
+/* Tag filter: the $ and % of spend the applied filter reaches, next to its triggers. */
+.tag-chip-spend { font-size: 11.5px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.grain-switch { display: inline-flex; margin: 0; }
+
+/* Cost > Trend: the trend-by table head and picked item, month totals and a small line's scale. */
+.ct-table-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 6px; font-size: var(--fs-sm); }
+.ct-picked { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 6px; font-size: var(--fs-sm); color: var(--text-2); }
+.ct-month-bars { margin-top: 4px; height: 148px; }
+.ct-month-value { font-family: var(--f-mono); color: var(--text-2); white-space: nowrap; }
+/* A line under 1 unit: MultiLine's 1-decimal ticks would read 0 and 0, so the note above carries the scale. */
+.ct-small-scale .cf-ytick { display: none; }
+.ct-scale-note { font-size: 11px; margin: 0 0 4px; }
+.sku-spark-bar.partial {
+  background: repeating-linear-gradient(45deg, var(--text-faint), var(--text-faint) 2px, transparent 2px, transparent 4px);
+  opacity: .6;
+}

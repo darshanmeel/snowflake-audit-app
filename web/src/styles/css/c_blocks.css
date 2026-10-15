@@ -1,0 +1,116 @@
+/* web/src/styles/css/c_blocks.css -- the shared building blocks (components/blocks.tsx). Every
+   colour is a token from styles.css, so both themes work with no new palette. */
+
+/* ─────────── IssueTile: rides on .summary-tile, adds the population line, trend chip and cause ─────────── */
+.issue-tile .summary-tile-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.issue-tile-why { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.35; }
+.issue-tile-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; }
+.issue-tile-pop { font-family: var(--f-mono); font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.issue-tile-trend {
+  font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 1px 7px;
+  background: var(--surface-2); color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; /* a value wider than its share of the card ends in an ellipsis, never past the card */
+}
+.issue-tile-trend.tone-bad { background: var(--st-crit-tint); color: var(--st-crit-ink); }
+.issue-tile-trend.tone-good { background: var(--st-ok-tint); color: var(--st-ok-ink); }
+.issue-tile-cause {
+  font-size: 12px; color: var(--text-3); margin-top: 6px; line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+a.summary-tile-open { text-decoration: none; }
+a.summary-tile-open:hover { text-decoration: underline; }
+
+/* ─────────── ShareBar / ShareBarList ─────────── */
+.blk-share { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; font-size: var(--fs-xs); }
+.blk-share-label { flex: none; color: var(--text-2); min-width: 0; }
+.blk-share-track { flex: 1 1 auto; min-width: 40px; height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--border-subtle); }
+.blk-share-fill { display: block; height: 100%; border-radius: 4px 0 0 4px; }
+.blk-share-pct { flex: none; min-width: 44px; text-align: right; font-family: var(--f-mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.blk-share-missing { color: var(--text-3); }
+.blk-share-list { display: flex; flex-direction: column; gap: 6px; }
+.blk-row-label {
+  display: inline-block; flex: none; font-family: var(--f-sans); font-size: var(--fs-xs); color: var(--text-2);
+  white-space: nowrap; overflow: hidden; padding-right: 8px; box-sizing: border-box;
+}
+.blk-row-btn {
+  display: flex; width: 100%; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
+  text-align: left; cursor: pointer; border-radius: var(--radius-sm);
+}
+.blk-row-btn:hover { background: var(--surface-2); }
+.blk-row-btn:hover .blk-row-label { color: var(--link); text-decoration: underline; }
+.blk-row-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.blk-more { font-size: var(--fs-xs); color: var(--text-3); margin-top: 2px; }
+
+/* ─────────── StackedShareBar ─────────── */
+.blk-stack { display: flex; flex-direction: column; gap: 6px; }
+.blk-stack-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-2); }
+.blk-stack-pareto { font-family: var(--f-mono); color: var(--text); }
+.blk-stack-bar { display: flex; width: 100%; border-radius: 6px; overflow: hidden; background: var(--surface-2); }
+.blk-stack-seg { display: flex; align-items: center; justify-content: center; min-width: 1px; height: 100%; box-shadow: inset -1px 0 0 var(--surface); }
+.blk-stack-seg.clickable { cursor: pointer; }
+.blk-stack-seg.clickable:hover { filter: brightness(1.08); }
+.blk-stack-seg-pct { font-size: 11.5px; font-weight: 600; color: var(--surface); font-variant-numeric: tabular-nums; text-shadow: 0 0 2px rgba(0,0,0,.35); }
+.blk-hatch { background: repeating-linear-gradient(45deg, var(--c-untagged-line) 0 1.5px, var(--c-untagged-bg) 1.5px 4px); }
+.blk-hatch .blk-stack-seg-pct { color: var(--text); text-shadow: none; }
+.blk-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-xs); color: var(--text-2); }
+.blk-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.blk-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+/* ─────────── StatusBars ─────────── */
+.blk-sbars { display: flex; flex-direction: column; gap: 4px; }
+.blk-sbars > .blk-legend { margin-bottom: 4px; }
+.blk-sbar { display: flex; align-items: center; min-height: 24px; width: 100%; }
+.blk-sbar-track { flex: 1 1 auto; min-width: 20px; height: 16px; position: relative; }
+.blk-sbar-fill { display: block; height: 100%; border-radius: 0 4px 4px 0; min-width: 2px; }
+.blk-sbar-value {
+  flex: none; padding-left: 8px; box-sizing: border-box; font-family: var(--f-sans); font-size: var(--fs-xs);
+  color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap;
+  /* a value wider than its share of the card ends in an ellipsis, never past the card */
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ─────────── PostureScorecard ─────────── */
+.blk-posture-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.blk-posture-title { font-weight: 600; color: var(--text); }
+.blk-posture-count { font-family: var(--f-mono); font-size: 13px; color: var(--text); }
+.blk-posture-na { color: var(--st-na-ink); }
+.blk-posture-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.blk-chip {
+  display: flex; flex-direction: column; gap: 4px; text-align: left; font: inherit; color: inherit;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px;
+}
+.blk-chip.clickable { cursor: pointer; }
+.blk-chip.clickable:hover { border-color: var(--focus); }
+.blk-chip-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
+.blk-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blk-chip-value { font-family: var(--f-mono); font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
+.blk-chip-critical { border-color: color-mix(in srgb, var(--st-crit) 45%, var(--border)); background: var(--st-crit-tint); }
+.blk-chip-critical .blk-chip-head { color: var(--st-crit-ink); }
+.blk-chip-ok .blk-chip-head { color: var(--st-ok-ink); }
+.blk-chip-not_assessed { border-style: dashed; }
+.blk-chip-not_assessed .blk-chip-head, .blk-chip-not_assessed .blk-chip-value { color: var(--st-na-ink); }
+
+/* ─────────── DayKindTimeline ─────────── */
+.blk-day.clickable { cursor: pointer; }
+.blk-day.clickable:hover > rect:first-child { fill: var(--surface-2); }
+
+/* ─────────── ReconciliationStrip ─────────── */
+.blk-recon { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; }
+.blk-recon-step {
+  display: flex; flex-direction: column; gap: 2px; min-width: 120px; flex: 1 1 120px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px;
+}
+.blk-recon-label { font-size: var(--fs-xs); color: var(--text-3); }
+.blk-recon-value { font-family: var(--f-mono); font-size: 16px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.blk-recon-note { font-size: 11.5px; color: var(--text-3); line-height: 1.3; }
+.blk-recon-gap { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none; padding: 0 2px; color: var(--text-3); }
+.blk-recon-arrow { font-size: 14px; line-height: 1; }
+.blk-recon-gap-pct { font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.blk-recon-gap.big .blk-recon-gap-pct { color: var(--st-warn-ink); font-weight: 600; }
+
+@media (max-width: 700px) {
+  .blk-recon { flex-direction: column; }
+  .blk-recon-gap { flex-direction: row; gap: 6px; padding: 0 12px; }
+  .blk-recon-arrow { transform: rotate(90deg); }
+  .blk-posture-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

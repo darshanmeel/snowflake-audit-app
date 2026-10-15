@@ -1,0 +1,4437 @@
+{
+ "defaults": {
+  "max_rows": 50000,
+  "include_today": true,
+  "credit_price_usd": 3.0,
+  "ai_credit_price_usd": 2.0,
+  "storage_price_usd_tb_month": null,
+  "query_tag": "crosshire-audit"
+ },
+ "checks": {
+  "access_broad_grants": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "top_n": 100000
+   },
+   "needs_enterprise": false
+  },
+  "access_column_masks_inventory": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "access_grants_inventory": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "access_login_concentration": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.LOGIN_HISTORY"
+   ],
+   "params": {
+    "warn_failed_logins": 5,
+    "crit_failed_logins": 20
+   },
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA.LOGIN_HISTORY (table function)",
+    "note": "last 7 days at most, only the users this role can monitor, up to 10,000 sign-ins a day"
+   }
+  },
+  "access_row_filters_inventory": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "access_tags_inventory": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TAG_REFERENCES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "access_views_inventory": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.VIEWS",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "top_n": 100000
+   },
+   "needs_enterprise": false
+  },
+  "cost_audit_self_usage": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "cost_by_hour_of_day": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TASK_HISTORY"
+   ],
+   "params": {
+    "warn_hour_share_pct": 15,
+    "crit_hour_share_pct": 25
+   },
+   "needs_enterprise": false
+  },
+  "cost_chargeback_by_account": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {
+    "warn_increase_pct": 25,
+    "crit_increase_pct": 50,
+    "min_spend_usd": 20
+   },
+   "needs_enterprise": false
+  },
+  "cost_chargeback_by_service": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {
+    "warn_increase_pct": 25,
+    "crit_increase_pct": 50,
+    "min_spend_usd": 20
+   },
+   "needs_enterprise": false
+  },
+  "cost_chargeback_by_warehouse": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_increase_pct": 25,
+    "crit_increase_pct": 50,
+    "min_spend_usd": 20,
+    "top_n": 20
+   },
+   "needs_enterprise": false
+  },
+  "cost_daily_by_resource": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.SERVERLESS_TASK_HISTORY",
+    "ACCOUNT_USAGE.PIPE_USAGE_HISTORY"
+   ],
+   "params": {
+    "top_n": 100
+   },
+   "needs_enterprise": false
+  },
+  "cost_daily_spikes": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {
+    "baseline_days": 14,
+    "spike_ratio": 2.0,
+    "min_spend_usd": 50,
+    "min_baseline_days": 7
+   },
+   "needs_enterprise": false
+  },
+  "cost_dollarized_by_service_day": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "cost_failed_statement_waste": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_waste_usd": 5,
+    "crit_waste_usd": 50
+   },
+   "needs_enterprise": false
+  },
+  "cost_monthly_actuals": {
+   "domain": "cost",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "cost_period_over_period": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {
+    "warn_increase_pct": 25,
+    "crit_increase_pct": 50,
+    "min_spend_usd": 50
+   },
+   "needs_enterprise": false
+  },
+  "overview_credits_by_service": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "overview_daily_credits_trend": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "overview_spend_estimate": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "overview_warehouse_vs_serverless": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "query_cache_coldstart": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_io_cache_pct": 50,
+    "crit_io_cache_pct": 20,
+    "min_scanned_queries": 10
+   },
+   "needs_enterprise": false
+  },
+  "query_costly_statements_grouped": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_total_hours": 1,
+    "crit_total_hours": 5,
+    "top_n": 500
+   },
+   "needs_enterprise": false
+  },
+  "query_failed_queries_daily": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_failed_count": 5,
+    "crit_failed_count": 20
+   },
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
+    "note": "last 7 days at most, only the queries this role can see"
+   }
+  },
+  "query_local_spillage": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_spill_gb": 1,
+    "crit_spill_gb": 10
+   },
+   "needs_enterprise": false
+  },
+  "query_provenance_by_source": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "query_pruning_effectiveness": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_prune_ratio": 0.5,
+    "crit_prune_ratio": 0.2,
+    "min_read_bytes": 1073741824,
+    "min_recurring_flagged_days": 2
+   },
+   "needs_enterprise": false
+  },
+  "query_queuing_waits": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_queue_secs": 60,
+    "crit_queue_secs": 600
+   },
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
+    "note": "last 7 days at most, only the queries this role can see"
+   }
+  },
+  "query_top_by_cost": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "warn_cost_usd": 50,
+    "crit_cost_usd": 200,
+    "warn_share_frac": 0.2,
+    "crit_share_frac": 0.4,
+    "top_n": 5000
+   },
+   "needs_enterprise": false
+  },
+  "query_warehouse_pressure": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_queries": 20,
+    "min_stmt_spill_mb": 100,
+    "warn_spill_time_pct": 10,
+    "crit_spill_time_pct": 25,
+    "warn_spill_gb": 1,
+    "crit_spill_gb": 10,
+    "warn_queue_time_pct": 5,
+    "crit_queue_time_pct": 20,
+    "top_n": 100000
+   },
+   "needs_enterprise": false
+  },
+  "query_workload_mix_hours": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_acct_budgets": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [
+    "SHOW SNOWFLAKE.CORE.BUDGET INSTANCES IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.SNOWFLAKE.CORE.BUDGET INSTANCES",
+    "ACCOUNT_USAGE.METERING_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 500,
+    "crit_usd": 5000
+   },
+   "needs_enterprise": false
+  },
+  "sf_acct_object_counts": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW STREAMS IN ACCOUNT",
+    "SHOW TASKS IN ACCOUNT"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.DATABASES",
+    "ACCOUNT_USAGE.SCHEMATA",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.STAGES",
+    "ACCOUNT_USAGE.PIPES",
+    "ACCOUNT_USAGE.FUNCTIONS",
+    "ACCOUNT_USAGE.PROCEDURES",
+    "ACCOUNT_USAGE.SEQUENCES",
+    "ACCOUNT_USAGE.FILE_FORMATS",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.ROLES",
+    "SHOW.STREAMS",
+    "SHOW.TASKS",
+    "ACCOUNT_USAGE.TASK_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_acct_observability_cost": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DATA_QUALITY_MONITORING_USAGE_HISTORY",
+    "ACCOUNT_USAGE.METERING_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 25,
+    "crit_usd": 250,
+    "warn_increase_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_acct_parameters_posture": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW PARAMETERS IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.PARAMETERS"
+   ],
+   "params": {
+    "max_statement_timeout_s": 28800,
+    "max_retention_days": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_access_open_to_all": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [
+    "SHOW PARAMETERS LIKE 'CORTEX_MODELS_ALLOWLIST' IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.PARAMETERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_ai_agent_spend": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "warn_share_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_compute_pools_config": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.COMPUTE_POOLS",
+    "ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY"
+   ],
+   "params": {
+    "min_credits": 20,
+    "crit_credits": 200,
+    "max_suspend_secs": 3600,
+    "warn_always_on_pct": 90
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_cortex_analyst_spend": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CORTEX_ANALYST_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "warn_share_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_cortex_code_spend": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CORTEX_CODE_CLI_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_CODE_SNOWSIGHT_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_CODE_DESKTOP_USAGE_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "settle_days": 1,
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "warn_share_pct": 50,
+    "warn_gap_pct": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_cortex_search_spend": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CORTEX_SEARCH_DAILY_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "warn_serving_share_pct": 80
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_cortex_search_stale_index_serving": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CORTEX_SEARCH_DAILY_USAGE_HISTORY"
+   ],
+   "params": {
+    "stale_days": 7,
+    "crit_stale_days": 21,
+    "min_serving_usd": 25
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_cowork_spend": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SNOWFLAKE_COWORK_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "warn_share_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_credits_on_failed_queries": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 10,
+    "crit_usd": 100,
+    "min_failed_pct": 2
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_functions_spend_by_user": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "warn_query_usd": 50,
+    "crit_spend_usd": 1000
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_model_serving_spend": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.MODEL_SERVING_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 10,
+    "warn_always_on_pct": 90,
+    "warn_increase_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_notebook_runtime_by_notebook": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.NOTEBOOKS_CONTAINER_RUNTIME_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 10,
+    "warn_hours_per_day": 12,
+    "warn_increase_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_provisioned_throughput_use": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CORTEX_PROVISIONED_THROUGHPUT_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_REST_API_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_idle_usd": 25,
+    "warn_idle_pct": 30,
+    "crit_idle_pct": 70
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_services_spend_trend": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 50,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "warn_share_pct": 15
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_snowpark_container_services": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 50,
+    "warn_always_on_pct": 90,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_spcs_costs_outside_pools": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.BLOCK_STORAGE_HISTORY",
+    "ACCOUNT_USAGE.INTERNAL_DATA_TRANSFER_HISTORY",
+    "ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY"
+   ],
+   "params": {
+    "warn_growth_pct": 25,
+    "min_gb": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_spcs_pool_no_live_service": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [
+    "SHOW SERVICES IN ACCOUNT"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY",
+    "ACCOUNT_USAGE.SERVICES",
+    "ACCOUNT_USAGE.COMPUTE_POOLS",
+    "ACCOUNT_USAGE.NOTEBOOKS_CONTAINER_RUNTIME_HISTORY",
+    "SHOW.SERVICES"
+   ],
+   "params": {
+    "warn_usd": 20,
+    "crit_usd": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_ai_spcs_public_endpoints": {
+   "domain": "serving_ai",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SERVICES",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_ai_spend_by_feature_reconciled": {
+   "domain": "serving_ai",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_ANALYST_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_SEARCH_DAILY_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_DOCUMENT_PROCESSING_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_FINE_TUNING_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY",
+    "ACCOUNT_USAGE.CORTEX_PROVISIONED_THROUGHPUT_USAGE_HISTORY"
+   ],
+   "params": {
+    "settle_days": 2,
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "warn_gap_pct": 10,
+    "crit_gap_pct": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_audit_admin_sessions": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "warn_open_hours": 24,
+    "crit_open_hours": 168
+   },
+   "needs_enterprise": false
+  },
+  "sf_audit_admin_signins": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "warn_ips": 5,
+    "night_start_hour": 22,
+    "night_end_hour": 6,
+    "warn_night_pct": 50,
+    "crit_failures": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_audit_grant_activity": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_audit_object_ddl_timeline": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_drops": 10
+   },
+   "needs_enterprise": true
+  },
+  "sf_chg_allocation_reconciliation": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY",
+    "ACCOUNT_USAGE.MATERIALIZED_VIEW_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.SEARCH_OPTIMIZATION_HISTORY",
+    "ACCOUNT_USAGE.SERVERLESS_TASK_HISTORY",
+    "ACCOUNT_USAGE.PIPE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.SERVERLESS_ALERT_HISTORY",
+    "ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY",
+    "ACCOUNT_USAGE.DATA_QUALITY_MONITORING_USAGE_HISTORY",
+    "ACCOUNT_USAGE.REPLICATION_GROUP_USAGE_HISTORY",
+    "ACCOUNT_USAGE.DATABASE_REPLICATION_USAGE_HISTORY"
+   ],
+   "params": {
+    "warn_unallocated_pct": 25,
+    "crit_unallocated_pct": 50,
+    "min_unallocated_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_chg_bi_dashboards": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_dashboard_usd": 50,
+    "crit_dashboard_usd": 500,
+    "warn_unidentified_pct": 50,
+    "min_tool_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_chg_by_database_schema": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY",
+    "ACCOUNT_USAGE.MATERIALIZED_VIEW_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.SEARCH_OPTIMIZATION_HISTORY",
+    "ACCOUNT_USAGE.SERVERLESS_TASK_HISTORY",
+    "ACCOUNT_USAGE.PIPE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.PIPES",
+    "ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY"
+   ],
+   "params": {
+    "warn_share_pct": 25,
+    "crit_share_pct": 50,
+    "min_spend_usd": 100,
+    "warn_unassigned_pct": 20,
+    "crit_unassigned_pct": 40
+   },
+   "needs_enterprise": false
+  },
+  "sf_chg_by_role": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TAG_REFERENCES"
+   ],
+   "params": {
+    "warn_usd": 100,
+    "crit_usd": 1000,
+    "warn_admin_usd": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_chg_by_warehouse_and_user_daily": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "warn_day_usd": 100,
+    "crit_day_usd": 1000,
+    "warn_idle_day_usd": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_chg_dbt_models": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_model_usd": 50,
+    "crit_model_usd": 500,
+    "warn_invocation_usd": 100,
+    "top_invocations": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_chg_idle_allocation": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "warn_uplift_pct": 50,
+    "crit_uplift_pct": 150,
+    "min_loaded_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_chg_tag_based_allocation": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_untagged_pct": 20,
+    "crit_untagged_pct": 50,
+    "min_spend_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_chg_tag_coverage": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 50,
+    "crit_usd": 500,
+    "warn_share_pct": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_anomalies_vs_spikes": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ANOMALIES_DAILY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "baseline_days": 14,
+    "spike_ratio": 2.0,
+    "min_credits": 20,
+    "crit_credits": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_cloud_services_billed": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "warn_daily_billed_usd": 5,
+    "crit_daily_billed_usd": 50,
+    "warn_ratio_pct": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_cloud_services_drivers": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "warn_share_pct": 20,
+    "crit_share_pct": 50,
+    "min_driver_usd": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_contract_balance_burn": {
+   "domain": "cost",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.REMAINING_BALANCE_DAILY",
+    "ORGANIZATION_USAGE.CONTRACT_ITEMS"
+   ],
+   "params": {
+    "burn_days": 30,
+    "warn_runway_days": 90,
+    "crit_runway_days": 30,
+    "warn_unused_pct": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_data_transfer_egress": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {
+    "same_cloud_usd_per_tb": 20,
+    "other_cloud_usd_per_tb": 90,
+    "warn_usd": 50,
+    "crit_usd": 500,
+    "warn_increase_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_invoice_vs_metered": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "warn_gap_pct": 5,
+    "crit_gap_pct": 15
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_listing_auto_fulfillment": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "DATA_SHARING_USAGE.LISTING_AUTO_FULFILLMENT_REFRESH_DAILY",
+    "DATA_SHARING_USAGE.LISTING_AUTO_FULFILLMENT_DATABASE_STORAGE_DAILY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_marketplace_paid_listings": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "DATA_SHARING_USAGE.MARKETPLACE_PAID_USAGE_DAILY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "crit_amount": 1000
+   },
+   "needs_enterprise": true
+  },
+  "sf_cost_month_end_forecast": {
+   "domain": "cost",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {
+    "run_rate_days": 7,
+    "warn_over_pct": 10,
+    "crit_over_pct": 25,
+    "min_spend_usd": 100,
+    "monthly_budget_usd": 0,
+    "min_days_elapsed": 3
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_native_app_inventory": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [
+    "SHOW APPLICATIONS"
+   ],
+   "sources": [
+    "SHOW.APPLICATIONS",
+    "ACCOUNT_USAGE.APPLICATION_DAILY_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_age_days": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_native_app_spend": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.APPLICATION_DAILY_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "crit_spend_usd": 1000
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_openflow_spend": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_HISTORY",
+    "ACCOUNT_USAGE.OPENFLOW_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_always_on_pct": 90,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_query_attribution_by_query_tag": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "warn_untagged_pct": 30,
+    "crit_untagged_pct": 60,
+    "warn_idle_pct": 30,
+    "crit_idle_pct": 50,
+    "min_spend_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_query_attribution_by_user": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "warn_share_pct": 30,
+    "crit_share_pct": 60,
+    "min_spend_usd": 100,
+    "warn_idle_pct": 30,
+    "crit_idle_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_rate_sheet": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.RATE_SHEET_DAILY"
+   ],
+   "params": {
+    "warn_change_pct": 1,
+    "warn_price_gap_pct": 5,
+    "crit_price_gap_pct": 15
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_resource_monitor_coverage": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES",
+    "SHOW RESOURCE MONITORS"
+   ],
+   "sources": [
+    "SHOW.WAREHOUSES",
+    "SHOW.RESOURCE MONITORS",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "min_spend_credits": 20,
+    "warn_used_pct": 80,
+    "crit_used_pct": 100,
+    "crit_uncapped_share_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_resource_monitor_projection": {
+   "domain": "cost",
+   "windowed": false,
+   "pre": [
+    "SHOW RESOURCE MONITORS"
+   ],
+   "sources": [
+    "SHOW.RESOURCE MONITORS"
+   ],
+   "params": {
+    "crit_days": 3
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_serverless_features": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY",
+    "ACCOUNT_USAGE.MATERIALIZED_VIEW_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.SEARCH_OPTIMIZATION_HISTORY",
+    "ACCOUNT_USAGE.PIPE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.SERVERLESS_TASK_HISTORY",
+    "ACCOUNT_USAGE.REPLICATION_GROUP_USAGE_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ACCELERATION_HISTORY"
+   ],
+   "params": {
+    "min_spend_usd": 25,
+    "warn_increase_pct": 50,
+    "crit_increase_pct": 150,
+    "crit_spend_usd": 1000
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_source_freshness": {
+   "domain": "cost",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.METERING_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.COPY_HISTORY"
+   ],
+   "params": {
+    "lookback_days": 14,
+    "crit_days_behind": 3
+   },
+   "needs_enterprise": false
+  },
+  "sf_cost_warehouse_idle_credits_daily": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "warn_idle_usd": 10,
+    "crit_idle_usd": 100,
+    "warn_idle_pct": 40
+   },
+   "needs_enterprise": false
+  },
+  "sf_dt_cost": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DYNAMIC_TABLE_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "warn_usd": 50,
+    "crit_usd": 500,
+    "warn_growth_pct": 50,
+    "min_growth_usd": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_dt_downstream_orphans": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW DYNAMIC TABLES IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.DYNAMIC TABLES",
+    "ACCOUNT_USAGE.DYNAMIC_TABLE_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "crit_stale_days": 7
+   },
+   "needs_enterprise": false
+  },
+  "sf_dt_lag_keeps_warehouse_awake": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.DYNAMIC_TABLE_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "warn_credits": 10,
+    "crit_credits": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_dt_refresh_failures_and_lag": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DYNAMIC_TABLE_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "warn_failure_pct": 5,
+    "crit_failure_pct": 25,
+    "crit_consecutive_failures": 3,
+    "warn_lag_breach_pct": 10,
+    "crit_lag_breach_pct": 50,
+    "warn_full_pct": 50,
+    "min_refreshes": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_dt_suspended_still_read": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW DYNAMIC TABLES IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.DYNAMIC TABLES",
+    "ACCOUNT_USAGE.DYNAMIC_TABLE_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {},
+   "needs_enterprise": true
+  },
+  "sf_dt_unread_refresh_cost": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DYNAMIC_TABLE_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "warn_usd": 10,
+    "crit_usd": 100
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_ai_agent_data_access": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {},
+   "needs_enterprise": true
+  },
+  "sf_gov_classification_coverage": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DATA_CLASSIFICATION_LATEST",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_gov_classification_denominator": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.COLUMNS",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "min_columns": 50
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_data_egress": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_gb": 10,
+    "crit_gb": 500,
+    "baseline_days": 90
+   },
+   "needs_enterprise": false
+  },
+  "sf_gov_dmf_coverage": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DATA_METRIC_FUNCTION_REFERENCES",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "min_tables": 10,
+    "warn_pct": 10
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_dmf_expectation_failures": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "LOCAL.DATA_QUALITY_MONITORING_EXPECTATION_STATUS",
+    "ACCOUNT_USAGE.DATA_METRIC_FUNCTION_EXPECTATIONS",
+    "ACCOUNT_USAGE.DATA_METRIC_FUNCTION_REFERENCES"
+   ],
+   "params": {
+    "crit_days": 7
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_dmf_static_table_schedules": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DATA_QUALITY_MONITORING_USAGE_HISTORY",
+    "ACCOUNT_USAGE.TABLE_DML_HISTORY",
+    "ACCOUNT_USAGE.DATA_METRIC_FUNCTION_REFERENCES",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "warn_credits": 1,
+    "crit_credits": 20
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_integrations_exposure": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW INTEGRATIONS"
+   ],
+   "sources": [
+    "SHOW.INTEGRATIONS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {
+    "warn_usage_roles": 5,
+    "recent_days": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_gov_ownership_concentration": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "warn_admin_owned": 10,
+    "crit_admin_owned": 100,
+    "warn_personal_owned": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_gov_policy_separation_of_duties": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.POLICY_REFERENCES",
+    "ACCOUNT_USAGE.MASKING_POLICIES",
+    "ACCOUNT_USAGE.ROW_ACCESS_POLICIES",
+    "ACCOUNT_USAGE.TAGS",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {},
+   "needs_enterprise": true
+  },
+  "sf_gov_privacy_policies_unattached": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.AGGREGATION_POLICIES",
+    "ACCOUNT_USAGE.PROJECTION_POLICIES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "min_age_days": 14
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_public_role_grants": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_gov_role_hygiene": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS"
+   ],
+   "params": {
+    "max_depth": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_gov_sensitive_columns_unprotected": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_gov_sensitive_data_access": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "crit_users": 25
+   },
+   "needs_enterprise": false
+  },
+  "sf_gov_shares_and_listings": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [
+    "SHOW SHARES"
+   ],
+   "sources": [
+    "SHOW.SHARES",
+    "ACCOUNT_USAGE.SHARES",
+    "DATA_SHARING_USAGE.LISTING_ACCESS_HISTORY"
+   ],
+   "params": {
+    "warn_consumers": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_gov_shares_sensitive_columns": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_SHARES",
+    "ACCOUNT_USAGE.OBJECT_DEPENDENCIES",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "sample_size": 5
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_tag_hygiene": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TAGS",
+    "ACCOUNT_USAGE.TAG_REFERENCES"
+   ],
+   "params": {
+    "grace_days": 30,
+    "free_values": 20
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_unused_object_grants": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "min_grants": 10,
+    "warn_pct": 50,
+    "crit_write": 25
+   },
+   "needs_enterprise": true
+  },
+  "sf_govx_admin_role_daily_use": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "warn_queries": 20,
+    "crit_queries": 500
+   },
+   "needs_enterprise": false
+  },
+  "sf_govx_external_stage_credentials": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW STAGES IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.STAGES",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {
+    "warn_usage_roles": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_govx_schema_grant_control": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SCHEMATA",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.TAG_REFERENCES"
+   ],
+   "params": {
+    "warn_owners": 3,
+    "warn_grantors": 3
+   },
+   "needs_enterprise": false
+  },
+  "sf_lin_blast_radius": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.OBJECT_DEPENDENCIES",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "warn_dependents": 10,
+    "crit_dependents": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_lin_table_flows": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "warn_fan_out": 5,
+    "crit_fan_out": 15,
+    "warn_fan_in": 10
+   },
+   "needs_enterprise": true
+  },
+  "sf_lin_unused_views": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.VIEWS",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.OBJECT_DEPENDENCIES"
+   ],
+   "params": {
+    "min_age_days": 30
+   },
+   "needs_enterprise": true
+  },
+  "sf_load_bulk_copy_vs_snowpipe": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_copies_per_day": 24,
+    "max_median_mb": 100,
+    "snowpipe_credits_per_gb": 0.0037,
+    "uncompressed_ratio": 4,
+    "warn_credits": 5,
+    "crit_credits": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_load_copy_errors": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.COPY_HISTORY"
+   ],
+   "params": {
+    "warn_failed_files": 1,
+    "crit_failed_pct": 10,
+    "crit_failed_files": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_load_copy_listing_overhead": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_list_pct": 25,
+    "crit_list_pct": 50,
+    "min_list_minutes": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_load_small_files": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.COPY_HISTORY"
+   ],
+   "params": {
+    "min_mb": 10,
+    "crit_mb": 1,
+    "min_files": 1000,
+    "crit_min_files": 10000
+   },
+   "needs_enterprise": false
+  },
+  "sf_load_snowpipe_latency": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.COPY_HISTORY",
+    "ACCOUNT_USAGE.PIPES"
+   ],
+   "params": {
+    "min_files": 20,
+    "warn_p95_seconds": 300,
+    "crit_p95_seconds": 1800
+   },
+   "needs_enterprise": false
+  },
+  "sf_load_streaming_channel_errors": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SNOWPIPE_STREAMING_CHANNEL_HISTORY"
+   ],
+   "params": {
+    "warn_error_pct": 0.1,
+    "crit_error_pct": 1,
+    "warn_latency_seconds": 60,
+    "quiet_hours": 24
+   },
+   "needs_enterprise": false
+  },
+  "sf_load_streaming_cost": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.METERING_HISTORY",
+    "ACCOUNT_USAGE.SNOWPIPE_STREAMING_CLIENT_HISTORY",
+    "ACCOUNT_USAGE.SNOWPIPE_STREAMING_FILE_MIGRATION_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 50,
+    "crit_usd": 500,
+    "warn_growth_pct": 50,
+    "min_growth_usd": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_obj_broken_views": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.OBJECT_DEPENDENCIES",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.FUNCTIONS",
+    "ACCOUNT_USAGE.DATABASES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_obj_catalog_linked_db_cost": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CATALOG_LINKED_DATABASE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 20,
+    "crit_usd": 200,
+    "warn_increase_pct": 50
+   },
+   "needs_enterprise": true
+  },
+  "sf_obj_external_tables": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [
+    "SHOW EXTERNAL TABLES IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.EXTERNAL TABLES",
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "stale_days": 7
+   },
+   "needs_enterprise": false
+  },
+  "sf_obj_hybrid_tables": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.HYBRID_TABLE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 50,
+    "crit_usd": 500
+   },
+   "needs_enterprise": true
+  },
+  "sf_obj_iceberg_compaction_cost": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ICEBERG_STORAGE_OPTIMIZATION_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "warn_usd": 25,
+    "crit_usd": 250,
+    "warn_usd_per_read": 0.5,
+    "warn_usd_per_tb": 50,
+    "warn_growth_pct": 50,
+    "min_growth_usd": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_obj_iceberg_tables": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [
+    "SHOW ICEBERG TABLES IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.ICEBERG TABLES",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "stale_days": 7
+   },
+   "needs_enterprise": false
+  },
+  "sf_obj_streamlit_notebooks": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [
+    "SHOW STREAMLITS IN ACCOUNT",
+    "SHOW NOTEBOOKS IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.STREAMLITS",
+    "SHOW.NOTEBOOKS",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {
+    "warn_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_obj_udfs_procedures": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.FUNCTIONS",
+    "ACCOUNT_USAGE.PROCEDURES",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_org_account_inventory": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.ACCOUNTS",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "new_account_days": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_cloud_services_billed_by_account": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.METERING_DAILY_HISTORY",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "warn_amount": 100,
+    "crit_amount": 1000,
+    "warn_ratio_pct": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_daily_spikes_by_account": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "spike_ratio": 2,
+    "crit_ratio": 5,
+    "baseline_days": 14,
+    "min_baseline_days": 7,
+    "min_amount": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_data_transfer_by_account": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.DATA_TRANSFER_HISTORY",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "warn_amount": 50,
+    "crit_amount": 500,
+    "warn_growth_pct": 50,
+    "warn_cross_cloud_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_dormant_accounts": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.ACCOUNTS",
+    "ORGANIZATION_USAGE.METERING_DAILY_HISTORY",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY",
+    "ORGANIZATION_USAGE.STORAGE_DAILY_HISTORY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "dormant_credits": 1,
+    "warn_amount": 50,
+    "crit_amount": 500
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_edition_fit": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.ACCOUNTS",
+    "ORGANIZATION_USAGE.METERING_DAILY_HISTORY",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "min_amount": 500
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_listing_auto_fulfillment": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.LISTING_AUTO_FULFILLMENT_USAGE_HISTORY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "warn_amount": 100,
+    "crit_amount": 1000,
+    "warn_growth_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_login_activity_by_account": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.ACCOUNTS",
+    "ORGANIZATION_USAGE.LOGIN_HISTORY"
+   ],
+   "params": {
+    "warn_failed_pct": 20,
+    "crit_failed_pct": 50,
+    "min_logins": 20,
+    "warn_password_only_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_overage_and_adjustments": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "recent_days": 7,
+    "warn_amount": 100,
+    "crit_amount": 1000
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_region_spread": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.ACCOUNTS",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY",
+    "ORGANIZATION_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "warn_transfer_share_pct": 10,
+    "crit_transfer_share_pct": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_replication_cost": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.REPLICATION_USAGE_HISTORY",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "warn_amount": 100,
+    "crit_amount": 1000,
+    "warn_growth_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_security_posture_by_account": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.ACCOUNTS",
+    "ORGANIZATION_USAGE.USERS",
+    "ORGANIZATION_USAGE.TRUST_CENTER_FINDINGS"
+   ],
+   "params": {
+    "stale_days": 90,
+    "crit_share": 0.5
+   },
+   "needs_enterprise": true
+  },
+  "sf_org_serverless_by_account": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.METERING_DAILY_HISTORY",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "warn_amount": 100,
+    "crit_amount": 1000,
+    "warn_growth_pct": 50,
+    "warn_share_pct": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_spend_by_account": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY",
+    "ORGANIZATION_USAGE.ACCOUNTS"
+   ],
+   "params": {
+    "settle_days": 3,
+    "min_amount": 100,
+    "warn_growth_pct": 25,
+    "crit_growth_pct": 100,
+    "warn_share_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_spend_by_account_and_service": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "min_amount": 50,
+    "warn_growth_pct": 50,
+    "crit_growth_pct": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_storage_by_account": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.STORAGE_DAILY_HISTORY",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "settle_days": 3,
+    "min_tb": 1,
+    "warn_growth_pct": 20,
+    "crit_growth_pct": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_org_warehouse_spend_across_accounts": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ORGANIZATION_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ORGANIZATION_USAGE.METERING_DAILY_HISTORY",
+    "ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY"
+   ],
+   "params": {
+    "top_n": 50,
+    "settle_days": 3,
+    "warn_share_pct": 20,
+    "warn_growth_pct": 50,
+    "crit_growth_pct": 150,
+    "min_credits": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_perf_high_frequency_tail_latency": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.AGGREGATE_QUERY_HISTORY"
+   ],
+   "params": {
+    "min_calls": 10000,
+    "warn_p99_ms": 5000,
+    "crit_p99_ms": 30000,
+    "warn_queued_pct": 10,
+    "crit_queued_pct": 30,
+    "crit_throttled_pct": 1
+   },
+   "needs_enterprise": false
+  },
+  "sf_perf_query_insights_by_warehouse": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_INSIGHTS",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "min_queries": 5,
+    "warn_share_pct": 10,
+    "crit_share_pct": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_perf_query_insights_opportunities": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_INSIGHTS",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 25,
+    "crit_usd": 250
+   },
+   "needs_enterprise": false
+  },
+  "sf_perf_query_retries": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "min_retry_hours": 1,
+    "warn_retry_pct": 5,
+    "crit_retry_pct": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_perf_query_shape_regression": {
+   "domain": "performance",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "lookback_days": 30,
+    "recent_days": 7,
+    "min_runs": 5,
+    "min_p50_seconds": 10,
+    "warn_growth_pct": 50,
+    "crit_growth_pct": 150
+   },
+   "needs_enterprise": false
+  },
+  "sf_perf_table_pruning_regression": {
+   "domain": "performance",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_PRUNING_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "lookback_days": 56,
+    "min_partitions": 100000,
+    "min_baseline_blocks": 3,
+    "warn_drop_pts": 15,
+    "crit_drop_pts": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_perf_table_scan_selectivity": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_QUERY_PRUNING_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "min_rows_scanned": 100000000,
+    "min_queries": 10,
+    "warn_matched_pct": 1,
+    "crit_matched_pct": 0.1,
+    "crit_usd": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_pipe_cost_and_files": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.PIPE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.PIPES"
+   ],
+   "params": {
+    "warn_usd": 50,
+    "crit_usd": 500,
+    "min_avg_file_mb": 10,
+    "min_files": 1000,
+    "warn_growth_pct": 50,
+    "min_growth_usd": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_pipe_inactive": {
+   "domain": "jobs_pipelines",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.PIPES",
+    "ACCOUNT_USAGE.PIPE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.COPY_HISTORY"
+   ],
+   "params": {
+    "stale_days": 7,
+    "lookback_days": 90
+   },
+   "needs_enterprise": false
+  },
+  "sf_pipe_invalid_or_unnotified": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW PIPES IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.PIPES",
+    "ACCOUNT_USAGE.PIPES",
+    "ACCOUNT_USAGE.COPY_HISTORY"
+   ],
+   "params": {
+    "crit_failed_files": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_qry_daily_by_warehouse": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA.QUERY_HISTORY (table function)",
+    "note": "last 7 days at most, only the queries this role can see; no spill or cache figures"
+   }
+  },
+  "sf_query_blocked_lock_waits": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.LOCK_WAIT_HISTORY"
+   ],
+   "params": {
+    "warn_wait_minutes": 30,
+    "crit_wait_minutes": 600,
+    "crit_max_wait_minutes": 60
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_by_client_application": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_credits": 50,
+    "crit_credits": 500,
+    "warn_untagged_pct": 80,
+    "warn_failed_pct": 10,
+    "min_queries": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_compilation_heavy": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "min_runs": 20,
+    "warn_compile_pct": 50,
+    "min_compile_hours": 1,
+    "crit_compile_hours": 10,
+    "warn_cs_credits": 5,
+    "crit_cs_credits": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_cost_by_statement_type": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_query_failed_by_error": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_failures": 50,
+    "crit_failures": 1000,
+    "warn_credits": 5,
+    "crit_credits": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_full_scans": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "min_partitions": 1000,
+    "scan_pct": 80,
+    "min_runs": 5,
+    "warn_credits": 10,
+    "crit_credits": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_large_result_sets": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.SESSIONS"
+   ],
+   "params": {
+    "min_rows": 1000000,
+    "min_result_gb": 1,
+    "warn_result_gb": 50,
+    "crit_result_gb": 1000
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_long_running": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_hours": 1,
+    "crit_hours": 8,
+    "crit_credits": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_remote_spill": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_remote_gb": 10,
+    "crit_remote_gb": 500,
+    "crit_credits": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_repeated_expensive": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "min_runs": 20,
+    "warn_credits": 20,
+    "crit_credits": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_query_result_cache_misses": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "reuse_window_hours": 24,
+    "min_misses": 10,
+    "warn_credits": 5,
+    "crit_credits": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_repl_group_health": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW REPLICATION GROUPS"
+   ],
+   "sources": [
+    "SHOW.REPLICATION GROUPS",
+    "ACCOUNT_USAGE.REPLICATION_GROUP_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.REPLICATION_GROUP_USAGE_HISTORY",
+    "ACCOUNT_USAGE.DATABASE_REPLICATION_USAGE_HISTORY"
+   ],
+   "params": {
+    "warn_lag_hours": 24,
+    "crit_lag_hours": 72,
+    "warn_usd": 100,
+    "crit_usd": 1000
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_account_security_settings": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW PARAMETERS IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.PARAMETERS"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_sec_admin_role_holders": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "max_accountadmins": 5,
+    "stale_days": 90
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_data_movement_violations": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DATA_MOVEMENT_VIOLATIONS",
+    "ACCOUNT_USAGE.DATA_MOVEMENT_POLICIES",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "warn_blocked": 5
+   },
+   "needs_enterprise": true
+  },
+  "sf_sec_failed_logins": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "warn_failures": 10,
+    "crit_failures": 50,
+    "spray_users": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_failover_readiness": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW REPLICATION GROUPS"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.REPLICATION_GROUPS",
+    "SHOW.REPLICATION GROUPS",
+    "ACCOUNT_USAGE.NETWORK_POLICIES"
+   ],
+   "params": {},
+   "needs_enterprise": true
+  },
+  "sf_sec_native_app_permissions": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.APPLICATION_SPECIFICATIONS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.APPLICATION_DAILY_USAGE_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_sec_network_policy_coverage": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW PARAMETERS LIKE 'NETWORK_POLICY' IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.PARAMETERS",
+    "ACCOUNT_USAGE.NETWORK_POLICIES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_sec_network_policy_unattached": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW PARAMETERS LIKE 'NETWORK_POLICY' IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.PARAMETERS",
+    "ACCOUNT_USAGE.NETWORK_POLICIES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "min_age_days": 14
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_new_login_sources": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "baseline_days": 90
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_outbound_privatelink_endpoints": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.OUTBOUND_PRIVATELINK_ENDPOINTS",
+    "ACCOUNT_USAGE.NETWORK_RULES",
+    "ACCOUNT_USAGE.EXTERNAL_ACCESS_HISTORY"
+   ],
+   "params": {
+    "min_age_days": 14
+   },
+   "needs_enterprise": true
+  },
+  "sf_sec_password_service_users": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.LOGIN_HISTORY"
+   ],
+   "params": {
+    "min_driver_logins": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_privatelink_bypass": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.INGRESS_NETWORK_ACCESS_HISTORY",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "min_private_share": 0.5
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_privileged_grant_changes": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_sec_security_config_changes": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_sec_stale_users": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "stale_days": 90,
+    "crit_stale_days": 180
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_trust_center_finding_age": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TRUST_CENTER_FINDINGS"
+   ],
+   "params": {
+    "crit_open_days": 14,
+    "warn_open_days": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_trust_center_findings": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "TRUST_CENTER.FINDINGS"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_sec_usage_view_access": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.ROLES",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "warn_users": 10,
+    "critical_users": 25
+   },
+   "needs_enterprise": false
+  },
+  "sf_sec_users_without_mfa": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "warn_password_logins": 1
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_authentication_policy_posture": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW AUTHENTICATION POLICIES ON ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.AUTHENTICATION POLICIES"
+   ],
+   "params": {
+    "max_pat_days": 90
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_direct_user_grants": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "warn_direct_roles": 8,
+    "crit_direct_roles": 20,
+    "warn_personal_privileges": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_external_access_calls": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.EXTERNAL_ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+   ],
+   "params": {
+    "warn_sent_mb": 100,
+    "crit_sent_mb": 10000,
+    "crit_denied": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_grant_option": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.SCHEMATA",
+    "ACCOUNT_USAGE.TAG_REFERENCES"
+   ],
+   "params": {
+    "warn_grants": 1,
+    "crit_sensitive_objects": 1
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_key_and_password_age": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "max_password_days": 180
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_key_pair_age": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.CREDENTIALS",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "max_age_days": 180,
+    "stale_days": 90
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_login_client_versions": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "FUNCTION.SYSTEM$CLIENT_VERSION_INFO"
+   ],
+   "params": {
+    "max_users_listed": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_network_rule_exposure": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.NETWORK_RULES",
+    "ACCOUNT_USAGE.NETWORK_RULE_REFERENCES"
+   ],
+   "params": {
+    "wide_ipv4_prefix": 16
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_password_policy_posture": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [
+    "SHOW PASSWORD POLICIES ON ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.PASSWORD POLICIES",
+    "ACCOUNT_USAGE.PASSWORD_POLICIES",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "min_length": 14,
+    "max_age_days": 365,
+    "max_retries": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_pat_hygiene": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [
+    "SHOW PARAMETERS LIKE 'NETWORK_POLICY' IN ACCOUNT"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.CREDENTIALS",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.POLICY_REFERENCES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES",
+    "SHOW.PARAMETERS"
+   ],
+   "params": {
+    "max_pat_days": 90,
+    "unused_days": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_policy_body_exemptions": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.MASKING_POLICIES",
+    "ACCOUNT_USAGE.ROW_ACCESS_POLICIES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES",
+    "ACCOUNT_USAGE.ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {
+    "warn_exempt_users": 25
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_secondary_roles_usage": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "warn_roles": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_secrets_hygiene": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SECRETS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {
+    "max_secret_days": 180,
+    "warn_usage_roles": 3
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_sensitive_lineage_untagged": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {},
+   "needs_enterprise": true
+  },
+  "sf_secx_session_policy_coverage": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SESSION_POLICIES",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_secx_sso_oauth_integrations": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [
+    "SHOW SECURITY INTEGRATIONS"
+   ],
+   "sources": [
+    "SHOW.SECURITY INTEGRATIONS",
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "warn_password_pct": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_unused_policies": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.MASKING_POLICIES",
+    "ACCOUNT_USAGE.ROW_ACCESS_POLICIES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES",
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "min_age_days": 14
+   },
+   "needs_enterprise": false
+  },
+  "sf_secx_user_auth_state": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_share_inbound_databases": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [
+    "SHOW DATABASES"
+   ],
+   "sources": [
+    "SHOW.DATABASES",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_share_reader_accounts": {
+   "domain": "cost",
+   "windowed": true,
+   "pre": [
+    "SHOW MANAGED ACCOUNTS"
+   ],
+   "sources": [
+    "SHOW.MANAGED ACCOUNTS",
+    "READER_ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "READER_ACCOUNT_USAGE.LOGIN_HISTORY",
+    "READER_ACCOUNT_USAGE.RESOURCE_MONITORS"
+   ],
+   "params": {
+    "warn_usd": 50,
+    "crit_usd": 500
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_archive_retrieval": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ARCHIVE_STORAGE_DATA_RETRIEVAL_USAGE_HISTORY",
+    "ACCOUNT_USAGE.METERING_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE"
+   ],
+   "params": {
+    "warn_retrieval_days": 3,
+    "warn_gb": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_backup_snapshot": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.BACKUP_STORAGE_USAGE",
+    "ACCOUNT_USAGE.BACKUP_SETS",
+    "ACCOUNT_USAGE.SNAPSHOT_STORAGE_USAGE",
+    "ACCOUNT_USAGE.SNAPSHOT_SETS"
+   ],
+   "params": {
+    "min_usd_month": 5,
+    "crit_usd_month": 500
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_churn_unread": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_DML_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "min_rows": 1000000,
+    "crit_usd": 100
+   },
+   "needs_enterprise": true
+  },
+  "sf_storage_clone_retained_bytes": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS"
+   ],
+   "params": {
+    "min_gb": 1,
+    "warn_usd": 10,
+    "crit_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_clustering_candidates": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.COLUMN_QUERY_PRUNING_HISTORY",
+    "ACCOUNT_USAGE.SEARCH_OPTIMIZATION_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "lookup_match_pct": 5,
+    "min_table_gb": 100,
+    "min_queries": 50,
+    "poor_scan_pct": 80,
+    "warn_hours": 5,
+    "crit_hours": 50
+   },
+   "needs_enterprise": true
+  },
+  "sf_storage_clustering_key_mismatch": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY",
+    "ACCOUNT_USAGE.COLUMN_QUERY_PRUNING_HISTORY",
+    "ACCOUNT_USAGE.TABLE_QUERY_PRUNING_HISTORY",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "min_share_pct": 50,
+    "warn_usd": 25,
+    "crit_usd": 250
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_clustering_value": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "min_reads": 100,
+    "poor_scan_pct": 50,
+    "recluster_ratio": 2,
+    "warn_usd": 25,
+    "crit_usd": 250
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_dropped_not_purged": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.DATABASES",
+    "ACCOUNT_USAGE.SCHEMATA"
+   ],
+   "params": {
+    "min_gb": 1,
+    "churn_instances": 5,
+    "warn_usd": 10,
+    "crit_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_failsafe_on_staging": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "min_failsafe_gb": 5,
+    "churn_ratio": 1.0,
+    "warn_usd": 10,
+    "crit_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_growth_by_database": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY"
+   ],
+   "params": {
+    "min_usd": 10,
+    "warn_growth_pct": 20,
+    "crit_growth_pct": 50,
+    "crit_added_usd": 100
+   },
+   "needs_enterprise": false,
+   "fallback": {
+    "pre": [],
+    "reads": "INFORMATION_SCHEMA.DATABASE_STORAGE_USAGE_HISTORY (table function)",
+    "note": "needs ACCOUNTADMIN or MONITOR USAGE; the database name stands in for its id; no drop dates"
+   }
+  },
+  "sf_storage_lifecycle_policy_failures": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.STORAGE_LIFECYCLE_POLICY_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_LIFECYCLE_POLICIES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "stale_days": 3,
+    "crit_failures": 3,
+    "min_policy_age_days": 7
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_mv_value": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.MATERIALIZED_VIEW_REFRESH_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS"
+   ],
+   "params": {
+    "min_reads": 30,
+    "warn_usd": 10,
+    "crit_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_oldest_untouched_tables": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "stale_days": 365,
+    "min_gb": 1,
+    "top_n": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_retention_policy": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.DATABASES"
+   ],
+   "params": {
+    "max_retention_days": 7,
+    "warn_usd": 10,
+    "crit_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_schema_sprawl": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.SCHEMATA",
+    "ACCOUNT_USAGE.DATABASES"
+   ],
+   "params": {
+    "idle_days": 90,
+    "min_tables": 20,
+    "warn_unread_pct": 50,
+    "crit_unread_pct": 80,
+    "crit_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_search_optimization_value": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.SEARCH_OPTIMIZATION_HISTORY",
+    "ACCOUNT_USAGE.SEARCH_OPTIMIZATION_BENEFITS",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "min_reads": 100,
+    "poor_scan_pct": 50,
+    "warn_usd": 25,
+    "crit_usd": 250
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_stage_bytes": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.STAGE_STORAGE_USAGE_HISTORY",
+    "ACCOUNT_USAGE.STORAGE_USAGE",
+    "ACCOUNT_USAGE.STAGES"
+   ],
+   "params": {
+    "stale_days": 90,
+    "warn_usd": 10,
+    "crit_usd": 100,
+    "warn_share_pct": 20,
+    "min_share_gb": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_stale_stage_files": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.STAGE_STORAGE_USAGE_DETAILS",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "stale_days": 60,
+    "warn_usd_month": 5,
+    "crit_usd_month": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_time_travel_heavy": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "min_tt_gb": 10,
+    "warn_tt_pct": 50,
+    "warn_usd": 25,
+    "crit_usd": 250
+   },
+   "needs_enterprise": false
+  },
+  "sf_storage_unused_tables": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "idle_days": 90,
+    "min_gb": 1,
+    "warn_usd": 10,
+    "crit_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_stream_consumers": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW STREAMS IN ACCOUNT",
+    "SHOW TASKS IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.STREAMS",
+    "SHOW.TASKS",
+    "ACCOUNT_USAGE.TASK_HISTORY"
+   ],
+   "params": {
+    "crit_consecutive_failures": 3,
+    "crit_days_to_stale": 2
+   },
+   "needs_enterprise": false
+  },
+  "sf_stream_stale": {
+   "domain": "jobs_pipelines",
+   "windowed": false,
+   "pre": [
+    "SHOW STREAMS IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.STREAMS",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "warn_days_to_stale": 5,
+    "crit_days_to_stale": 2,
+    "idle_days": 14
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_alerts": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ALERT_HISTORY",
+    "ACCOUNT_USAGE.SERVERLESS_ALERT_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "warn_failure_pct": 5,
+    "crit_failure_pct": 25,
+    "crit_consecutive_failures": 3,
+    "warn_usd": 20,
+    "crit_usd": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_alerts_silenced": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW ALERTS IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.ALERTS",
+    "ACCOUNT_USAGE.ALERT_HISTORY"
+   ],
+   "params": {
+    "stale_days": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_cost": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.SERVERLESS_TASK_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS"
+   ],
+   "params": {
+    "warn_usd": 50,
+    "crit_usd": 500,
+    "warn_growth_pct": 50,
+    "min_growth_usd": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_duration_regression": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS"
+   ],
+   "params": {
+    "min_runs": 5,
+    "min_p50_seconds": 30,
+    "warn_growth_pct": 50,
+    "crit_growth_pct": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_failure_attributes": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_task_failures": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS"
+   ],
+   "params": {
+    "warn_failure_pct": 5,
+    "crit_failure_pct": 25,
+    "crit_consecutive_failures": 3
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_graph_health": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.COMPLETE_TASK_GRAPHS"
+   ],
+   "params": {
+    "warn_failure_pct": 5,
+    "crit_failure_pct": 25,
+    "crit_consecutive_failures": 3,
+    "warn_growth_pct": 50,
+    "min_runs": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_noop_runs": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "min_runs": 10,
+    "warn_noop_pct": 50,
+    "crit_noop_pct": 90,
+    "warn_usd": 5,
+    "crit_usd": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_ownership_orphans": {
+   "domain": "jobs_pipelines",
+   "windowed": false,
+   "pre": [
+    "SHOW TASKS IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.TASKS",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "warn_orphan_tasks": 5,
+    "crit_orphan_tasks": 20
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_run_times": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.SERVERLESS_TASK_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_task_runs_daily": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS"
+   ],
+   "params": {
+    "slow_factor": 2
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_silent_failures": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASKS",
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "crit_failed_runs": 3
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_skipped_overlaps": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS"
+   ],
+   "params": {
+    "warn_skip_pct": 10,
+    "crit_skip_pct": 30,
+    "warn_duration_to_interval_pct": 80,
+    "min_scheduled_runs": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_start_delay": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS"
+   ],
+   "params": {
+    "late_s": 60,
+    "warn_p90_s": 300,
+    "crit_p90_s": 1800,
+    "min_runs": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_suspended_or_stale": {
+   "domain": "jobs_pipelines",
+   "windowed": false,
+   "pre": [
+    "SHOW TASKS IN ACCOUNT"
+   ],
+   "sources": [
+    "SHOW.TASKS",
+    "ACCOUNT_USAGE.TASK_HISTORY"
+   ],
+   "params": {
+    "stale_days": 14
+   },
+   "needs_enterprise": false
+  },
+  "sf_task_warehouse_vs_serverless": {
+   "domain": "jobs_pipelines",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.TASK_VERSIONS",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "short_seconds": 60,
+    "min_runs_per_day": 4,
+    "min_task_query_share_pct": 50,
+    "warn_idle_pct": 40,
+    "warn_usd": 20,
+    "crit_usd": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_use_database_activity": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.SCHEMATA",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLE_DML_HISTORY"
+   ],
+   "params": {
+    "warn_usd": 10,
+    "crit_usd": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_use_query_type_mix": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+   ],
+   "params": {
+    "min_queries": 1000,
+    "warn_metadata_pct": 50,
+    "crit_metadata_pct": 80,
+    "warn_cs_usd": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_use_table_churn": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_DML_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "min_rows": 100000,
+    "warn_churn_x": 0.5,
+    "warn_usd": 25,
+    "crit_usd": 250
+   },
+   "needs_enterprise": false
+  },
+  "sf_use_unused_clones": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {
+    "idle_days": 30,
+    "old_clone_days": 90,
+    "warn_usd": 5,
+    "crit_usd": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_use_user_activity": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS"
+   ],
+   "params": {
+    "idle_days": 90,
+    "heavy_share_pct": 10,
+    "crit_roles": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_adaptive_attribution": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_METERING_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {
+    "top_users": 50,
+    "warn_unattributed_pct": 20,
+    "min_usd": 10
+   },
+   "needs_enterprise": true
+  },
+  "sf_wh_auto_suspend_tuning": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "warn_saving_credits": 20,
+    "crit_saving_credits": 200,
+    "min_gaps": 20,
+    "warm_cache_pct": 50,
+    "warm_repeat_pct": 50,
+    "warm_gap_s": 300
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_config_current": {
+   "domain": "compute",
+   "windowed": false,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "SHOW.WAREHOUSES",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_wh_config_posture": {
+   "domain": "compute",
+   "windowed": false,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "SHOW.WAREHOUSES",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_wh_consolidation_candidates": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "max_hour_load": 0.5,
+    "max_combined_load": 1,
+    "warn_shared_hours": 50,
+    "warn_saving_credits": 20,
+    "crit_saving_credits": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_gen2_fit": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "dml_pct": 50,
+    "min_days": 3,
+    "warn_cost_up_pct": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_idle_minutes": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_idle_minutes": 30,
+    "warn_idle_pct": 30,
+    "crit_idle_pct": 60,
+    "warn_waste_usd": 20,
+    "crit_waste_usd": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_keepalive_pollers": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_runs_per_day": 12,
+    "max_exec_ms": 1000,
+    "warn_credits": 10,
+    "crit_credits": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_last_activity": {
+   "domain": "compute",
+   "windowed": false,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "SHOW.WAREHOUSES",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "lookback_days": 365,
+    "warn_idle_days": 90,
+    "min_age_days": 30,
+    "credits_days": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_load_utilization": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_credits": 20,
+    "warn_low_load": 0.5,
+    "crit_low_load": 0.2,
+    "crit_min_credits": 200,
+    "low_hour_load": 0.25,
+    "warn_queued_pct": 10
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_mixed_workload_contention": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "pipeline_hour_pct": 50,
+    "min_queued": 30,
+    "min_quiet_reads": 100,
+    "warn_lift": 2,
+    "crit_lift": 4
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_multicluster_scaling": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "queued_load_min": 0.1,
+    "warn_queued_pct": 5,
+    "crit_queued_pct": 20,
+    "low_extra_cluster_pct": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_oversized": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_credits_per_hour": 8,
+    "small_scan_gb": 1,
+    "small_exec_s": 10,
+    "min_queries": 200,
+    "warn_small_pct": 90,
+    "crit_small_pct": 97,
+    "warn_saving_credits": 50,
+    "crit_saving_credits": 500,
+    "max_spilling_pct": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_query_acceleration_eligible": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ACCELERATION_ELIGIBLE",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_eligible_hours": 1,
+    "warn_eligible_pct": 10,
+    "crit_eligible_pct": 30
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_query_acceleration_spend": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_ACCELERATION_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "warn_share_pct": 25,
+    "crit_share_pct": 75,
+    "warn_credits": 50,
+    "crit_credits": 500
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_resize_left_upsized": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+   ],
+   "params": {
+    "min_days": 7,
+    "warn_usd": 50,
+    "crit_usd": 500
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_resume_churn": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_short_runs": 20,
+    "warn_short_pct": 25,
+    "crit_credits": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_snowpark_optimized_fit": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_snowpark_pct": 10,
+    "min_spill_pct": 5,
+    "warn_credits": 10,
+    "crit_credits": 100
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_spend_monthly": {
+   "domain": "cost",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_wh_starts_resumes": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "warn_resumes_per_day": 200
+   },
+   "needs_enterprise": false
+  },
+  "sf_wh_state_daily": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_wh_undersized": {
+   "domain": "compute",
+   "windowed": true,
+   "pre": [
+    "SHOW WAREHOUSES"
+   ],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "SHOW.WAREHOUSES"
+   ],
+   "params": {
+    "min_queries": 20,
+    "warn_remote_spill_queries": 5,
+    "crit_remote_spill_gb": 100,
+    "warn_spill_time_pct": 20,
+    "crit_spill_time_pct": 50,
+    "long_exec_min": 30
+   },
+   "needs_enterprise": false
+  },
+  "table_inventory_type": {
+   "domain": "storage",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  }
+ },
+ "tag_sources": {
+  "query_tag_credits": true,
+  "query_tag_perf": true,
+  "service_cost": true,
+  "tag_refs": false,
+  "warehouse_cost": true
+ },
+ "dims": [
+  "dim_account",
+  "dim_database",
+  "dim_task",
+  "dim_user",
+  "dim_warehouse"
+ ]
+}

@@ -1,0 +1,37 @@
+/* web/src/styles/css/p_area_ai_storage.css -- the AI & apps and Storage sub-tab pages
+   (components/area_ai_storage.tsx). Tokens only, on top of c_blocks.css. */
+
+.ais-page > .summary-tile-row { margin-bottom: 14px; }
+
+/* A tile's sparkline above its one-line cause. */
+.issue-tile-cause .ais-spark-cause { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
+.issue-tile-cause .ais-spark-cause .summary-tile-spark { display: block; height: 28px; }
+
+/* Now and before as two stacked bars, the second slimmer. */
+.ais-stack-pair { display: flex; flex-direction: column; gap: 14px; }
+
+/* Value column of the page's own bar lists: wide enough for "$1,234 · up 100%". */
+.ais-value { min-width: 96px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+
+/* Retention bands: one 100% bar per database. */
+.ais-bands { display: flex; flex-direction: column; gap: 4px; }
+.ais-bands > .blk-legend { margin-bottom: 4px; }
+.ais-band-bar {
+  flex: 1 1 auto; min-width: 40px; height: 16px; display: flex; overflow: hidden;
+  border-radius: 4px; background: var(--surface-2);
+}
+.ais-band-seg { display: block; height: 100%; min-width: 1px; box-shadow: inset -1px 0 0 var(--surface); }
+
+@media (max-width: 700px) {
+  .ais-value { min-width: 0; }
+}
+
+/* A Day/Month or view switch above a card's chart. */
+.ais-grain-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+
+/* Oldest untouched tables on a phone: keep how long and how big, drop database, schema, type and dates. */
+@media (max-width: 700px) {
+  .ais-oldest .dt-tr { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .ais-oldest .dt-tr > span:nth-child(2) { display: none; }
+  .ais-oldest .dt-tr > span:nth-child(7), .ais-oldest .dt-tr > span:nth-child(8) { display: block; }
+}

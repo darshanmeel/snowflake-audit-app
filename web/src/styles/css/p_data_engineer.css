@@ -1,0 +1,40 @@
+/* web/src/styles/css/p_data_engineer.css -- the Data engineer pages: warehouse load bands, the query
+   pattern table (scrolls inside its own box on a phone) and the small lists of the task, query,
+   warehouse and loading pages. Tokens only, so dark mode is a token swap. */
+
+.de-more { margin-top: 10px; font-size: 12.5px; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.de-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c-other); flex: none; }
+.de-dot.crit { background: var(--st-crit); }
+.de-dot.warn { background: var(--st-warn); }
+
+/* Query patterns */
+.de-qp-box { border: 1px solid var(--border-subtle); border-radius: 8px; }
+.de-qp { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13px; }
+.de-qp th { font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.de-qp td { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+.de-qp tr:last-child td { border-bottom: 0; }
+.de-qp .num { text-align: right; font-family: var(--f-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.de-qp th.num { text-align: right; }
+.de-sort { background: none; border: 0; padding: 0; min-height: 28px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
+.de-sort.on { color: var(--text); }
+.de-qp-shape { display: grid; grid-template-columns: 8px minmax(0, 1fr); column-gap: 8px; align-items: center; max-width: 360px; }
+.de-qp-shape .de-dot { grid-row: 1; }
+.de-qp-sub { grid-column: 2; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Tiles: 3-4 across, stacking on a phone */
+.summary-tile-row.de-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; margin-bottom: 16px; background: none; border: 0; }
+.de-tiles > .summary-tile { min-width: 0; margin: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 18px 20px; }
+.de-tiles > .summary-tile.is-missing, .de-tiles > .summary-tile.sev-not_assessed { border-style: dashed; border-color: var(--border-strong); background: var(--surface-2); }
+
+/* Clusters allowed vs used */
+.de-cl-list { display: flex; flex-direction: column; }
+.de-cl-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(60px, auto) minmax(0, 1.2fr) 64px; gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--border-subtle); font-size: 13px; }
+.de-cl-row:first-child { border-top: 0; }
+.de-cl-head { font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.de-cl-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.de-cl-set { font-family: var(--f-mono); font-size: 12px; color: var(--text-2); }
+.de-cl-q { font-family: var(--f-mono); font-size: 12.5px; text-align: right; }
+@media (max-width: 700px) {
+  .de-cl-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .de-cl-set { grid-column: 1 / -1; }
+}

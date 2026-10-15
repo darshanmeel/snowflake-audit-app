@@ -1,0 +1,5 @@
+# Threshold overrides ONLY -- shape: {<query_id>: {<param>: value}, _all: {<param>: value}}.
+# The export looks up [query_id][name], then ['_all'][name], then the check's own header default;
+# first match wins. An empty file is valid: every threshold not listed here falls through to its
+# header default. The Settings page renders its editor from the registry's params, not from this
+# file's keys alone.

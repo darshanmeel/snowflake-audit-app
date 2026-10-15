@@ -1,0 +1,11 @@
+/* web/src/styles/css/p_ai_cortex_agents.css -- the Analyst, Agents and Code panel on AI > Cortex
+   (components/ai_cortex_agents.tsx). Spacing only; the look comes from the shared blocks. */
+
+.cxa-panel > .summary-tile-row { margin-bottom: 14px; }
+.cxa-panel { margin-bottom: 14px; }
+.cxa-block { min-width: 0; }
+.cxa-block-title { display: block; margin-bottom: 8px; }
+.cxa-users { margin-top: 4px; }
+/* Small credit figures are long: wrap the headline and detail line rather than cut the unit off. */
+.cxa-panel .issue-tile .summary-tile-value { white-space: normal; }
+.cxa-panel .issue-tile-cause { white-space: normal; }

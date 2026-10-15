@@ -1,0 +1,65 @@
+/* web/src/styles/css/c_landing.css -- the CFO Money page, the FinOps and Governance Overviews and the
+   role parts of Fix these first: tile grids, the small drill-down tables and the "forward" strip.
+   Tokens only, so dark mode is a token swap. Loaded after c_pattern.css. */
+
+/* ─────────── Tile grids: 3 across (6 tiles), 5 across (governance); stack on a phone ─────────── */
+.summary-tile-row.ln-tiles-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.summary-tile-row.ln-tiles-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.exec .ln-tiles-5 .summary-tile-value { font-size: 30px; }
+@media (max-width: 1200px) { .summary-tile-row.ln-tiles-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .summary-tile-row.ln-tiles-3, .summary-tile-row.ln-tiles-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .summary-tile-row.ln-tiles-3, .summary-tile-row.ln-tiles-5 { grid-template-columns: minmax(0, 1fr); } }
+.issue-tile-chart { margin-top: 10px; }
+
+/* ─────────── Drill-down table: name (id) · mono figures; a row opens the drawer ─────────── */
+.ln-table { display: flex; flex-direction: column; overflow-x: auto; }
+.ln-tr {
+  display: grid; grid-template-columns: minmax(140px, 2fr) repeat(3, minmax(64px, 1fr)); gap: 12px; align-items: center;
+  width: 100%; min-height: 44px; padding: 6px 8px; margin: 0; border: 0; border-top: 1px solid var(--border-subtle);
+  background: none; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; border-radius: 8px;
+}
+.ln-mfa .ln-tr { grid-template-columns: minmax(140px, 2fr) minmax(90px, 1.2fr) repeat(3, minmax(56px, .8fr)); }
+.ln-tr:hover { background: var(--surface-2); }
+.ln-tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.ln-th, .ln-th:hover { cursor: default; background: none; min-height: 28px; border-top: 0; font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.ln-th > span:not(:first-child), .ln-num { text-align: right; }
+.ln-num { font-family: var(--f-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ln-name { display: flex; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; }
+.ln-name .b2-nameid { overflow: hidden; text-overflow: ellipsis; }
+.ln-role { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border-radius: 6px; font-family: var(--f-mono); font-size: 11px; background: var(--surface-3); color: var(--text-2); }
+.ln-role.is-admin { background: var(--st-crit-tint); color: var(--st-crit-ink); }
+.ln-mfa .ln-tr > span:nth-child(2) { text-align: left; }
+@media (max-width: 700px) {
+  .ln-tr, .ln-mfa .ln-tr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .ln-tr > span:nth-child(n+3) { display: none; }
+  .ln-th { display: none; }
+}
+
+/* ─────────── Money: the forward strip and the contract runway ─────────── */
+.ln-forward-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ln-btn {
+  flex: none; min-height: 36px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--text); background: var(--text);
+  color: var(--surface); font: inherit; font-size: 13px; cursor: pointer;
+}
+.ln-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ln-forward .b2-statstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 520px) { .ln-forward .b2-statstrip { grid-template-columns: minmax(0, 1fr); } .ln-forward-head { flex-wrap: wrap; } }
+.ln-runway { display: flex; flex-direction: column; gap: 10px; }
+.ln-runway-bar { position: relative; height: 14px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.ln-runway-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--c1); }
+.ln-runway-gap { position: absolute; top: 0; bottom: 0; background: var(--hatch); border-left: 1px dashed var(--border-strong); }
+.ln-runway-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-3); }
+.ln-notlist { margin-top: 14px; }
+.ln-notlist-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 12px; align-items: center; width: 100%; min-height: 44px;
+  padding: 6px 8px; margin: 0; border: 0; border-top: 1px solid var(--border-subtle); background: none; color: var(--text);
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer; border-radius: 8px;
+}
+.ln-notlist-row:hover { background: var(--surface-2); }
+.ln-notlist-base { font-family: var(--f-mono); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+@media (max-width: 700px) {
+  .ln-notlist-row { grid-template-columns: auto minmax(0, 1fr); }
+  .ln-notlist-base { grid-column: 2; white-space: normal; }
+  .ln-notlist-row .al-open { display: none; }
+}
+@media print { .ln-btn { display: none; } }

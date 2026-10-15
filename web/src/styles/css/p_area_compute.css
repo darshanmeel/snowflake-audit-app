@@ -1,0 +1,144 @@
+/* web/src/styles/css/p_area_compute.css -- the Warehouses and Queries sub-tabs (area_compute.tsx).
+   Existing tokens only, so both themes work with no new palette. */
+
+.ac-page > .chart-card-v2 { margin-bottom: 14px; }
+.ac-tiles { margin-bottom: 14px; }
+
+/* One line per row: label | bar | value. Used by busy/idle and the cluster rows. */
+.ac-busy, .ac-clusters { display: flex; flex-direction: column; gap: 4px; }
+.ac-busy > .blk-legend, .ac-clusters > .blk-legend { margin-bottom: 4px; }
+.ac-busy-row, .ac-cl-row { align-items: center; gap: 8px; padding: 2px 0; font-size: var(--fs-xs); }
+.ac-busy-row.selected { background: var(--surface-2); }
+.ac-busy-label {
+  flex: 0 0 34%; min-width: 0; color: var(--text-2); white-space: nowrap; overflow: hidden;
+}
+.ac-busy-track {
+  flex: 1 1 auto; display: flex; height: 12px; min-width: 40px; border-radius: 4px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border-subtle);
+}
+.ac-busy-track > span { display: block; height: 100%; }
+.ac-busy-val {
+  flex: none; min-width: 112px; text-align: right; font-family: var(--f-mono); color: var(--text);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ac-busy-val.crit { color: var(--st-crit-ink); }
+.ac-busy-val.warn { color: var(--st-warn-ink); }
+
+/* Clusters: a box per cluster, filled when used. */
+.ac-cl-boxes { flex: 1 1 auto; display: flex; align-items: center; gap: 3px; min-width: 40px; }
+.ac-cl { display: inline-block; width: 14px; height: 12px; border-radius: 3px; border: 1.5px solid var(--seq-2); background: transparent; flex: none; }
+.ac-cl.used { background: var(--seq-3); border-color: var(--seq-3); }
+.ac-cl.over { border-style: dashed; }
+
+/* Setup risk small multiples. */
+.ac-multiples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 700px) { .ac-multiples { grid-template-columns: minmax(0, 1fr); } }
+.ac-multiple { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ac-multiple-title { font-size: 12px; color: var(--text-dim); }
+.ac-multiple-figure { font-family: var(--f-serif); font-size: 21px; color: var(--text); line-height: 1; font-variant-numeric: tabular-nums; }
+.ac-multiple-list { list-style: none; margin: 0; padding: 0; font-size: var(--fs-xs); color: var(--text-2); }
+.ac-multiple-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.ac-one-line strong { font-weight: 600; color: var(--text); }
+.ac-close {
+  margin-top: 8px; font: inherit; font-size: var(--fs-xs); color: var(--link); background: none; border: 0;
+  padding: 0; cursor: pointer;
+}
+
+/* Efficiency: four meters that pick the measure below. */
+.ac-meters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+@media (max-width: 1000px) { .ac-meters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .ac-meters { grid-template-columns: minmax(0, 1fr); } }
+.ac-meter {
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; text-align: left; font: inherit;
+  background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--text-faint);
+  border-radius: var(--radius-md); padding: 11px 14px; box-shadow: var(--shadow-card); cursor: pointer; color: inherit;
+}
+.ac-meter:hover { border-color: var(--focus); background: var(--panel-2); }
+.ac-meter.selected { border-left-color: var(--accent); background: var(--panel-2); }
+.ac-meter:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ac-meter .summary-tile-label { margin-bottom: 0; }
+
+/* Failures: one clicked day. */
+.ac-day { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-subtle); font-size: var(--fs-xs); }
+.ac-day-head { color: var(--text); font-weight: 600; margin-bottom: 6px; }
+.ac-day-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; }
+.ac-day-facts dt { color: var(--text-dim); }
+.ac-day-facts dd { margin: 0; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Waiting: warehouse × day grid in one hue. */
+.ac-heat { display: grid; gap: 2px; align-items: center; font-size: var(--fs-xs); overflow-x: hidden; } /* day labels wider than a cell stop at the chart edge */
+.ac-heat-label { color: var(--text-2); white-space: nowrap; overflow: hidden; padding-right: 6px; }
+.ac-heat-cell { display: block; height: 18px; border-radius: 2px; }
+.ac-heat-total { text-align: right; font-family: var(--f-mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.ac-heat-x { color: var(--text-dim); white-space: nowrap; overflow: visible; font-size: 11px; }
+
+@media (max-width: 700px) { .ac-busy-val { min-width: 84px; } }
+.ac-sub-title { margin: 14px 0 6px; font-size: var(--fs-xs); color: var(--text-3); }
+
+/* Idle: Top 5 offenders, one row per warehouse (the Databricks row layout): who | hours split | idle $ | change. */
+.ac-off-table { display: flex; flex-direction: column; }
+.ac-off-row {
+  display: grid; grid-template-columns: minmax(140px, 0.9fr) minmax(0, 2fr) 110px minmax(200px, 1.1fr);
+  grid-template-areas: "name detail cost change"; column-gap: 22px; row-gap: 12px;
+  padding: 16px 0; border-top: 1px solid var(--border-subtle); align-items: start; min-width: 0;
+}
+.ac-off-row.selected { background: var(--surface-2); }
+.ac-off-headrow { padding: 0 0 8px; border-top: none; font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.ac-off-name { grid-area: name; min-width: 0; font-size: var(--fs-sm); }
+.ac-off-detail { grid-area: detail; min-width: 0; font-size: var(--fs-sm); }
+.ac-off-cost { grid-area: cost; }
+.ac-off-change { grid-area: change; min-width: 0; }
+.ac-off-open { display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; font: inherit; color: var(--text); cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.ac-off-open:hover b { text-decoration: underline; }
+.ac-off-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--text-2); margin-top: 6px; font-size: var(--fs-xs); }
+.ac-kind-chip { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); }
+.ac-off-usd { font-size: 20px; line-height: 26px; font-weight: 600; }
+.ac-off-cost-track { height: 4px; border-radius: 2px; background: var(--surface-2); margin: 6px 0 4px; overflow: hidden; }
+.ac-off-cost-track > div { height: 100%; background: var(--text); border-radius: 2px; }
+.ac-off-cost-word { font-size: var(--fs-xs); color: var(--text-faint); }
+@media (max-width: 1180px) {
+  .ac-off-row { grid-template-columns: minmax(0, 1fr) 110px; grid-template-areas: "name cost" "detail detail" "change change"; }
+  .ac-off-headrow { display: none; }
+}
+
+/* Hours split: running queries vs idle, hours and $ per part. */
+.ac-hours-top { display: flex; justify-content: space-between; gap: 8px; color: var(--text-2); }
+.ac-hours-top b { color: var(--text); font-weight: 600; }
+.ac-hours-bar { display: flex; height: 14px; border-radius: 2px; overflow: hidden; margin: 6px 0 8px; background: var(--surface-2); }
+.ac-hours-bar > span { display: block; height: 100%; }
+.ac-hours-bar > span + span { border-left: 2px solid var(--surface); }
+.ac-hours-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--text-2); font-size: var(--fs-xs); }
+.ac-hours-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.ac-hours-legend b { color: var(--text); font-weight: 600; }
+.ac-hours-gaps { font-size: var(--fs-xs); color: var(--text-faint); margin-top: 8px; }
+
+/* Auto-suspend options grid. */
+.ac-change-box { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border-subtle); }
+.ac-change-title { font-size: var(--fs-sm); font-weight: 600; margin-bottom: 4px; }
+.ac-change-grid { display: grid; grid-template-columns: max-content max-content max-content; align-items: baseline; column-gap: 14px; row-gap: 2px; }
+.ac-change-grid.full { grid-template-columns: max-content max-content max-content max-content; }
+.ac-change-grid > span { white-space: nowrap; }
+.ac-change-head { font-size: 10px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-faint); }
+.ac-change-to { font-size: var(--fs-sm); color: var(--text-2); }
+.ac-change-to.rec { color: var(--text); font-weight: 600; }
+.ac-change-usd { font-size: var(--fs-sm); font-weight: 600; }
+.ac-change-starts { font-size: var(--fs-xs); color: var(--text-2); }
+.ac-change-per { margin-top: 4px; font-size: var(--fs-xs); color: var(--text-faint); }
+.ac-change-none { font-size: var(--fs-xs); color: var(--text-faint); }
+.ac-change-cache { margin-top: 6px; font-size: var(--fs-xs); line-height: 1.4; color: var(--text-2); }
+.ac-change-cache b { color: var(--text); }
+
+/* The Idle drawer block. */
+.ac-dr-size { margin-top: 6px; }
+.ac-dr-line { margin-top: 6px; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.ac-dr-line b { color: var(--text); }
+.ac-dr-line.muted { color: var(--text-3); }
+
+/* Change these settings: one chip per setting, wrapping inside the cell. */
+.ac-set-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+#ac-set-changes { margin-bottom: 14px; }
+
+/* The shared line chart's y gutter fits 4 digits; let a wider top label show in a small left pad. */
+.ac-hour-line { padding-left: 14px; }
+.ac-hour-line svg { overflow: visible; }

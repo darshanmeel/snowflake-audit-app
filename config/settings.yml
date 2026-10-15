@@ -1,0 +1,71 @@
+# config/settings.yml -- the app's settings. Each comment says when a change takes effect: on the
+# next page refresh (the app re-reads this file on every request), the next load (tools/load_results.py
+# or Refresh) or the next export.
+# What you save in the app goes to config/settings.local.yml (not in git), which overrides these.
+
+# Your negotiated discount off list price, in percent (e.g. 12.5). Page refresh.
+discount_pct: 0.0
+# The days of history a page opens on: 7, 30 or 90. Page refresh.
+default_window: 30
+# Export today up to the moment it runs (the app marks today as partial). false = complete days
+# only. Next export.
+include_today: true
+# Show Snowflake's own tasks (SNOWFLAKE database, or none: Trust Center scans, cost anomalies, Cortex) in the
+# task health checks. Their credits always count in the cost checks. Next export.
+include_snowflake_tasks: false
+# USD per credit, per AI credit (Cortex AI, Copilot) and per TB-month of storage. The export reads
+# your real rates from the organization billing view first; these are used only when that view is
+# not readable or has no rows yet. 3.00 is Enterprise list price; AI credits are 2.00 (global routing).
+# Empty = no $ for that kind. --credit-price / --ai-credit-price on the CLI win over both. Next export.
+credit_price_usd: 3.0
+ai_credit_price_usd: 2.0
+storage_price_usd_tb_month:
+# Tag names every object should carry. Empty shows tag coverage by object type instead. Page refresh.
+required_tag_keys: []
+# Rows a table shows before "Load more", and bars a chart shows before folding the rest into Other.
+# Page refresh.
+ui:
+  max_rows: 500
+  max_chart_categories: 8
+# Below this share, an account's dominant tag-attribute value (cost_center, team, business_unit,
+# domain) reads 'mixed' rather than the plurality winner. Next load.
+tag_share_floor: 0.6
+# Below this coverage, tag inference reads 'untagged' even at 100% dominance: 3% coverage is not
+# evidence about where the money went. Next load.
+tag_coverage_floor: 0.5
+# The name in the page title, the top bar and the footer, and who to contact. Page refresh.
+brand:
+  name: Crosshire
+  url: https://crosshire.ch
+  contact_name: Darshan Singh
+  contact_email: ""
+# Masking, off by default. mask_user_identities masks user names and emails on screen (page refresh).
+privacy:
+  mask_user_identities: false
+  # Kinds of names the export and Refresh replace with tokens before saving any file: user,
+  # warehouse, database, schema, object, role, task, account (or all). Empty: nothing is masked.
+  # Next export or Refresh.
+  mask_fields: []
+# The QUERY_TAG on every query this app runs; the self-cost checks find this app's own queries by
+# it. Letters, digits, _ or -. Next export.
+query_source: crosshire-audit
+# Word lists that classify an account name into an environment (whole words; first match wins in
+# the order prod, uat, dev). Next load.
+env_patterns:
+  prod: [prod, prd, production, live]
+  uat: [uat, test, qa, stag, staging, stage, sandbox, sit, nonprod, preprod]
+  dev: [dev, devel]
+# Keep only these tag names in the export's per-object tag table, which can be large. Leave it out
+# to keep every tag. Case, spaces, _ and - are ignored when matching. The cost center, required and
+# tag_aliases.yml tags are always kept. Next load.
+# export_tag_keys: [cost_center, team, env]
+# The local database (tools/load_results.py, Refresh, and the app reading it):
+# - memory_limit (e.g. 1GB, 1500MB) and threads (1-64) cap what DuckDB uses, in the load and in
+#   the app; lower both on a busy laptop. Above the cap, the load spills to a .tmp folder next to
+#   the database file.
+# - response_cache_mb keeps recently read pages in the app's memory (0 = off).
+# Next load; the app takes memory and threads when it restarts, the cache size on page refresh.
+load:
+  memory_limit: 1GB
+  threads: 4
+  response_cache_mb: 64

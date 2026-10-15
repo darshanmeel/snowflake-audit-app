@@ -1,0 +1,16 @@
+# config/tag_aliases.yml -- edited via Settings, not hard-coded, because tag keys and their
+# spellings are business terms this repo cannot know.
+#
+# Each canonical key below is an account attribute (dims.dim_account.<key>/<key>_share/<key>_reason), not the row-level custom_tags
+# filter (that mechanism is separate and stays unexposed).
+#
+# Matching is case-insensitive and ignores spaces, hyphens and underscores -- "Cost Center",
+# "cost-center" and "costcenter" are all the same alias once normalised. An EMPTY list is the
+# normal case and does NOT mean "match nothing": it means the canonical key's own name (e.g.
+# "cost_center") is the only alias, normalised the same way. List additional raw custom_tags
+# spellings your account actually uses (e.g. "cc", "CostCentre") to widen the match.
+canonical:
+  team: []
+  cost_center: []
+  business_unit: []
+  domain: []

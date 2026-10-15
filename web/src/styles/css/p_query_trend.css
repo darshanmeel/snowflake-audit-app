@@ -1,0 +1,39 @@
+/* web/src/styles/css/p_query_trend.css -- Queries > Trend (query_trend.tsx). Existing tokens only. */
+
+.qt-bar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.qt-bar .qt-picker { flex: 1 1 360px; margin-bottom: 0; }
+.qt-bar-right { display: flex; align-items: center; gap: 8px; flex: none; }
+.qt-bar-right .grain-switch { margin-bottom: 0; }
+
+.qt-bad { color: var(--st-crit-ink); }
+.qt-good { color: var(--st-ok-ink); }
+
+/* Warehouse x period cells: name | one cell per day or month | the window's value. */
+.qt-heat { display: flex; flex-direction: column; gap: 2px; overflow-x: auto; }
+.qt-heat-row {
+  display: grid; grid-template-columns: minmax(120px, 220px) repeat(var(--qt-cols), minmax(6px, 1fr)) 84px;
+  gap: 2px; align-items: center; width: 100%; margin: 0; padding: 2px 4px; border: 0; border-radius: 6px;
+  background: none; color: var(--text); font: inherit; font-size: var(--fs-xs); text-align: left;
+}
+button.qt-heat-row { cursor: pointer; }
+button.qt-heat-row:hover, .qt-heat-row.selected { background: var(--surface-2); }
+button.qt-heat-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.qt-heat-head { font-size: 10px; color: var(--text-faint); }
+.qt-heat-head .qt-heat-name, .qt-heat-head .qt-heat-total { font-size: 11px; color: var(--text-3); }
+.qt-heat-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-right: 6px; }
+.qt-heat-col { white-space: nowrap; overflow: visible; text-align: left; }
+.qt-heat-total { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qt-cell { display: block; height: 14px; border-radius: 2px; }
+.qt-cell.qt-empty { box-shadow: inset 0 0 0 1px var(--border-subtle); }
+.qt-partial { opacity: .5; }
+
+/* Long warehouse names wrap instead of widening the page. */
+.qt-lede-name, .qt-card-title, .qt-leg-name { overflow-wrap: anywhere; min-width: 0; }
+.qt-page .chart-card-v2-titles { min-width: 0; }
+.qt-page .ml-leg { min-width: 0; max-width: 100%; }
+
+@media (max-width: 640px) {
+  /* name + up to 31 day cells + window fits a 320px card */
+  .qt-heat-row { grid-template-columns: 72px repeat(var(--qt-cols), minmax(2px, 1fr)) 52px; gap: 1px; padding: 2px; }
+  .qt-heat-name { padding-right: 4px; }
+}

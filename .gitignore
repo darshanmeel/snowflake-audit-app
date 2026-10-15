@@ -1,0 +1,24 @@
+# Planning notes, local paths and exports stay out of the repo.
+tasks/
+data/
+.env
+config/settings.local.yml
+tests/db_audit_test.duckdb
+tests/db_audit_test.duckdb.wal
+tests/fixtures/parquet/
+
+# standard Python / OS ignores
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+tests/db_audit_test.*
+.playwright-mcp/
+
+# Export kit output and keys, if run inside the repo.
+sf-audit-out/
+sf-audit-out.tmp/
+sf-audit-out.zip
+*.p8

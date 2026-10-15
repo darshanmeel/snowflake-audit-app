@@ -1,0 +1,35 @@
+/* web/src/styles/css/p_area_governance.css -- governance area panels (area_governance.tsx) and the
+   Coverage & Gaps lead (tab_coverage.tsx). Tokens only, so every theme works without a branch. */
+
+/* The issue in one line above a chart: "21 of 113 users · 19%". */
+.gov-headline { margin: 0 0 10px; font-size: var(--fs-md); line-height: 1.4; color: var(--text-2); }
+.gov-headline b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.gov-sub { margin-top: 14px; }
+.gov-sub-title { margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.gov-card { margin-bottom: 14px; }
+
+/* Coverage & Gaps: tiles, limitations list and the sources table toggle. */
+.cv-tiles { margin-bottom: 14px; }
+.cv-limits-list { margin: 0; padding: 0; list-style: none; }
+.cv-limits-list li { padding: 8px 0; border-top: 1px solid var(--border-subtle); font-size: var(--fs-md); line-height: 1.45; color: var(--text-2); }
+.cv-limits-list li:first-child { border-top: 0; padding-top: 0; }
+.cv-limits-list b { color: var(--text); font-weight: 600; }
+.cv-toggle-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; margin-top: 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  color: var(--link); font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.cv-toggle-btn:hover { border-color: var(--focus); }
+.cv-grant { font-family: var(--f-mono); font-size: 11px; color: var(--text-2); word-break: break-all; }
+/* Notes in a drill table wrap instead of cutting off. */
+.cv-limits .dt-txt, .cv-limits .dt-name { white-space: normal; line-height: 1.4; }
+.cv-limits .dt-tr { align-items: start; padding-top: 10px; padding-bottom: 10px; }
+.ck-foot { flex-wrap: wrap; }
+
+/* A compact checks row that is a link to the check's home tab. */
+a.ck-row, a.ck-row:hover { text-decoration: none; }
+
+@media (max-width: 700px) {
+  .gov-headline { font-size: 13px; }
+  .cv-sources-table td, .cv-sources-table th { white-space: normal; word-break: break-word; }
+}

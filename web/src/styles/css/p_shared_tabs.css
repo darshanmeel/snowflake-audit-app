@@ -1,0 +1,72 @@
+/* web/src/styles/css/p_shared_tabs.css -- the shared tabs (Cost, Tags, Waste, Warehouses sizing,
+   Serverless): the drill-down table, its mini bar, and the small grids these pages add. Tokens only,
+   so dark mode is a token swap; on a phone tables keep two cells and grids stack. */
+
+/* ─────────── Drill table ─────────── */
+.dt-table { display: flex; flex-direction: column; overflow-x: auto; }
+.dt-tr {
+  display: grid; grid-template-columns: var(--dt-cols); gap: 12px; align-items: center;
+  width: 100%; min-height: 44px; padding: 6px 8px; margin: 0; border: 0; border-top: 1px solid var(--border-subtle);
+  background: none; color: var(--text); font: inherit; font-size: 13px; text-align: left; border-radius: 8px;
+}
+button.dt-tr { cursor: pointer; }
+button.dt-tr:hover, .dt-tr.selected { background: var(--surface-2); }
+button.dt-tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.dt-th, .dt-th:hover { min-height: 28px; border-top: 0; background: none; font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.dt-num { text-align: right; font-family: var(--f-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dt-th .dt-num { font-family: inherit; font-size: inherit; }
+.dt-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.dt-name { display: flex; align-items: center; gap: 0; min-width: 0; overflow: hidden; white-space: nowrap; }
+.dt-name .b2-nameid { overflow: hidden; text-overflow: ellipsis; }
+.dt-bar { display: flex; height: 8px; border-radius: 3px; background: var(--surface-3); overflow: hidden; min-width: 40px; }
+.dt-bar-fill { display: block; flex: none; height: 100%; border-radius: 3px; background: var(--c1); }
+.dt-bar-part { border-radius: 0; }
+.dt-bar-fill.blk-hatch { background: repeating-linear-gradient(45deg, var(--c-untagged-line) 0 1.5px, var(--c-untagged-bg) 1.5px 4px); }
+.dt-bar-fill.tone-warn { background: var(--st-warn); }
+.dt-bar-fill.tone-crit { background: var(--st-crit); }
+.dt-chip { display: inline-block; padding: 1px 6px; border-radius: 6px; font-family: var(--f-mono); font-size: 11px; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
+.dt-chip.tone-warn { background: var(--st-warn-tint); color: var(--st-warn-ink); }
+.dt-chip.tone-crit { background: var(--st-crit-tint); color: var(--st-crit-ink); }
+@media (max-width: 700px) {
+  .dt-tr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .dt-tr > span:nth-child(n+3) { display: none; }
+  .dt-th { display: none; }
+}
+
+/* ─────────── Page grids ─────────── */
+.sx-page > * + * { margin-top: 16px; }
+.sx-page .cj-charts-2 { margin-top: 16px; }
+.sx-tiles-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sx-tiles-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .summary-tile-row.sx-tiles-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .summary-tile-row.sx-tiles-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .summary-tile-row.sx-tiles-4, .summary-tile-row.sx-tiles-3 { grid-template-columns: minmax(0, 1fr); } }
+.sx-foot { margin-top: 10px; font-size: 12.5px; color: var(--text-3); line-height: 1.45; }
+.sx-sub { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+
+/* ─────────── Waste: definitions, statuses, the floor strip ─────────── */
+.sx-defs { display: flex; flex-direction: column; }
+.sx-def { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--border-subtle); }
+.sx-def:first-child { border-top: 0; }
+.sx-def-name { font-weight: 600; font-size: 13.5px; }
+.sx-def-unit { font-family: var(--f-mono); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.sx-def-text { grid-column: 1 / -1; font-size: 13px; color: var(--text-2); line-height: 1.4; }
+.sx-stat { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--border-subtle); font-size: 13px; color: var(--text-2); line-height: 1.4; }
+.sx-stat:first-child { border-top: 0; }
+@media (max-width: 520px) { .sx-stat { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+
+/* ─────────── Rates and parameters: label · chip · value ─────────── */
+.sx-kv { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; min-height: 40px; padding: 6px 0; border-top: 1px solid var(--border-subtle); font-size: 13px; }
+.sx-kv:first-child { border-top: 0; }
+.sx-kv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sx-kv-name b { font-family: var(--f-mono); font-weight: 600; font-size: 12.5px; }
+.sx-kv-val { font-family: var(--f-mono); font-size: 12.5px; color: var(--text-2); white-space: nowrap; text-align: right; }
+@media (max-width: 520px) { .sx-kv { grid-template-columns: minmax(0, 1fr) auto; } .sx-kv > :nth-child(2) { display: none; } }
+
+/* ─────────── Waste › Flagged, not priced: pill · title over its reason ─────────── */
+.wu-check { display: flex; align-items: flex-start; gap: 10px; min-width: 0; white-space: normal; }
+.wu-check .status-pill { flex: none; }
+.wu-check-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wu-check-text b { font-weight: 500; }
+.wu-check-text span { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-name .wu-check { overflow: hidden; }
