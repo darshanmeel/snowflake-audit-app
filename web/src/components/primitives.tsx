@@ -850,7 +850,8 @@ export function AreaPage({
   // genericVerdict deciding as before. Resets on area/sub-tab change so a stale sentence never
   // survives a navigation.
   const [contentVerdict, setContentVerdict] = React.useState<React.ReactNode>(null);
-  React.useEffect(() => {
+  // A layout effect, so the reset runs before the new sub-tab's own effect sets its sentence.
+  React.useLayoutEffect(() => {
     setContentVerdict(null);
     // Start each sub-tab with an empty note.
     IgnoredFilterTracker.reset();
