@@ -172,6 +172,34 @@ export function SummaryTileRow({ children, compact, six }: { children?: React.Re
   return <div className={`summary-tile-row${compact ? " compact" : ""}${six ? " six" : ""}`}>{children}</div>;
 }
 
+/** The default "separate kinds" note: said once under the KPI row, never as a chip on every card. */
+export const KINDS_NOTE = "Spend is context. Waste, saving and storage are separate kinds, each counted on its own — they are never summed.";
+
+/** The one note under a KPI row. */
+export function KindsNote({ children }: { children?: React.ReactNode }) {
+  return (
+    <p className="cx-kinds-note">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M7 6.2v3.6M7 4.3h.01" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+      <span>{children || KINDS_NOTE}</span>
+    </p>
+  );
+}
+
+// The KPI row: at most 4 primary cards; with 5-6 figures, 3 cards plus `strip`, one card split into
+// cells (smaller numbers). `note` adds the separate-kinds line once (true = the default wording).
+export function KpiRow({ children, strip, note, className }: {
+  children?: React.ReactNode; strip?: React.ReactNode; note?: React.ReactNode | boolean; className?: string;
+}) {
+  const cells = React.Children.toArray(strip).filter(Boolean);
+  return (
+    <div className={`cx-kpi${className ? ` ${className}` : ""}`}>
+      <div className="summary-tile-row cto-tiles cx-kpi-primary">{children}</div>
+      {cells.length > 0 && <section className="summary-tile-row cx-kpi-strip" aria-label="Other figures">{cells}</section>}
+      {note && <KindsNote>{note === true ? null : note}</KindsNote>}
+    </div>
+  );
+}
+
 // A header field cut to its first sentence, with the library's own "- field heuristic" hedge
 // stripped (it qualifies the threshold, not the cause, and eats the tile).
 export function clause(text: string | null | undefined, maxLen?: number) {

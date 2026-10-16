@@ -27,7 +27,9 @@ import { pickNum } from "./tab_overview";
 import { worstContract } from "./tab_money";
 import { StatStrip } from "../components/blocks_2";
 import { CsvButton } from "../components/csv";
-import { FixSection } from "../components/fixcopy_button";
+import { FixCopyButton } from "../components/fixcopy_button";
+import { KpiRow } from "../components/overview_tile";
+import { SplitBar } from "../components/cx_a";
 import type { CsvColumn } from "../components/csv";
 import { emptyLabelFor, pickLabelColumn, rowLabelOf } from "./tab_area";
 import type { WasteEntry } from "../components/waste_total";
@@ -77,7 +79,7 @@ export const ACTION_TEMPLATES: ActionTemplate[] = [
     impact: "sf_wh_auto_suspend_tuning", context: "sf_wh_idle_minutes",
     checks: ["sf_wh_idle_minutes", "sf_wh_auto_suspend_tuning"], noun: ["idle warehouse", "idle warehouses"],
     title: (n, w) => `Lower auto-suspend on ${n} ${w}`, effort: "5 min each",
-    how: "ALTER WAREHOUSE <name> SET AUTO_SUSPEND = 60; (300 where the warehouse cache is reused: the Idle detail says which. Below 60 s each resume still bills 60 s.)" },
+    how: "ALTER WAREHOUSE <name> SET AUTO_SUSPEND = 60; (use 300 instead where the warehouse cache is reused: the Idle detail says which. Below 60 s each resume still bills 60 s.)" },
   { key: "warehouse_resize", kind: "saving", team: "Platform", waste: "sf_wh_oversized",
     checks: ["sf_wh_oversized", "sf_wh_consolidation_candidates"], noun: ["oversized warehouse", "oversized warehouses"],
     title: (n, w) => `Resize ${n} ${w}`, effort: "10 min each",
@@ -224,18 +226,21 @@ export function ActionEvidence({ action, filters, dims }: { action: Action; filt
   const items = [...byName.values()].sort((a, b) => (b.usd || 0) - (a.usd || 0) || a.rank - b.rank);
   const rows = items.slice(0, 5);
   const total = action.n != null ? Math.max(action.n, items.length) : items.length;
+  const maxUsd = Math.max(0, ...rows.map((r) => r.usd || 0));
   return (
     <div className="dr-section">
       <div className="dr-eyebrow">{`Where · worst ${fmtInt(rows.length)} of ${fmtInt(total)}`}</div>
       <div className="dr-where">
         {rows.map((r) => (
-          <div key={r.name} className="dr-where-row">
+          <div key={r.name} className="dr-where-row cx-where-row">
             <span className="dr-dot" style={{ background: r.rank === 0 ? "var(--st-crit)" : "var(--st-warn)" }} aria-hidden="true" />
             <span className="dr-where-name" title={r.name}>{r.name}</span>
             <span className="dr-where-val">{r.usd != null ? fmtMoney(r.usd, 0) : (r.rank === 0 ? "Critical" : "Warning")}</span>
+            {maxUsd > 0 && r.usd != null && <span className="cx-where-bar" aria-hidden="true"><span style={{ width: `${Math.max(1.5, (100 * r.usd) / maxUsd)}%` }} /></span>}
           </div>
         ))}
       </div>
+      {rows.some((r) => r.rank === 0) && rows.some((r) => r.rank !== 0) && <div className="cx-fix-text muted">Red dot = critical, orange = warning.</div>}
     </div>
   );
 }
@@ -335,6 +340,31 @@ export function ActionRow({ a, rank, windowDays, selected, onOpen }: { a: Action
   );
 }
 
+// The fix split in two: the SQL alone in the mono block (what Copy takes), the explanation as plain text.
+export function splitFix(how: string): { sql: string | null; text: string | null } {
+  const s = String(how || "").trim();
+  const m = /^((?:ALTER|CREATE|GRANT|REVOKE|DROP|SELECT|USE|SHOW|EXECUTE|CALL|COMMENT|UNSET)\b[^;]*;)\s*(.*)$/is.exec(s);
+  if (!m) return { sql: null, text: s || null };
+  let rest = m[2].trim();
+  if (/^\(.*\)\.?$/s.test(rest)) rest = rest.replace(/^\(/, "").replace(/\)\.?$/, "");
+  rest = rest.replace(/^then\b/i, "Then");
+  return { sql: m[1].trim(), text: rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : null };
+}
+
+function ActionFix({ how }: { how: string }) {
+  const { sql, text } = splitFix(how);
+  return (
+    <div className="dr-section">
+      <div className="fx-head">
+        <div className="dr-eyebrow">The fix</div>
+        {sql && <FixCopyButton text={sql} />}
+      </div>
+      {sql && <pre className="dr-fix">{sql}</pre>}
+      {text && <p className="cx-fix-text">{text}</p>}
+    </div>
+  );
+}
+
 function FigBox({ eyebrow, value, sub }: { eyebrow: string; value: React.ReactNode | null; sub?: React.ReactNode }) {
   const missing = value === null || value === undefined || value === "";
   return (
@@ -374,7 +404,7 @@ export function ActionDrawer({ action, filters, dims, goTo, onClose }: { action:
         )}
         <FigBox eyebrow="Effort" value={action.effort} sub="per object" />
       </div>
-      <FixSection text={action.how} />
+      <ActionFix how={action.how} />
       <ActionEvidence action={action} filters={filters} dims={dims} />
       <div className="dr-links">
         {action.rows.map((row) => (
@@ -389,6 +419,10 @@ export function ActionDrawer({ action, filters, dims, goTo, onClose }: { action:
 }
 
 // ─────────── Who has the work · How long each takes ───────────
+
+// Owners and effort never share a colour, so the two bars are not read as one key.
+const OWNER_COLORS = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--seq-2)"];
+const EFFORT_COLORS = ["var(--st-ref)", "var(--c5)", "var(--heat-4)"];
 
 export function teamSplit(actions: Action[]) {
   const by = new Map<string, number>();
@@ -408,9 +442,11 @@ export function WorkSplitCards({ actions, role, second }: { actions: Action[]; r
   return (
     <div className="cj-charts-2">
       <PatternCard title={role === "finops" ? "Who to talk to" : "Who has the work"}
-        sub={`${word(n)} by owner${priced === 0 ? " · none is priced" : ""}`}>
-        <StackedShareBar height={26} valueFmt={word} ariaLabel="Actions by owner"
-          segments={teamSplit(actions).map(([team, v]) => ({ key: team, label: team, value: v }))} />
+        sub={`${word(n)}, by owner${priced === 0 ? " · none is priced" : ""}`}>
+        {teamSplit(actions).length <= 5
+          ? <SplitBar ariaLabel="Actions by owner" parts={teamSplit(actions).map(([team, v], i) => ({ key: team, label: team, value: v, sub: word(v), color: OWNER_COLORS[i] }))} />
+          : <StackedShareBar height={26} valueFmt={word} ariaLabel="Actions by owner"
+            segments={teamSplit(actions).map(([team, v]) => ({ key: team, label: team, value: v }))} />}
         {role === "governance" && (
           <div className="ln-notlist">
             <StackedShareBar height={22} valueFmt={word} totalLabel="By severity" ariaLabel="Actions by severity"
@@ -418,10 +454,10 @@ export function WorkSplitCards({ actions, role, second }: { actions: Action[]; r
           </div>
         )}
       </PatternCard>
-      {second || <PatternCard title="How long each takes" sub={`per object · ${fmtInt(quick)} of ${fmtInt(n)} under 15 min`}>
-        <StackedShareBar height={26} valueFmt={word} ariaLabel="Actions by effort"
-          segments={[...byBucket.map((b, i) => ({ key: b.key, label: b.label, value: b.n, color: ["var(--c1)", "var(--c2)", "var(--c-other)"][i] })),
-            { key: "none", label: "no estimate", value: unknown, unknown: true }]} />
+      {second || <PatternCard title="How long each takes" sub={`Per object · ${fmtInt(quick)} of ${fmtInt(n)} under 15 minutes`}>
+        <SplitBar ariaLabel="Actions by effort"
+          parts={[...byBucket.map((b, i) => ({ key: b.key, label: b.label.charAt(0).toUpperCase() + b.label.slice(1), value: b.n, sub: word(b.n), color: EFFORT_COLORS[i] })),
+            { key: "none", label: "No estimate", value: unknown, sub: word(unknown), hatch: true }]} />
       </PatternCard>}
     </div>
   );
@@ -756,6 +792,14 @@ function actionCsvColumns(windowDays: number): CsvColumn<Action>[] {
 const wideScreen = () => { try { return window.matchMedia("(min-width: 1100px)").matches; } catch (e) { return false; } };
 const SHOW_ROWS = 12;
 
+// "8 fixes, grouped by who acts on them. 4 of 8 sit with Platform, and 5 of 8 take under 15 minutes per object."
+function finopsVerdict(actions: Action[], quick: number): string {
+  const n = actions.length;
+  const top = teamSplit(actions)[0];
+  return [`${fmtInt(n)} fix${n === 1 ? "" : "es"}, grouped by who acts on them.`,
+    `${top ? `${fmtInt(top[1])} of ${fmtInt(n)} sit with ${top[0]}, and ` : ""}${fmtInt(quick)} of ${fmtInt(n)} take under 15 minutes per object.`].join(" ");
+}
+
 export function ActionsPanel({ filters, dims, allFindingsIndex, goTo, roleAreas, role, onVerdict }: {
   filters: Filters; dims?: Dims | null; allFindingsIndex?: Record<string, Finding> | null; goTo: GoToFn;
   roleAreas?: string[] | null; role?: string | null; onVerdict?: ((verdict: string) => void) | null;
@@ -790,40 +834,42 @@ export function ActionsPanel({ filters, dims, allFindingsIndex, goTo, roleAreas,
 
   const moneyCount = actions.filter((a) => a.usd != null || !!a.impactText || a.key === "contract").length;
   const verdict = !ready ? null : actions.length
-    ? (role === "cfo"
+    ? (role === "finops" ? finopsVerdict(actions, quick)
+      : role === "cfo"
       ? `${fmtInt(Math.min(5, moneyCount))} action${moneyCount === 1 ? "" : "s"} that move money, out of ${fmtInt(actions.length)} the audit found; ${fmtInt(quick)} take under 15 minutes per object.`
       : `${fmtInt(actions.length)} action${actions.length === 1 ? "" : "s"} from ${fmtInt(flaggedIds.length)} flagged checks; ${fmtInt(quick)} take under 15 minutes per object.`)
     : "Nothing flagged that a fix on this page covers.";
-  React.useEffect(() => { if (onVerdict && verdict) onVerdict(verdict); }, [verdict, onVerdict]);
+  // After the page frame's own reset on mount, which runs after this child's effect and would clear it.
+  React.useEffect(() => { const t = setTimeout(() => { if (onVerdict && verdict) onVerdict(verdict); }); return () => clearTimeout(t); }, [verdict, onVerdict]);
 
   // Tiles: label · number + unit · mono base · one line. Kinds of money are never added.
-  const ofSpend = (usd: number | null) => (usd != null && spend ? `${fmtShare(pctOf(usd, spend))} of spend · ` : "");
   const notRun = (fig: { ran: number }) => (fig.ran > 0 ? "flagged, not priced in this export" : "none of these checks ran");
   const checksWord = (n: number) => `${fmtInt(n)} check${n === 1 ? "" : "s"}`;
   const wasteTile = (
-    <IssueTile key="waste" label="Possible waste" loading={!ready} pill={<KindChip>{`${filters.window} d`}</KindChip>}
-      headline={wt.waste.usd != null ? fmtMoney(wt.waste.usd, 0) : null} missingReason={notRun(wt.waste)}
-      base={wt.waste.usd != null ? `${ofSpend(wt.waste.usd)}last ${filters.window} days · ${checksWord(wt.waste.flagged)}` : null}
+    <IssueTile key="waste" label="Possible waste" loading={!ready}
+      headline={wt.waste.usd != null ? fmtMoney(wt.waste.usd, 0) : null} unit={`last ${filters.window} days`} missingReason={notRun(wt.waste)}
+      base={wt.waste.usd != null ? (spend ? `${fmtShare(pctOf(wt.waste.usd, spend))} of spend, across ${checksWord(wt.waste.flagged)}.` : `Across ${checksWord(wt.waste.flagged)}.`) : null}
       onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
   );
   const savingTile = (
-    <IssueTile key="saving" label="Possible saving" loading={!ready} pill={<KindChip>kept apart</KindChip>}
+    <IssueTile key="saving" label="Possible saving" loading={!ready}
       headline={wt.saving.usd != null ? fmtMoney(wt.saving.usd, 0) : null} missingReason={notRun(wt.saving)}
-      base={wt.saving.usd != null ? `${ofSpend(wt.saving.usd)}resizing · ${checksWord(wt.saving.flagged)}` : null}
+      unit={wt.saving.usd != null && spend ? `${fmtShare(pctOf(wt.saving.usd, spend))} of spend` : undefined}
+      base={wt.saving.usd != null ? `From resizing, across ${checksWord(wt.saving.flagged)}. Counted apart from waste.` : null}
       onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
   );
   const storageTile = (
-    <IssueTile key="storage" label="Storage to free" loading={!ready} pill={<KindChip>per month</KindChip>}
-      headline={wt.month.usd != null ? fmtMoney(wt.month.usd, 0) : null} unit="/ month" missingReason={notRun(wt.month)}
-      base={wt.month.usd != null ? `${checksWord(wt.month.flagged)} · per month, not per ${filters.window} days` : null}
+    <IssueTile key="storage" label="Storage to free" loading={!ready}
+      headline={wt.month.usd != null ? fmtMoney(wt.month.usd, 0) : null} unit="per month" missingReason={notRun(wt.month)}
+      base={wt.month.usd != null ? `${checksWord(wt.month.flagged)}.` : null}
       cause={overlapNote(wt.month, (v) => fmtMoney(v, 0))}
       onOpen={() => goTo({ tab: "storage" })} openLabel="Storage →" />
   );
   const untaggedTile = (
-    <IssueTile key="untagged" label="Spend with no cost center" loading={cc.phase === "loading"}
+    <IssueTile key="untagged" label="No cost center" loading={cc.phase === "loading"}
       headline={untaggedPct != null ? fmtShare(untaggedPct) : null} unit="of the split"
       missingReason={cc.data ? "no cost-center split for this window" : "cost-center split not in this export"}
-      base={untaggedPct != null && ccUntagged != null ? `${fmtMoney(ccUntagged, 0)} of ${fmtMoney(ccTotal, 0)}` : null}
+      base={untaggedPct != null && ccUntagged != null ? `${fmtMoney(ccUntagged, 0)} of ${fmtMoney(ccTotal, 0)} has no cost center tag.` : null}
       status={untaggedPct != null && untaggedPct > 20 ? "warn" : "neutral"}
       onOpen={() => goTo({ tab: "cost", subtab: "chargeback" })} openLabel="Chargeback & tags →" />
   );
@@ -937,7 +983,7 @@ export function ActionsPanel({ filters, dims, allFindingsIndex, goTo, roleAreas,
 
   return (
     <div>
-      <div className="summary-tile-row compact al-tiles">{tiles}</div>
+      <KpiRow className="al-kpi">{tiles}</KpiRow>
       <WorkSplitCards actions={actions} role={role} second={role === "cfo" ? <ContractBurnCard filters={filters} goTo={goTo} /> : null} />
       <div className={`dr-layout${selected ? " open" : ""}`}>
         <div className="dr-main">
@@ -961,7 +1007,7 @@ export function ActionsPanel({ filters, dims, allFindingsIndex, goTo, roleAreas,
           </div>
           {ready && uncovered > 0 && (
             <div className="nj-strip">
-              <span className="nj-count">{`${fmtInt(uncovered)} of ${fmtInt(flaggedIds.length)} flagged checks have no fix template here`}</span>
+              <span className="cx-ck-summary">{`${fmtInt(uncovered)} of ${fmtInt(flaggedIds.length)} flagged checks have no fix template here yet.`}</span>
               <span className="nj-spacer" />
               <button type="button" className="ck-link" onClick={() => goTo({ tab: "findings" })}>{"All findings →"}</button>
             </div>

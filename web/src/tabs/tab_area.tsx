@@ -488,6 +488,7 @@ export function QueryTagRollup({ filters, meta }: { filters: Filters; meta: Meta
   ["sharing", ["shares", "accounts", "spend", "replication"]],
   ["storage", ["growth", "unused", "retention", "backups"]],
 ] as [string, string[]][]).forEach(([area, subtabs]) => subtabs.forEach((s) => {
-  const extra = area === "cost" && s === "chargeback" ? CostTagRollup : area === "queries" && s === "team" ? QueryTagRollup : null;
+  // Cost › Chargeback draws its own tag card (ap_cost.tsx).
+  const extra = area === "queries" && s === "team" ? QueryTagRollup : null;
   registerAreaContent(area, s, extra);
 }));

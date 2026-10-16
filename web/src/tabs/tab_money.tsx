@@ -10,18 +10,20 @@ import { acctId } from "../api";
 import { fmtDate, fmtDayShort, fmtInt, fmtMoney, fmtMoneyOf, fmtMoneyShort, fmtPct } from "../format";
 import { resolveName, useNames } from "../components/names";
 import { IgnoredFilterTracker, buildMonthBars, fmtChangePct, groupSum, aggTotal, numOrZero, useFindingAgg, useFindingData } from "../components/hooks";
-import { COST_MONEY_COL } from "../components/tab_registry";
+import { COST_MONEY_COL, MONEY_SCOPE } from "../components/tab_registry";
 import { Card, FilterReachNote, FreshnessLine, KindChip, PageFooter, PageIntro, PatternCard, StatusPill, noDataText, pageEyebrow, printWholePage } from "../components/primitives";
 import { ChartNote } from "../components/charts";
 import { reconciliationLine, rollupNote, useCostCenterAllocation } from "../components/tag_rollup";
 import { RankedBars } from "../components/charts_more";
-import { IssueTile, ReconciliationStrip, ShareBar, fmtShare, pctOf } from "../components/blocks";
+import { IssueTile, ShareBar, fmtShare, pctOf } from "../components/blocks";
 import { StatStrip } from "../components/blocks_2";
 import { NO_PRICE_LEDE, NO_PRICE_READING, isUnpricedAgg, notAssessedText } from "../components/scope";
-import { windowShortLabel } from "../components/overview_tile";
+import { KpiRow, windowShortLabel } from "../components/overview_tile";
+import { CalMonthRows, CxBars, RanLine, ReconChain, TieLine, costCenterBars } from "../components/cx_a";
+import type { CxBarItem } from "../components/cx_a";
 import { buildWasteWorklist, wasteTotal } from "../components/waste_total";
 import { MoneyPrintHeader } from "../components/print_summary";
-import { ChecksRanStrip, OV_TOTAL_CREDITS, pickNum, priceBasisText, sumPick } from "./tab_overview";
+import { OV_TOTAL_CREDITS, pickNum, priceBasisText, sumPick } from "./tab_overview";
 import { forecastFigures, serviceOf, serviceWords } from "./tab_cost";
 import { withoutTotalRows } from "./tab_area";
 import type { FetchState, Filters, Finding, GoToFn, Meta, Row } from "../types";
@@ -174,6 +176,7 @@ export interface SpendMoversCardProps {
 
 // One card for Money and the Overview: same check, same cut-off, so the change agrees on both.
 export function SpendMoversCard({ periodState, filters, title, sub, link, onLink, meta }: SpendMoversCardProps) {
+  const [openSvc, setOpenSvc] = React.useState<string | null>(null);
   const shell = (body: React.ReactNode) => (
     <PatternCard title={title || "What moved spend"} sub={sub} link={link} onLink={onLink}>{body}</PatternCard>
   );
@@ -193,7 +196,7 @@ export function SpendMoversCard({ periodState, filters, title, sub, link, onLink
       : "– No priced spend in the previous period to compare against.";
     return shell(<div className="chart-note-oneline">{note}</div>);
   }
-  const rows = spendMoverRows(movers, periodState.data!.window_days, !!(meta && meta.cost_cutoff && meta.cost_cutoff.partial_day));
+  const todayPartial = !!(meta && meta.cost_cutoff && meta.cost_cutoff.partial_day);
   // Services with no price are left out of both totals: say how many, so the totals don't read as whole.
   const svcAll = new Set(withoutTotalRows(all).map((r: Row) => serviceOf(r) || "__none__"));
   const svcUnpriced = new Set(withoutTotalRows(all).filter((r: Row) => r.not_assessed_reason === "unpriced").map((r: Row) => serviceOf(r) || "__none__"));
@@ -212,14 +215,33 @@ export function SpendMoversCard({ periodState, filters, title, sub, link, onLink
     : null;
   // A service opens on its warehouses (warehouse metering) or, with several accounts, its accounts.
   const multiAcct = new Set(all.map((r: Row) => String(acctId(r)))).size > 1;
-  const canOpen = (svc: string) => multiAcct || isWarehouseService(svc);
-  const anyOpen = !!renderDetail && rows.some((r) => r.svc && canOpen(r.svc));
+  const canOpen = (svc: string) => !!renderDetail && (multiAcct || isWarehouseService(svc));
+  const anyOpen = movers.top.some((g) => canOpen(g.id));
   const note = [sentence, unpricedNote, anyOpen ? "Open a row for the top 3 behind it." : null].filter(Boolean).join(" ");
+  const signedUsd = (v: number) => `${v >= 0 ? "+" : "−"}${fmtMoney(Math.abs(v), 0)}`;
+  // Plain bars from one baseline: a rise orange, a fall teal, the rest last in grey.
+  const items: CxBarItem[] = movers.top.map((g) => ({
+    key: g.id,
+    label: <>{canOpen(g.id) ? <span aria-hidden="true">{openSvc === g.id ? "▾ " : "▸ "}</span> : null}
+      {serviceWords(g.id === "__none__" ? null : g.id) + (g.prev < 1 && g.cur >= 1 ? " · new" : "")}</>,
+    value: g.delta, valueText: signedUsd(g.delta), tone: g.delta >= 0 ? "c2" as const : "c3" as const,
+    onClick: canOpen(g.id) ? () => setOpenSvc(openSvc === g.id ? null : g.id) : null,
+  }));
+  if (movers.othersCount > 0) {
+    items.push({ key: "__others__", label: `${fmtInt(movers.othersCount)} other service${movers.othersCount === 1 ? "" : "s"}`,
+      value: movers.othersDelta, valueText: signedUsd(movers.othersDelta), tone: "other" });
+  }
+  const days = periodState.data!.window_days;
   return shell(
     <div className="money-movers-body">
-      {note && <div className="money-mover-note">{note}</div>}
-      <MoneyWaterfall rows={rows} renderDetail={renderDetail} canOpen={canOpen} />
-      <div className="pc-foot">{`${fmtMoney(movers.totalPrev, 0)} → ${fmtMoney(movers.totalCur, 0)} · change is shown on its own, never added to waste or saving`}</div>
+      <div className="cx-moved-head" title={`Previous ${days} days → last ${days} days`}>
+        <span className="prev">{fmtMoney(movers.totalPrev, 0)}</span><span className="prev" aria-hidden="true">→</span>
+        <span className="cur">{fmtMoney(movers.totalCur, 0)}{todayPartial ? <span className="cx-bar-share"> · today partial</span> : null}</span>
+        <span className={movers.totalDelta >= 0 ? "up" : "down"}>{signedUsd(movers.totalDelta)}</span>
+      </div>
+      <CxBars items={items} ariaLabel="Change in spend by service" />
+      {openSvc && renderDetail && renderDetail(openSvc)}
+      {note && <div className="cx-moved-note">{note}</div>}
     </div>,
   );
 }
@@ -310,6 +332,10 @@ function cutoffMonthName(meta: Meta | null): string | null {
   return Number.isFinite(t) ? new Date(t).toLocaleDateString("en-US", { month: "long", timeZone: "UTC" }) : null;
 }
 
+const isUsd = (c: unknown) => String(c || "").toUpperCase() === "USD";
+// "OVERAGE-COMPUTE" -> "Overage compute".
+const usageWords = (t: unknown) => { const s = String(t || "").replace(/[-_]+/g, " ").toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); };
+
 function MoneyFig({ eyebrow, value, sub }: { eyebrow: string; value: React.ReactNode | null; sub?: React.ReactNode }) {
   const missing = value === null || value === undefined || value === "";
   return (
@@ -329,7 +355,7 @@ export function ContractDrawer({ contract, count, filters, goTo, onClose }: { co
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const svcState = useFindingData("cost_chargeback_by_service", filters.window, filters.accountIds, 5000);
-  const cur = { unit: "currency", currency: contract.currency };
+  const cur = { unit: isUsd(contract.currency) ? null : "currency", currency: contract.currency };
   const money = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : fmtMoneyOf(cur, Number(v), 0));
   const endDays = pickNum(contract, ["days_to_contract_end"]);
   const runway = pickNum(contract, ["runway_days"]);
@@ -437,7 +463,8 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
   const runway = contract ? pickNum(contract, ["runway_days"]) : null;
   const unusedPct = contract ? pickNum(contract, ["projected_unused_pct"]) : null;
   const balance = contract ? pickNum(contract, ["prepaid_balance"]) : null;
-  const curMoney = { unit: "currency", currency: contract ? contract.currency : null };
+  // A contract billed in USD reads "$"; any other currency keeps its code and is never summed with $.
+  const curMoney = { unit: isUsd(contract && contract.currency) ? null : "currency", currency: contract ? contract.currency : null };
   const contractSev = contract ? (contract.status === "CRITICAL" ? "critical" : contract.status === "WARN" ? "warn" : "ok") : "neutral";
 
   // Invoice: billed vs metered credits (the ALL CREDITS row) and the usage type furthest off the rate.
@@ -470,9 +497,12 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
 
   const settled = dailyAgg.phase !== "loading" && periodState.phase !== "loading" && forecastState.phase !== "loading" && contractState.phase !== "loading";
   const lede = !settled ? "…" : spend == null ? (isUnpricedAgg(dailyAgg.data) ? NO_PRICE_LEDE : "Spend could not be assessed for this export.")
-    : [fmtMoney(spend, 0), deltaPct != null ? `${fmtChangePct(deltaPct)} vs previous ${filters.window} d` : null,
-      projected != null ? `forecast ${fmtMoney(projected, 0)}` : null,
-      endDays != null && endDays >= 0 ? `contract ends in ${fmtInt(Math.round(endDays))} d` : null].filter(Boolean).join(" · ");
+    : [deltaPct != null && Math.abs(deltaPct) >= 0.5
+        ? `Spend ${deltaPct >= 0 ? "rose" : "fell"} ${fmtPct(Math.abs(deltaPct), 0)} to ${fmtMoney(spend, 0)}.`
+        : `Spend was ${fmtMoney(spend, 0)} over the last ${filters.window} days.`,
+      [projected != null ? `${monthName || "This month"} is on course for ${fmtMoney(projected, 0)}` : null,
+        endDays != null && endDays >= 0 ? `the contract ends in ${fmtInt(Math.round(endDays))} day${Math.round(endDays) === 1 ? "" : "s"}` : null]
+        .filter(Boolean).join(", and ").replace(/^the/, "The") + "."].filter((x) => x !== ".").join(" ");
 
   const printLines = [
     spend != null ? `Spend ${fmtMoney(spend, 0)} over ${filters.window} days${deltaPct != null ? `, ${fmtChangePct(deltaPct)} vs the previous period` : ""}.` : null,
@@ -485,53 +515,55 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
   return (
     <div>
       <MoneyPrintHeader meta={meta} filters={filters} lines={printLines} priceText={priceText && priceText !== "…" ? priceText : null} />
-      <PageIntro overline={pageEyebrow(role, "Money", meta, filters.window)} title="Money" verdict={lede} />
+      <PageIntro overline={pageEyebrow(role, "Money", meta, filters.window)} title="Money" verdict={lede} scope={MONEY_SCOPE} />
       <FreshnessLine findingsById={byId} goTo={goTo} />
 
-      <div className="summary-tile-row cto-tiles ln-tiles-3">
-        <IssueTile label="Spend" loading={dailyAgg.phase === "loading"} pill={<KindChip>Context</KindChip>}
+      <KpiRow note="Spend, the forecast and billed vs metered are context. Possible waste is part of spend, counted on its own — never summed."
+        strip={[
+          <IssueTile key="cc" label="No cost center" loading={ccAlloc.phase === "loading"} status={untaggedPct != null && untaggedPct > 20 ? "warn" : "neutral"}
+            headline={untaggedPct != null ? fmtShare(untaggedPct) : null} unit="of the split"
+            missingReason={ccAlloc.data ? (rollupNote(ccAlloc.data, "cost") || "no cost-center split for this window") : "cost-center rollup not in this export"}
+            base={untaggedPct != null ? [`${fmtMoney(ccUntagged, 0)} of ${fmtMoney(ccTotal, 0)}`, tagAff ? `${fmtInt(tagAff.flagged)} of ${fmtInt(tagAff.total)} ${tagAff.noun} untagged` : null].filter(Boolean).join(" · ") + "." : null}
+            cause={untaggedPct != null && ccValues > 0 ? `${fmtInt(ccValues)} cost center${ccValues === 1 ? "" : "s"} carry the other ${fmtShare(pctOf(ccTagged, ccTotal))} (${fmtMoney(ccTagged, 0)}).` : null}
+            onOpen={() => goTo({ tab: "cost", subtab: "chargeback" })} openLabel="Chargeback & tags →" />,
+          <IssueTile key="contract" label="Contract" loading={contractState.phase === "loading"} status={contract ? contractSev : "neutral"}
+            headline={contract ? (endDays != null ? (endDays < 0 ? "Ended" : `${fmtInt(Math.round(endDays))} day${Math.round(endDays) === 1 ? "" : "s"}`) : runway != null ? `${fmtInt(Math.round(runway))} days` : null) : null}
+            unit={endDays != null ? (endDays < 0 ? undefined : "until it ends") : "of balance at this burn"}
+            missingReason={notAssessedText(contractState.data)}
+            base={contract ? [balance != null ? `${fmtMoneyOf(curMoney, balance, 0)} balance left` : null, cCount > 1 ? `worst of ${fmtInt(cCount)} contracts` : `on ${fmtInt(cCount)} of ${fmtInt(cCount)} contracts`].filter(Boolean).join(" ") + "." : null}
+            cause={contract ? (runway != null && endDays != null && runway < endDays
+              ? `At ${fmtMoneyOf(curMoney, numOrZero(contract.daily_burn), 0)} a day it runs out${contract.projected_depletion_date ? ` ${fmtDayShort(contract.projected_depletion_date)}` : ""}, ${fmtInt(Math.round(endDays - runway))} days before the end.`
+              : unusedPct != null && unusedPct > 0 ? `${fmtShare(unusedPct)} of the balance unused at the end date.` : null) : null}
+            onOpen={contract ? () => setContractOpen(true) : () => goTo({ tab: "cost", subtab: "contract" })} openLabel={contract ? "Open →" : "Contract & rate →"} />,
+          <IssueTile key="billed" label="Billed vs metered" loading={invoiceState.phase === "loading"}
+            headline={creditGap != null ? signed(creditGap) : null} unit="invoice vs usage views" missingReason={notAssessedText(invoiceState.data)}
+            base={premium && premiumGap != null && Math.abs(premiumGap) >= 5 ? `${usageWords(premium.usage_type)} rate is ${signed(premiumGap)} vs the audit's $ per credit.` : null}
+            cause="The last days are left out: org billing lags." onOpen={() => goTo({ tab: "cost", subtab: "contract" })} openLabel="Contract & rate →" />,
+        ]}>
+        <IssueTile label="Spend" loading={dailyAgg.phase === "loading"}
           headline={spend != null ? fmtMoney(spend, 0) : null} unit={`last ${filters.window} days`} missingReason={notAssessedText(dailyAgg.data)}
-          base={[credits != null ? `${fmtInt(Math.round(credits))} credits` : null,
-            delta != null && deltaPct != null ? `${signedMoney(delta)} (${fmtChangePct(deltaPct)}) vs previous ${filters.window} d` : null].filter(Boolean).join(" · ") || null}
+          base={[delta != null && deltaPct != null ? `${fmtChangePct(deltaPct)} (${signedMoney(delta)}) vs previous ${filters.window} days` : null,
+            credits != null ? `${fmtInt(Math.round(credits))} credits` : null].filter(Boolean).join(" · ") || null}
           cause={priceText && priceText !== "…" ? priceText : null} onOpen={() => goTo({ tab: "cost" })} openLabel="Cost →" />
-        <IssueTile label="Month-end forecast" loading={forecastState.phase === "loading"} pill={<KindChip>Context · partial</KindChip>}
-          headline={projected != null ? fmtMoney(projected, 0) : null} unit={monthName ? `if ${monthName} keeps its run-rate` : "at this run-rate"}
+        <IssueTile label="Month-end forecast" loading={forecastState.phase === "loading"}
+          headline={projected != null ? fmtMoney(projected, 0) : null} unit={monthName ? `${monthName}, partial month` : "partial month"}
           missingReason={notAssessedText(forecastState.data)}
           chart={projected != null && mtd != null ? <ShareBar value={mtd} total={projected} valueFmt={(v) => fmtMoney(v, 0)} /> : null}
-          base={[mtd != null ? `${fmtMoney(mtd, 0)} so far` : null, prog ? `day ${prog.day} of ${prog.days} · ${fmtShare((100 * prog.day) / prog.days)} through` : null].filter(Boolean).join(" · ") || null}
-          cause="Partial month: run-rate × days left, not a bill." onOpen={() => goTo({ tab: "cost", subtab: "trend" })} openLabel="Cost › Trend →" />
+          base={mtd != null ? `${fmtMoney(mtd, 0)} so far${prog ? `, on day ${prog.day} of ${prog.days}` : ""}.` : null}
+          cause={`${prog ? `${fmtShare((100 * prog.day) / prog.days)} of the month gone. ` : ""}Run-rate × days left, not a bill.`} onOpen={() => goTo({ tab: "cost", subtab: "trend" })} openLabel="Cost › Trend →" />
         <IssueTile label="Possible waste" loading={!findingsReady || dailyAgg.phase === "loading"}
           status={wasteUsd == null ? "not_assessed" : wt.waste.flagged > 0 ? "warn" : "ok"}
-          headline={wastePct != null ? fmtShare(wastePct) : (wasteUsd != null ? fmtMoney(wasteUsd, 0) : null)} unit={wastePct != null ? "of spend is possible waste" : undefined}
+          headline={wastePct != null ? fmtShare(wastePct) : (wasteUsd != null ? fmtMoney(wasteUsd, 0) : null)} unit={wastePct != null ? "of spend" : undefined}
           missingReason="none of the waste checks ran"
-          base={wasteUsd != null ? `${fmtMoney(wasteUsd, 0)}${spend != null ? ` of ${fmtMoney(spend, 0)}` : ""} · ${fmtInt(wt.waste.flagged)} of ${fmtInt(wt.waste.ran)} checks flagged` : null}
-          cause="Not added to spend: it is part of it." onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
-        <IssueTile label="No cost center" loading={ccAlloc.phase === "loading"} status={untaggedPct != null && untaggedPct > 20 ? "warn" : "neutral"}
-          headline={untaggedPct != null ? fmtShare(untaggedPct) : null} unit="of the split has no cost center"
-          missingReason={ccAlloc.data ? (rollupNote(ccAlloc.data, "cost") || "no cost-center split for this window") : "cost-center rollup not in this export"}
-          base={untaggedPct != null ? [`${fmtMoney(ccUntagged, 0)} of ${fmtMoney(ccTotal, 0)}`, tagAff ? `${fmtInt(tagAff.flagged)} of ${fmtInt(tagAff.total)} ${tagAff.noun} untagged` : null].filter(Boolean).join(" · ") : null}
-          cause={untaggedPct != null && ccValues > 0 ? `${fmtInt(ccValues)} cost center${ccValues === 1 ? "" : "s"} carry ${fmtShare(pctOf(ccTagged, ccTotal))} (${fmtMoney(ccTagged, 0)}).` : null}
-          onOpen={() => goTo({ tab: "cost", subtab: "chargeback" })} openLabel="Chargeback & tags →" />
-        <IssueTile label="Contract" loading={contractState.phase === "loading"} status={contract ? contractSev : "neutral"}
-          headline={contract ? (endDays != null ? (endDays < 0 ? "Ended" : `${fmtInt(Math.round(endDays))} d`) : runway != null ? `${fmtInt(Math.round(runway))} d` : null) : null}
-          unit={endDays != null ? (endDays < 0 ? undefined : "until the contract ends") : "of balance at this burn"}
-          missingReason={notAssessedText(contractState.data)}
-          base={contract ? [balance != null ? `${fmtMoneyOf(curMoney, balance, 0)} balance left` : null, cCount > 1 ? `worst of ${fmtInt(cCount)} contracts` : `${fmtInt(cCount)} of ${fmtInt(cCount)} contracts`].filter(Boolean).join(" · ") : null}
-          cause={contract ? (runway != null && endDays != null && runway < endDays
-            ? `At ${fmtMoneyOf(curMoney, numOrZero(contract.daily_burn), 0)} a day the balance runs out${contract.projected_depletion_date ? ` ${fmtDayShort(contract.projected_depletion_date)}` : ""}, ${fmtInt(Math.round(endDays - runway))} d before the end date.`
-            : unusedPct != null && unusedPct > 0 ? `${fmtShare(unusedPct)} of the balance unused at the end date.` : null) : null}
-          onOpen={contract ? () => setContractOpen(true) : () => goTo({ tab: "cost", subtab: "contract" })} openLabel={contract ? "Open →" : "Contract & rate →"} />
-        <IssueTile label="Billed vs metered" loading={invoiceState.phase === "loading"} pill={<KindChip>Context</KindChip>}
-          headline={creditGap != null ? signed(creditGap) : null} unit="invoice vs usage views" missingReason={notAssessedText(invoiceState.data)}
-          base={premium && premiumGap != null && Math.abs(premiumGap) >= 5 ? `${premium.usage_type} rate ${signed(premiumGap)} vs the audit's $/credit` : null}
-          cause="The last days are left out: org billing lags." onOpen={() => goTo({ tab: "cost", subtab: "contract" })} openLabel="Contract & rate →" />
-      </div>
+          base={wasteUsd != null ? `${fmtMoney(wasteUsd, 0)}${spend != null ? ` of ${fmtMoney(spend, 0)}` : ""}, flagged by ${fmtInt(wt.waste.flagged)} of ${fmtInt(wt.waste.ran)} checks.` : null}
+          cause="It is part of spend, so it is never added to it." onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
+      </KpiRow>
 
-      <div className="cj-charts-2">
-        <SpendMoversCard periodState={periodState} filters={filters} meta={meta} title={delta != null ? `What moved spend ${signedMoney(delta)}` : "What moved spend"}
+      <div className="cj-charts-2 cx-top">
+        <SpendMoversCard periodState={periodState} filters={filters} meta={meta} title="What moved spend"
           sub={`Change vs the previous ${filters.window} days, by service`} link="Cost › Trend →" onLink={() => goTo({ tab: "cost", subtab: "trend" })} />
-        <PatternCard title="By calendar month" sub="Last 12 billed months and this month · this month to date, then the forecast to month end">
-          {months && months.length ? <MoneyMonthBars months={months} projected={projected} /> : <ChartNote state={monthAgg} label="cost_monthly_actuals" />}
+        <PatternCard title="By calendar month" sub={`Last 12 billed months, then ${monthName || "this month"} to date and its forecast (dashed)`}>
+          {months && months.length ? <CalMonthRows months={months} projected={projected} /> : <ChartNote state={monthAgg} label="cost_monthly_actuals" />}
         </PatternCard>
       </div>
 
@@ -541,18 +573,15 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
             link="Chargeback & tags →" onLink={() => goTo({ tab: "cost", subtab: "chargeback" })}>
             {ccItems ? (ccTagged > 0
               ? <React.Fragment>
-                <RankedBars items={ccItems} n={8} valueFmt={(v: number) => fmtMoney(v, 0)} unitLabel="$" ariaLabel="Spend by cost center" />
+                <CxBars items={costCenterBars(ccItems, ccTotal, 9)} ariaLabel="Spend by cost center" labelWidth={140} />
                 {recon && recon.spend_usd != null && (
-                  <div className="money-recon">
-                    <ReconciliationStrip steps={[
-                      { key: "spend", label: "Metered (usage views)", value: recon.spend_usd },
-                      { key: "billed", label: "Billed to split", value: recon.billing_usd,
-                        note: numOrZero(recon.outside_split_usd) > 0 ? `storage & transfer ${fmtMoney(recon.outside_split_usd, 0)} outside the split` : null },
-                      { key: "split", label: "Split by cost center", value: recon.rollup_usd },
-                    ]} />
-                  </div>
+                  <ReconChain steps={[
+                    { key: "spend", label: "Metered", value: recon.spend_usd },
+                    { key: "billed", label: "Billed to split", value: recon.billing_usd },
+                    { key: "split", label: "Allocated", value: recon.rollup_usd },
+                  ]} />
                 )}
-                {reconTie && reconTie.tone !== "ok" && <div className="chart-note-oneline">{reconTie.text}</div>}
+                <TieLine tie={reconTie} />
                 {ccAlloc.data && ccAlloc.data.cut_sources && ccAlloc.data.cut_sources.length > 0 && (
                   <div className="chart-note-oneline">{`The export cut ${ccAlloc.data.cut_sources.join(", ")} at its row limit, so tagged spend can read low.`}</div>
                 )}
@@ -571,16 +600,16 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
             <div className="pc-head ln-forward-head">
               <div className="pc-titles">
                 <div className="pc-title">Something to forward</div>
-                <div className="pc-sub">Four figures, kinds apart · the PDF carries this page</div>
+                <div className="pc-sub">Four figures, each counted on its own. The PDF carries this page.</div>
               </div>
               <button type="button" className="ln-btn" onClick={printWholePage}>Save as PDF</button>
             </div>
             <StatStrip ariaLabel="Four figures to forward" cells={[
-              { key: "spend", label: "Spend · context", value: spend != null ? fmtMoney(spend, 0) : null, unit: ` ${filters.window} d`,
+              { key: "spend", label: "Spend", value: spend != null ? fmtMoney(spend, 0) : null, unit: ` last ${filters.window} days`,
                 base: [credits != null ? `${fmtInt(Math.round(credits))} credits` : null, range].filter(Boolean).join(" · ") || null, missing: notAssessedText(dailyAgg.data) },
-              { key: "change", label: `Change · vs previous ${filters.window} d`, value: deltaPct != null ? fmtChangePct(deltaPct) : null,
+              { key: "change", label: `Change vs previous ${filters.window} days`, value: deltaPct != null ? fmtChangePct(deltaPct) : null,
                 base: delta != null ? signedMoney(delta) : null, missing: "no previous period to compare" },
-              { key: "forecast", label: "Forecast · partial", value: projected != null ? fmtMoney(projected, 0) : null, unit: " month end",
+              { key: "forecast", label: "Month-end forecast", value: projected != null ? fmtMoney(projected, 0) : null, unit: " partial month",
                 base: [mtd != null ? `${fmtMoney(mtd, 0)} so far` : null, prog ? `day ${prog.day} of ${prog.days}` : null].filter(Boolean).join(" · ") || null, missing: notAssessedText(forecastState.data) },
               { key: "waste", label: "Possible waste", pill: wasteUsd != null && wt.waste.flagged > 0 ? "warn" : null,
                 value: wastePct != null ? fmtShare(wastePct) : (wasteUsd != null ? fmtMoney(wasteUsd, 0) : null),
@@ -592,7 +621,7 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
       </div>
 
       <FilterReachNote />
-      <ChecksRanStrip meta={meta} byId={byId} goTo={goTo} />
+      <div className="nj-strip"><RanLine meta={meta} byId={byId} goTo={goTo} /></div>
       <PageFooter meta={meta} />
     </div>
   );

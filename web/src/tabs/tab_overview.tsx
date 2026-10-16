@@ -6,20 +6,22 @@
 import React from "react";
 import { CREDITS_COLUMNS, TOTAL_CREDITS_COLUMNS } from "../api";
 import { fmtDuration, fmtInt, fmtMoney } from "../format";
-import { IgnoredFilterTracker, fmtChangePct, aggTotal, numOrZero, useFindingAgg, useFindingData } from "../components/hooks";
-import { AREA_REGISTRY, COST_MONEY_COL } from "../components/tab_registry";
+import { IgnoredFilterTracker, aggTotal, numOrZero, useFindingAgg, useFindingData } from "../components/hooks";
+import { AREA_REGISTRY, COST_MONEY_COL, MONEY_SCOPE } from "../components/tab_registry";
 import {
   FreshnessLine, PageFooter, PageIntro, PatternCard, bandOf, discountIgnoredReason, noDataText, pageEyebrow, priceLabelOf, ranCountsOf,
 } from "../components/primitives";
 import { useNames } from "../components/names";
 import { reconciliationLine, useCostCenterAllocation } from "../components/tag_rollup";
-import { DayKindTimeline, ReconciliationStrip, StatusBars } from "../components/blocks";
-import { computeWord, failedSplit } from "../components/area_pipelines";
+import { DayKindTimeline } from "../components/blocks";
+import { computeWord } from "../components/area_pipelines";
 import { SpendMoversCard, buildSpendMovers, whLabel } from "./tab_money";
 import { AreaContent } from "../area_content";
 import { ChartNote } from "../components/charts";
 import { NO_PRICE_LEDE, NO_PRICE_READING, isUnpricedAgg, notAssessedText } from "../components/scope";
-import { windowShortLabel } from "../components/overview_tile";
+import { KpiRow, windowShortLabel } from "../components/overview_tile";
+import { CxBars, RanLine, ReconChain, TieLine, plural } from "../components/cx_a";
+import type { CxBarItem } from "../components/cx_a";
 import { IssueTile, fmtShare, pctOf } from "../components/blocks";
 import { withoutTotalRows } from "./tab_area";
 import { DoTheseFirst, rankActions, useActions } from "./tab_actions";
@@ -178,6 +180,42 @@ export function SecurityScorecard({ byId, goTo, areas = SEC_ROWS }: { byId: Reco
   );
 }
 
+/** Security checks per area on fixed columns (CRIT | WARN | REF | ALL), most critical first; bar length = checks in the area. */
+export function SecurityAreaTable({ byId, goTo, areas = SEC_ROWS }: { byId: Record<string, Finding>; goTo: GoToFn; areas?: ScoreRow[] }) {
+  const rows = areas.map((r) => {
+    const area = AREA_REGISTRY[r.tab];
+    const subs = (area ? area.subtabs : []).filter((s: { key: string }) => !r.subtab || s.key === r.subtab);
+    const ids = subs.flatMap((s: { ids?: string[] }) => s.ids || []);
+    const refIds = subs.flatMap((s: { refIds?: string[] }) => s.refIds || []);
+    const c = scoreOf(byId, ids, refIds);
+    return { ...r, c, all: c.crit + c.warn + c.ok + c.ref + c.na };
+  }).filter((r) => r.all > 0).sort((a, b) => b.c.crit - a.c.crit || b.c.warn - a.c.warn);
+  if (!rows.length) return <div className="chart-note-oneline">No security check in this export.</div>;
+  const max = Math.max(...rows.map((r) => r.all));
+  const tot = rows.reduce((s, r) => ({ crit: s.crit + r.c.crit, ok: s.ok + r.c.ok, na: s.na + r.c.na, all: s.all + r.all }), { crit: 0, ok: 0, na: 0, all: 0 });
+  const n = (v: number) => (v ? fmtInt(v) : "–");
+  return (
+    <div className="cx-sec" role="table" aria-label="Security checks by area">
+      <div className="cx-sec-tr cx-sec-th" role="row">
+        <span role="columnheader">Area</span><span aria-hidden="true" />
+        <span role="columnheader" className="crit">Crit</span><span role="columnheader">Warn</span><span role="columnheader">Ref</span><span role="columnheader">All</span>
+      </div>
+      {rows.map((r) => (
+        <button type="button" role="row" key={r.label} className="cx-sec-tr" onClick={() => goTo({ tab: r.tab, subtab: r.subtab || null })}>
+          <span role="cell" className="cx-sec-name">{r.label.replace(/^Access › /, "")}</span>
+          <span role="cell" className="cx-sec-bar" aria-hidden="true">
+            {(["crit", "warn", "ok", "ref", "na"] as const).map((k) => (r.c[k] > 0
+              ? <span key={k} className={`sc-seg s-${k}`} style={{ width: `${(100 * r.c[k]) / max}%` }} /> : null))}
+          </span>
+          <span role="cell" className="crit">{n(r.c.crit)}</span><span role="cell">{n(r.c.warn)}</span>
+          <span role="cell">{n(r.c.ref)}</span><span role="cell" className="all">{fmtInt(r.all)}</span>
+        </button>
+      ))}
+      <div className="cx-sec-foot">{`${fmtInt(tot.crit)} critical of ${fmtInt(tot.all)} checks across ${fmtInt(rows.length)} areas · ${tot.ok ? `${fmtInt(tot.ok)} ok` : "none passed outright"}${tot.na ? ` · ${fmtInt(tot.na)} not run` : ""}`}</div>
+    </div>
+  );
+}
+
 /** "246 of 248 checks ran · 137 critical · …": the one ran count (meta) and every check's band. */
 export function ChecksRanStrip({ meta, byId, goTo }: { meta: Meta | null; byId: Record<string, Finding>; goTo: GoToFn }) {
   const ran = ranCountsOf(meta);
@@ -198,6 +236,28 @@ export function ChecksRanStrip({ meta, byId, goTo }: { meta: Meta | null; byId: 
       <button type="button" className="ck-link" onClick={() => goTo({ tab: "coverage" })}>{"Coverage & gaps →"}</button>
     </div>
   );
+}
+
+// Failed runs grouped by `keyOf` as ranked rows: the top 6, then the rest as one grey "Other (n)" row.
+function failedRankRows(rows: Row[], keyOf: (r: Row) => string | null, noKey: string): CxBarItem[] {
+  const m = new Map<string, number>();
+  rows.forEach((r) => {
+    const v = numOrZero(r.failed_runs);
+    if (v <= 0) return;
+    const k = keyOf(r) || noKey;
+    m.set(k, (m.get(k) || 0) + v);
+  });
+  const all = [...m.entries()].sort((a, b) => b[1] - a[1]);
+  const total = all.reduce((s, e) => s + e[1], 0);
+  const share = (v: number) => fmtShare(pctOf(v, total));
+  const cut = all.length === 7 ? 7 : 6;
+  const items: CxBarItem[] = all.slice(0, cut).map(([k, v]) => ({ key: k, label: k, value: v, valueText: fmtInt(v), share: share(v) }));
+  const rest = all.slice(cut);
+  if (rest.length) {
+    const v = rest.reduce((s, e) => s + e[1], 0);
+    items.push({ key: "__other__", label: `Other (${fmtInt(rest.length)})`, value: v, valueText: fmtInt(v), share: share(v), tone: "other" });
+  }
+  return items;
 }
 
 export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas }: {
@@ -264,9 +324,10 @@ export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas
   const settled = dayKindAgg.phase !== "loading" && periodState.phase !== "loading" && findingsReady && actionsReady;
   const unpricedSpend = isUnpricedAgg(dk);
   const lede = !settled ? "…" : spend == null ? (unpricedSpend ? NO_PRICE_LEDE : "Spend could not be assessed for this export.")
-    : [`${fmtMoney(spend, 0)} spend${deltaPct != null ? `, ${fmtChangePct(deltaPct)} vs the previous ${filters.window} days` : ""}.`,
-      `${fmtInt(critAreas)} of 4 areas ${critAreas === 1 ? "is" : "are"} critical;`,
-      `${fmtInt(ranked.week.length)} of ${fmtInt(actions.length)} actions are worth doing this week.`].join(" ");
+    : [deltaPct != null && Math.abs(deltaPct) >= 0.5
+        ? `Spend ${deltaPct >= 0 ? "rose" : "fell"} ${fmtShare(Math.abs(deltaPct))} to ${fmtMoney(spend, 0)}.`
+        : `Spend was ${fmtMoney(spend, 0)} over the last ${filters.window} days.`,
+      `${fmtInt(critAreas)} of the 4 areas ${critAreas === 1 ? "is" : "are"} critical, and ${fmtInt(ranked.week.length)} of ${fmtInt(actions.length)} actions are worth doing this week.`].join(" ");
 
   // Spend by day: weekday and weekend averages over full days only.
   const dayTotals = new Map<string, number>();
@@ -284,66 +345,78 @@ export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas
 
   return (
     <div>
-      <PageIntro overline={pageEyebrow(role, "Overview", meta, filters.window)} title="Overview" verdict={lede} />
+      <PageIntro overline={pageEyebrow(role, "Overview", meta, filters.window)} title="Overview" verdict={lede} scope={MONEY_SCOPE} />
       <FreshnessLine findingsById={byId} goTo={goTo} />
-      <div className="summary-tile-row cto-tiles">
+      <KpiRow>
         <IssueTile label="Cost" loading={!findingsReady || dayKindAgg.phase === "loading"} status={sev.cost}
           headline={wastePct != null ? fmtShare(wastePct) : null} unit="of spend is possible waste"
           missingReason={wt.waste.usd == null ? "none of the waste checks ran" : notAssessedText(dayKindAgg.data)}
-          base={wt.waste.usd != null && spend != null ? `${fmtMoney(wt.waste.usd, 0)} of ${fmtMoney(spend, 0)} · ${fmtInt(wt.waste.flagged)} of ${fmtInt(wt.waste.ran)} checks flagged` : null}
+          base={wt.waste.usd != null && spend != null ? `${fmtMoney(wt.waste.usd, 0)} of ${fmtMoney(spend, 0)}, flagged by ${fmtInt(wt.waste.flagged)} of ${fmtInt(wt.waste.ran)} checks.` : null}
           cause={topWaste ? `Largest: ${topWaste.title}, ${fmtMoney(topWaste.usd, 0)}${topWaste.affected ? ` on ${fmtInt(topWaste.affected.flagged)} of ${fmtInt(topWaste.affected.total)} ${topWaste.affected.noun}` : ""}.` : null}
           onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
         <IssueTile label="Reliability" loading={!findingsReady || failState.phase === "loading"} status={sev.rel}
           headline={runs > 0 ? fmtShare(pctOf(failed, runs)) : null} unit="of task runs failed"
           missingReason={naReason(tf) || notAssessedText(failState.data)}
-          base={runs > 0 ? `${fmtInt(failed)} of ${fmtInt(runs)} runs${tfAff ? ` · ${fmtInt(tfAff.flagged)} of ${fmtInt(tfAff.total)} ${tfAff.noun}` : ""}` : null}
-          cause={[topErr ? `Error ${topErr[0]} is ${fmtShare(pctOf(topErr[1], failed))} of failed runs.` : null,
+          base={runs > 0 ? `${fmtInt(failed)} of ${fmtInt(runs)} runs${tfAff ? `, across ${fmtInt(tfAff.flagged)} of ${fmtInt(tfAff.total)} ${tfAff.noun}` : ""}.` : null}
+          cause={[topErr ? `Error ${topErr[0]} causes ${fmtShare(pctOf(topErr[1], failed))} of the failures.` : null,
             aff(silent) ? `${fmtInt(aff(silent)!.flagged)} of ${fmtInt(aff(silent)!.total)} ${aff(silent)!.noun} alert no one.` : null].filter(Boolean).join(" ") || null}
           onOpen={() => goTo({ tab: "tasks", subtab: "failures" })} openLabel="Tasks & pipelines →" />
         <IssueTile label="Performance" loading={!findingsReady || slotAgg.phase === "loading"} status={sev.perf}
-          headline={slotTotal != null ? fmtDuration(slotTotal) : null} unit="of queries waiting for a slot"
+          headline={slotTotal != null ? fmtDuration(slotTotal) : null} unit="queries waited for a slot"
           missingReason={naReason(qw) || notAssessedText(slotAgg.data)}
-          base={slotTop && slotTotal ? `${whLabel(slotTop.id)} is ${fmtDuration(slotTop.s)} of it · ${fmtShare(pctOf(slotTop.s, slotTotal))}` : null}
+          base={slotTop && slotTotal ? `${whLabel(slotTop.id)} is ${fmtDuration(slotTop.s)} of it, ${fmtShare(pctOf(slotTop.s, slotTotal))}.` : null}
           cause={aff(sd) ? `${fmtInt(aff(sd)!.flagged)} of ${fmtInt(aff(sd)!.total)} ${aff(sd)!.noun} ran slower than the period before.` : null}
           onOpen={() => goTo({ tab: "queries", subtab: "waiting" })} openLabel="Queries →" />
         <IssueTile label="Security" loading={!findingsReady} status={sev.sec}
           headline={aff(mfa) ? fmtShare(pctOf(aff(mfa)!.flagged, aff(mfa)!.total)) : null} unit="of users have no MFA"
           missingReason={naReason(mfa)}
-          base={aff(mfa) ? `${fmtInt(aff(mfa)!.flagged)} of ${fmtInt(aff(mfa)!.total)} ${aff(mfa)!.noun} · snapshot` : null}
-          cause={[aff(pub) ? `PUBLIC can reach ${fmtInt(aff(pub)!.flagged)} of ${fmtInt(aff(pub)!.total)} ${aff(pub)!.noun}.` : null,
+          base={aff(mfa) ? `${fmtInt(aff(mfa)!.flagged)} of ${fmtInt(aff(mfa)!.total)} ${aff(mfa)!.noun}, as of the export.` : null}
+          cause={[aff(pub) ? `The PUBLIC role can reach ${fmtInt(aff(pub)!.flagged)} of ${fmtInt(aff(pub)!.total)} ${aff(pub)!.noun}.` : null,
             aff(broad) ? `${fmtInt(aff(broad)!.flagged)} broad ${aff(broad)!.noun}.` : null].filter(Boolean).join(" ") || null}
           onOpen={() => goTo({ tab: "access", subtab: "users" })} openLabel="Access →" />
-      </div>
+      </KpiRow>
 
       <DoTheseFirst actions={actions} ready={actionsReady} filters={filters} goTo={goTo} />
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <SpendMoversCard periodState={periodState} filters={filters} meta={meta}
-          title={delta != null ? `Why spend is ${delta >= 0 ? "up" : "down"} ${delta >= 0 ? "+" : "−"}${fmtMoney(Math.abs(delta), 0)}` : "Why spend moved"}
+          title={delta != null ? `Why spend is ${delta >= 0 ? "up" : "down"}` : "Why spend moved"}
           sub={`Change vs the previous ${filters.window} days, by service`} link="Cost › Trend →" onLink={() => goTo({ tab: "cost", subtab: "trend" })} />
         <PatternCard title="Why task runs fail" sub={failed > 0 ? `${fmtInt(failed)} failed runs, by each task's last error code, then by compute` : "Failed runs, by error code and compute"}
           link="Tasks › Failures →" onLink={() => goTo({ tab: "tasks", subtab: "failures" })}>
           {fRows ? (failed > 0 ? (
-            <div className="pl-stack">
-              {failedSplit(failRows, (r) => (r.last_error_code ? `err ${r.last_error_code}` : null), "Failed runs by error code")}
-              {failedSplit(failRows, (r) => computeWord(r), "Failed runs by compute")}
+            <div className="cx-fail">
+              {(() => {
+                const byCode = failedRankRows(failRows, (r) => (r.last_error_code ? `Error ${r.last_error_code}` : null), "No error code");
+                const byCompute = failedRankRows(failRows, (r) => computeWord(r), "Unknown compute");
+                return (
+                  <>
+                    <div className="cx-eyebrow">{`By last error code · ${plural(byCode.length, "code")}`}</div>
+                    <CxBars items={byCode} ariaLabel="Failed runs by error code" labelWidth={170} />
+                    <div className="cx-eyebrow">{"By compute"}</div>
+                    <CxBars items={byCompute} ariaLabel="Failed runs by compute" labelWidth={170} />
+                  </>
+                );
+              })()}
             </div>
           ) : <div className="chart-note-oneline">{`No failed task runs in ${windowShortLabel(meta && meta.as_of_date, filters.window, meta && meta.snapshot_days) || `the last ${filters.window} days`}.`}</div>)
             : <ChartNote state={failState} label="sf_task_failures" />}
         </PatternCard>
       </div>
 
-      <div className="cj-charts-2">
-        <PatternCard title="Where queries wait" sub={slotTotal != null ? `${fmtDuration(slotTotal)} waiting for a slot, by warehouse · a full warehouse: add clusters or spread the load` : "Waiting for a slot, by warehouse"}
+      <div className="cj-charts-2 cx-top">
+        <PatternCard title="Where queries wait" sub={slotTotal != null ? `${fmtDuration(slotTotal)} waiting for a slot, by warehouse. A full warehouse: add clusters or spread the load.` : "Waiting for a slot, by warehouse"}
           link="Queries › Waiting →" onLink={() => goTo({ tab: "queries", subtab: "waiting" })}>
-          {slotGroups ? (
-            <StatusBars n={6} unitLabel="waiting for a slot" ariaLabel="Time waiting for a slot, by warehouse"
-              emptyText={noDataText(meta, filters.window)}
-              items={slotGroups.map((g) => ({ key: String(g.id), name: whLabel(g.id), value: g.s, valueText: `${fmtDuration(g.s)} · ${fmtShare(pctOf(g.s, slotTotal))}` }))} />
-          ) : <ChartNote state={slotAgg} label="query_queuing_waits" />}
+          {slotGroups ? (slotGroups.length ? (
+            <div>
+              <CxBars ariaLabel="Time waiting for a slot, by warehouse" labelWidth={190}
+                items={[...slotGroups].sort((a, b) => b.s - a.s).slice(0, 6).map((g) => ({ key: String(g.id), label: whLabel(g.id), value: g.s, valueText: fmtDuration(g.s), share: fmtShare(pctOf(g.s, slotTotal)) }))} />
+              {slotGroups.length > 6 && <div className="cx-moved-note">{`${fmtInt(slotGroups.length - 6)} more warehouse${slotGroups.length - 6 === 1 ? "" : "s"} wait less and share the rest.`}</div>}
+            </div>
+          ) : <div className="chart-note-oneline">{noDataText(meta, filters.window)}</div>) : <ChartNote state={slotAgg} label="query_queuing_waits" />}
         </PatternCard>
-        <PatternCard title="Security checks by area" sub="Of the checks that ran: critical, warning, ok, reference" link="Access →" onLink={() => goTo({ tab: "access" })}>
-          {findingsReady ? <SecurityScorecard byId={byId} goTo={goTo} /> : <div className="chart-note-oneline">…</div>}
+        <PatternCard title="Security checks by area" sub="Checks that ran · most critical first · bar length = checks in the area" link="Access →" onLink={() => goTo({ tab: "access" })}>
+          {findingsReady ? <SecurityAreaTable byId={byId} goTo={goTo} /> : <div className="chart-note-oneline">…</div>}
         </PatternCard>
       </div>
 
@@ -358,21 +431,21 @@ export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas
             </div>
           ) : <ChartNote state={dayKindAgg} label="cost_dollarized_by_service_day" />}
         </PatternCard>
-        <PatternCard title="Ties to the bill" sub={tie ? tie.text : "Metered → billed → allocated"} link="Chargeback & tags →" onLink={() => goTo({ tab: "cost", subtab: "chargeback" })}>
+        <PatternCard title="Ties to the bill" sub="From metered usage to what each cost center carries" link="Chargeback & tags →" onLink={() => goTo({ tab: "cost", subtab: "chargeback" })}>
           {recon && recon.spend_usd != null ? (
-            <div className="pt-recon-v">
-              <ReconciliationStrip steps={[
-                { key: "spend", label: "Metered (usage views)", value: recon.spend_usd },
-                { key: "billed", label: "Billed to split", value: recon.billing_usd,
-                  note: numOrZero(recon.outside_split_usd) > 0 ? `storage & transfer ${fmtMoney(recon.outside_split_usd, 0)} outside the split` : null },
-                { key: "split", label: "Allocated by cost center", value: recon.rollup_usd },
+            <div>
+              <ReconChain steps={[
+                { key: "spend", label: "Metered", value: recon.spend_usd },
+                { key: "billed", label: "Billed to split", value: recon.billing_usd },
+                { key: "split", label: "Allocated", value: recon.rollup_usd },
               ]} />
+              <TieLine tie={tie} />
             </div>
           ) : <div className="chart-note-oneline">{ccAlloc.phase === "loading" ? "…" : "The cost-center split is not in this export."}</div>}
         </PatternCard>
       </div>
 
-      <ChecksRanStrip meta={meta} byId={byId} goTo={goTo} />
+      <div className="nj-strip"><RanLine meta={meta} byId={byId} goTo={goTo} /></div>
       <PageFooter meta={meta} />
     </div>
   );
