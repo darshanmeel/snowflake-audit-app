@@ -63,7 +63,9 @@
 
 /* Cards in a two-up grid size to their content instead of stretching to the taller neighbour. */
 .cx-e .pl-grid { align-items: start; }
-.cx-e > .chart-card-v2 { margin-bottom: 14px; }
+.cx-e > .chart-card-v2, .cx-e > div > .chart-card-v2, .cx-e .pl-grid > div > .chart-card-v2 + .chart-card-v2, .cx-e .pl-grid > div > div + .chart-card-v2 { margin-bottom: 14px; }
+.cx-e .pl-grid > div > div > .chart-card-v2 { margin-bottom: 14px; }
+.cx-why { display: inline-block; max-width: 420px; font-size: 13px; color: var(--text-2); }
 
 /* Dotted object names: DB.SCHEMA. muted above the object, wrapping at any point rather than cut. */
 .cx-obj { display: inline-flex; flex-direction: column; min-width: 0; line-height: 1.3; text-align: left; }

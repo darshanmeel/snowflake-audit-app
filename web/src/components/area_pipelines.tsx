@@ -15,7 +15,7 @@ import { DivergingBars } from "./charts_more";
 import { notAssessedText } from "./scope";
 import { scrollToAnchor, windowShortLabel } from "./overview_tile";
 import { TaskFocus } from "./names";
-import { CauseSplitBar, IssueTile, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf } from "./blocks";
+import { CauseSplitBar, IssueTile, StackedShareBar, StatusBars, fmtShare, pctOf } from "./blocks";
 import type { IssueTileProps, StatusBarItem } from "./blocks";
 import { CxBarRows, CxCellBar, CxChip, CxDotLegend, CxDumbbell, CxEyebrow, CxMissing, CxObjName, CxRanked, CxStat, CxStrip, CxSwatches, CxTable, CxTrackRows, rankTally, scheduleText } from "./cx_e";
 import type { CxBarRow, CxRankItem } from "./cx_e";
@@ -92,13 +92,15 @@ function taskLabel(r: Row, dims: Dims): string {
 }
 function openTask(r: Row) { TaskFocus.open(r.account_id ?? null, r.task_full_name || r.task_name); }
 
-/** A short duration: "45 s", "9 m", "2.3 h". */
+/** A duration in two units at most: "45 s", "48 m 9 s", "25 h 9 m", "1 h". */
 function dur(s: any): string {
   const v = num(s);
   if (v === null) return "–";
-  if (v < 90) return `${Math.round(v)} s`;
-  if (v < 5400) return `${Math.round(v / 60)} m`;
-  return `${(v / 3600).toFixed(1)} h`;
+  const t = Math.round(v);
+  if (t < 60) return `${t} s`;
+  if (t < 3600) { const m = Math.floor(t / 60), x = t % 60; return x ? `${m} m ${x} s` : `${m} m`; }
+  const h = Math.floor(t / 3600), m = Math.round((t % 3600) / 60);
+  return m === 60 ? `${h + 1} h` : m ? `${h} h ${m} m` : `${h} h`;
 }
 const usd0 = (v: number) => fmtMoney(v, 0);
 /** A $ rate: "$0.45", "$12.5", "$140". */
@@ -930,23 +932,24 @@ export function PlLoadingPipes(p: ApPageProps) {
   const rate = (r: Row) => (numOrZero(r.gb_inserted) > 0 ? (pc.priced ? usd(pc, r, "est_pipe_usd_list") : numOrZero(r.credits)) / numOrZero(r.gb_inserted) : 0);
   const rateAll = gbAll > 0 ? (pc.priced ? usdSum(pc, pc.rows, "est_pipe_usd_list") : sum(pc.rows, "credits")) / gbAll : null;
   const worstPipe = [...pc.rows].filter((r) => numOrZero(r.gb_inserted) > 0).sort((a, b) => rate(b) - rate(a))[0];
-  const rateText = (v: number) => (pc.priced ? `${usdRate(v)} / GB` : `${v.toFixed(2)} credits / GB`);
+  // $/GB always at 2 decimals.
+  const rateText = (v: number) => (pc.priced ? `${fmtMoney(v, 2)} / GB` : `${v.toFixed(2)} credits / GB`);
   const silentN = !pi.loading && !pi.note ? counts(pi, "pipes") : null;
   const lede = pc.loading || pi.loading ? "…" : [
-    worstPipe && rateAll ? `${pipeName(worstPipe)} pays ${(rate(worstPipe) / rateAll).toFixed(rate(worstPipe) / rateAll >= 10 ? 0 : 1)}× the all-pipe cost per GB, on ${Number(numOrZero(worstPipe.avg_file_mb)).toFixed(1)} MB files` : null,
+    worstPipe && rateAll ? `One pipe pays ${(rate(worstPipe) / rateAll).toFixed(rate(worstPipe) / rateAll >= 10 ? 0 : 1)}× the all-pipe cost per GB because its files average ${Number(numOrZero(worstPipe.avg_file_mb)).toFixed(1)} MB` : null,
     silentN && silentN.flagged > 0 ? `${fmtInt(silentN.flagged)}${ofPop(silentN)} have gone quiet` : null,
-  ].filter(Boolean).join("; ") || null;
+  ].filter(Boolean).join(". ") || null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede ? (lede === "…" ? lede : `${lede}.`) : null); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div>
+    <div className="cx-e">
       <Tiles>
         <PlTile c={pc} open={open("sf_pipe_cost_and_files")} label="Snowpipe cost per GB" make={(c) => {
           if (gbAll <= 0 || rateAll === null) return null;
           const n = counts(c, "pipes");
           return {
-            headline: pc.priced ? usdRate(rateAll) : rateAll.toFixed(2), unit: pc.priced ? "/ GB, all pipes" : "credits / GB, all pipes",
-            base: [`${fmtInt(n.population ?? c.rows.length)} pipes`, worstPipe ? `worst ${pipeName(worstPipe)}: ${rateText(rate(worstPipe))}` : null].filter(Boolean).join(" · "),
+            headline: pc.priced ? fmtMoney(rateAll, 2) : rateAll.toFixed(2), unit: pc.priced ? "/ GB, all pipes" : "credits / GB, all pipes",
+            base: `${fmtInt(n.population ?? c.rows.length)} pipes.${worstPipe ? ` The worst pays ${rateText(rate(worstPipe))}: ${pipeName(worstPipe)}.` : ""}`,
             cause: "Snowpipe bills per file as well as per GB: small files cost more per GB.",
             status: tileStatus(c.rows.filter(isFlagged)),
           };
@@ -958,7 +961,7 @@ export function PlLoadingPipes(p: ApPageProps) {
           const lastFailed = flagged.filter((r) => /fail|error/i.test(String(r.last_copy_status || ""))).length;
           return {
             headline: fmtInt(n.flagged), unit: ofPop(n).trim(),
-            base: flagged.length ? [longest > 0 ? `longest ${fmtInt(longest)} d without a load` : "no load in the lookback", `${fmtInt(lastFailed)} last load failed`].join(" · ") : "every pipe loaded recently",
+            base: flagged.length ? `${longest > 0 ? `The longest went ${fmtInt(longest)} days without a load.` : "No load in the lookback."} ${fmtInt(lastFailed)} ${lastFailed === 1 ? "pipe's" : "pipes'"} last load failed.` : "Every pipe loaded recently.",
             cause: flagged.length ? "Nothing alerts when a pipe stops receiving files." : undefined,
             status: tileStatus(flagged),
           };
@@ -969,7 +972,7 @@ export function PlLoadingPipes(p: ApPageProps) {
           const n = counts(c, "pipes");
           return {
             headline: dur(w.p95_latency_seconds), unit: "file staged → loaded",
-            base: `${fmtInt(n.flagged)}${ofPop(n)} flagged · ${String(w.pipe_display_name || pipeName(w))}`,
+            base: `${fmtInt(n.flagged)}${ofPop(n)} flagged. The slowest: ${String(w.pipe_display_name || pipeName(w))}.`,
             status: tileStatus(c.rows.filter(isFlagged)),
           };
         }} />
@@ -981,18 +984,18 @@ export function PlLoadingPipes(p: ApPageProps) {
             .sort((a, b) => numOrZero(b.error_rows_window) / numOrZero(b.parsed_rows_window) - numOrZero(a.error_rows_window) / numOrZero(a.parsed_rows_window))[0];
           return {
             headline: fmtShare(pctOf(sum(c.rows, "error_rows_window"), parsed)), unit: "of rows",
-            base: [`${fmtInt(n.flagged)}${ofPop(n)}`, w && numOrZero(w.error_rows_window) > 0 ? `${nameId(w.channel_full_name, w.channel_id)} rejects ${fmtShare(pctOf(numOrZero(w.error_rows_window), numOrZero(w.parsed_rows_window)))}` : null].filter(Boolean).join(" · "),
+            base: `${fmtInt(n.flagged)}${ofPop(n)} flagged.${w && numOrZero(w.error_rows_window) > 0 ? ` ${nameId(w.channel_full_name, w.channel_id)} rejects ${fmtShare(pctOf(numOrZero(w.error_rows_window), numOrZero(w.parsed_rows_window)))} of its rows.` : ""}`,
             status: tileStatus(c.rows.filter(isFlagged)),
           };
         }} />
       </Tiles>
       <Grid>
-        <PlCard c={pc} open={open("sf_pipe_cost_and_files")} title="Cost per GB rises as files shrink" subtitle="by pipe, with its average file size · dot = status">
+        <PlCard c={pc} open={open("sf_pipe_cost_and_files")} title="Cost per GB rises as files shrink" subtitle="By pipe, with its average file size · dot = check status">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r.gb_inserted) > 0).map((r) => ({
-              key: `${r.account_id}|${r.pipe_full_name}`, name: pipeName(r), value: rate(r), status: rowStatus(r),
-              valueText: `${rateText(rate(r))} · ${Number(numOrZero(r.avg_file_mb)).toFixed(1)} MB files`,
-            }));
+            const items: CxBarRow[] = c.rows.filter((r) => numOrZero(r.gb_inserted) > 0).map((r) => ({
+              key: `${r.account_id}|${r.pipe_full_name}`, name: String(r.pipe_full_name || r.pipe_name || "(no name in this export)"), id: r.pipe_id, value: rate(r), status: rowStatus(r),
+              strong: rateText(rate(r)), rest: `${Number(numOrZero(r.avg_file_mb)).toFixed(1)} MB files`,
+            })).sort((x, y) => y.value - x.value);
             if (!items.length) return null;
             // Spend by the pipe's average file size: where the per-file overhead lands.
             const bins: [string, (mb: number) => boolean][] = [["files under 1 MB", (mb) => mb < 1], ["1–10 MB", (mb) => mb >= 1 && mb < 10], ["10–100 MB", (mb) => mb >= 10 && mb < 100], ["100 MB and up", (mb) => mb >= 100]];
@@ -1003,61 +1006,67 @@ export function PlLoadingPipes(p: ApPageProps) {
               .filter((s) => s.value > 0);
             return (
               <div className="pl-stack">
-                <StatusBars items={items} n={8} ariaLabel="Cost per GB by pipe" />
+                <CxBarRows rows={items} ariaLabel="Cost per GB by pipe" />
                 {segs.length > 1 && <div>
-                  <div className="pl-note chart-note-oneline">{`Snowpipe ${c.priced ? "spend" : "credits"} by the pipe's average file size · context`}</div>
+                  <div className="pl-note chart-note-oneline">{`Snowpipe ${c.priced ? "spend" : "credits"} by the pipe's average file size · ${c.priced ? usd0(segs.reduce((x, y) => x + y.value, 0)) : `${fmtInt(Math.round(segs.reduce((x, y) => x + y.value, 0)))} credits`} in all, spend not waste`}</div>
                   <StackedShareBar segments={segs} valueFmt={c.priced ? usd0 : (v) => `${fmtInt(Math.round(v))} credits`} ariaLabel="Snowpipe spend by average file size" />
                 </div>}
               </div>
             );
           }}
         </PlCard>
-        <PlCard c={lat} open={open("sf_load_snowpipe_latency")} title="p95 load latency, by pipe" subtitle="file staged → loaded">
+        <PlCard c={lat} open={open("sf_load_snowpipe_latency")} title="p95 load latency, by pipe" subtitle="Time from file staged to loaded · with files loaded">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => num(r.p95_latency_seconds) !== null).map((r) => ({
-              key: `${r.account_id}|${r.pipe_full_name}|${r.table_id}`, name: String(r.pipe_display_name || pipeName(r)), value: numOrZero(r.p95_latency_seconds), status: rowStatus(r),
-              valueText: `${dur(r.p95_latency_seconds)} · ${fmtInt(r.files)} files`,
-            }));
-            return items.length ? <StatusBars items={items} n={10} ariaLabel="p95 load latency by pipe" /> : null;
+            const items: CxBarRow[] = c.rows.filter((r) => num(r.p95_latency_seconds) !== null).map((r) => ({
+              key: `${r.account_id}|${r.pipe_full_name}|${r.table_id}`, name: String(r.pipe_display_name || r.pipe_full_name || r.pipe_name || "(no name in this export)"), id: r.pipe_display_name ? null : r.pipe_id,
+              value: numOrZero(r.p95_latency_seconds), status: rowStatus(r), strong: dur(r.p95_latency_seconds), rest: `${fmtInt(r.files)} files`,
+            })).sort((x, y) => y.value - x.value);
+            return items.length ? <CxBarRows rows={items} n={10} ariaLabel="p95 load latency by pipe" /> : null;
           }}
         </PlCard>
       </Grid>
       <Grid>
-        <PlCard c={pi} open={open("sf_pipe_inactive")} title="Silent pipes" subtitle="days since the last load">
+        <PlCard c={pi} open={open("sf_pipe_inactive")} title="Silent pipes" subtitle="Days since the last load">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter(isFlagged).map((r) => {
-              const days = num(r.days_since_load);
-              return {
-                key: `${r.account_id}|${r.pipe_full_name}`, name: pipeName(r), value: days ?? 0, status: rowStatus(r),
-                valueText: `${days !== null ? `${fmtInt(days)} d` : "no load in lookback"}${r.last_copy_status ? ` · ${String(r.last_copy_status).toLowerCase()}` : ""}`,
-              };
-            });
-            return items.length ? <StatusBars items={items} n={10} ariaLabel="Days since last load by pipe" /> : null;
+            const rows = c.rows.filter(isFlagged).sort((x, y) => (num(y.days_since_load) ?? -1) - (num(x.days_since_load) ?? -1));
+            if (!rows.length) return null;
+            const word = (v: any) => { const t = String(v || "").toLowerCase().replace(/_/g, " "); return t ? t.charAt(0).toUpperCase() + t.slice(1) : "No load in the lookback"; };
+            return <CxTable ariaLabel="Days since last load by pipe" cols={[{ label: "Pipe" }, { label: "Since last load", num: true }, { label: "Last load" }]}
+              rows={rows.map((r) => {
+                const days = num(r.days_since_load);
+                return { key: `${r.account_id}|${r.pipe_full_name}`, status: rowStatus(r),
+                  cells: [<CxObjName full={String(r.pipe_full_name || r.pipe_name || "(no name in this export)")} id={r.pipe_id} />, days !== null ? <b>{`${fmtInt(days)} d`}</b> : "–", days !== null || r.last_copy_status ? word(r.last_copy_status) : "No load in the lookback"] };
+              })} />;
           }}
         </PlCard>
-        <PlCard c={ch} open={open("sf_load_streaming_channel_errors")} title="Rows rejected, by channel" subtitle="error rows of parsed rows">
+        <PlCard c={ch} open={open("sf_load_streaming_channel_errors")} title="Rows rejected, by channel" subtitle="Error rows as a share of parsed rows · bars scaled to the highest">
           {(c) => {
-            const items = c.rows.filter((r) => numOrZero(r.parsed_rows_window) > 0).map((r) => ({
-              key: `${r.account_id}|${r.channel_id}`, name: nameId(r.channel_full_name, r.channel_id), value: numOrZero(r.error_rows_window), total: numOrZero(r.parsed_rows_window), status: rowStatus(r),
-            }));
-            return items.length ? <ShareBarList items={items} n={10} noun="rows" /> : null;
+            const items: CxBarRow[] = c.rows.filter((r) => numOrZero(r.parsed_rows_window) > 0).map((r) => {
+              const pct = pctOf(numOrZero(r.error_rows_window), numOrZero(r.parsed_rows_window)) ?? 0;
+              return { key: `${r.account_id}|${r.channel_id}`, name: String(r.channel_full_name || r.channel_name || "(no name in this export)"), id: r.channel_id, value: pct, status: rowStatus(r),
+                strong: fmtShare(pct), rest: `${fmtInt(r.error_rows_window)} of ${fmtInt(r.parsed_rows_window)} rows` };
+            }).sort((x, y) => y.value - x.value);
+            if (!items.length) return null;
+            const zero = items.filter((x) => x.value === 0).length;
+            return <div><CxBarRows rows={items} n={10} ariaLabel="Rows rejected by channel" />
+              <div className="cx-foot">{`Bars scaled to the highest share, ${fmtShare(Math.max(...items.map((x) => x.value)))}.${zero ? ` ${fmtInt(zero)} ${zero === 1 ? "channel" : "channels"} rejected no rows.` : ""}`}</div></div>;
           }}
         </PlCard>
       </Grid>
       <PlCard c={alerts} open={open("sf_pipe_invalid_or_unnotified")} title="Broken pipes, and failures nobody hears about"
-        subtitle={`${fmtInt(alertsN.flagged)}${ofPop(alertsN)} · invalid, or auto-ingest with no error integration · failed files in ${fmtInt(p.filters.window)} d`}>
+        subtitle={`${fmtInt(alertsN.flagged)}${ofPop(alertsN)} are invalid, or auto-ingest with no error integration · failed files in the last ${fmtInt(p.filters.window)} days`}>
         {(c) => {
           const rank = (r: Row) => (rowStatus(r) === "CRITICAL" ? 0 : 1);
           const rows = c.rows.filter(isFlagged).sort((a, b) => rank(a) - rank(b) || numOrZero(b.failed_files) - numOrZero(a.failed_files));
           if (!rows.length) return null;
           return (
-            <DrillTable aria="Pipes that are broken or send no error alerts" n={8}
-              cols={[{ label: "Pipe" }, { label: "Failed files", num: true, width: "auto" }, { label: "Why", width: "minmax(80px, auto)" }]}
+            <CxTable ariaLabel="Pipes that are broken or send no error alerts" n={8}
+              cols={[{ label: "Pipe" }, { label: "Failed files", num: true }, { label: "Why" }]}
               rows={rows.map((r) => ({
                 key: `${r.account_id}|${r.pipe_full_name}`, status: rowStatus(r),
-                onOpen: openRow("sf_pipe_invalid_or_unnotified", "pipe_full_name", r.pipe_full_name, nameId(r.pipe_full_name, r.pipe_id)),
-                cells: [nameId(r.pipe_full_name, r.pipe_id), fmtInt(r.failed_files),
-                  chip(r.finding === "invalid" ? "invalid" : r.finding === "failing_unnotified" ? "files fail, no error alert" : "no error alert", rowStatus(r))],
+                onClick: openRow("sf_pipe_invalid_or_unnotified", "pipe_full_name", r.pipe_full_name, nameId(r.pipe_full_name, r.pipe_id)),
+                cells: [<CxObjName full={String(r.pipe_full_name || r.pipe_name || "(no name in this export)")} id={r.pipe_id} />, fmtInt(r.failed_files),
+                  <CxChip status={rowStatus(r)}>{r.finding === "invalid" ? "Invalid" : r.finding === "failing_unnotified" ? "Files fail, no error alert" : "No error alert"}</CxChip>],
               }))} />
           );
         }}
@@ -1067,6 +1076,13 @@ export function PlLoadingPipes(p: ApPageProps) {
 };
 PlLoadingPipes.ownsTiles = true;
 (PlLoadingPipes as any).ownsLede = true;
+
+/** " · via PIPE" when the same table shows on more than one row, so the rows tell apart. */
+function loadVia(r: Row, rows: Row[]): string {
+  const same = rows.filter((x) => x.account_id === r.account_id && String(x.table_id) === String(r.table_id)).length;
+  if (same < 2) return "";
+  return r.pipe_full_name ? ` · via ${String(r.pipe_full_name).split(".").pop()}` : " · via COPY";
+}
 
 export function PlLoadingCopy(p: ApPageProps) {
   const d = usePlData(p, ["sf_load_copy_errors", "sf_load_small_files", "sf_obj_iceberg_compaction_cost", "sf_obj_external_tables", "sf_obj_iceberg_tables",
@@ -1094,7 +1110,7 @@ export function PlLoadingCopy(p: ApPageProps) {
     return s.replace(/[,:;(].*$/, "").replace(/\s+(at|in|on)\s.*$/i, "").slice(0, 48).trim().toLowerCase();
   };
   return (
-    <div className="sx-page">
+    <div className="sx-page cx-e">
       <Tiles4>
         <PlTile c={ce} open={scrollTo("lc-failed")} label="Files failed or partly loaded" make={(c) => {
           if (files <= 0) return null;
@@ -1102,8 +1118,8 @@ export function PlLoadingCopy(p: ApPageProps) {
           const worst = [...c.rows].sort((a, b) => numOrZero(b.failed_or_partial_pct) - numOrZero(a.failed_or_partial_pct))[0];
           return {
             headline: fmtShare(pctOf(badAll, files)), unit: "of files",
-            base: `${fmtInt(badAll)} of ${fmtInt(files)} files · ${fmtInt(n.flagged)}${ofPop(n)}`,
-            cause: worst && bad(worst) > 0 ? `worst ${tableName(worst)}: ${pctText(worst.failed_or_partial_pct)}` : undefined,
+            base: `${fmtInt(badAll)} of ${fmtInt(files)} files, on ${fmtInt(n.flagged)}${ofPop(n)}.`,
+            cause: worst && bad(worst) > 0 ? `Worst: ${tableName(worst)}, ${pctText(worst.failed_or_partial_pct)}.` : undefined,
             status: tileStatus(c.rows.filter(isFlagged)), openLabel: "By table ↓",
           };
         }} />
@@ -1114,7 +1130,7 @@ export function PlLoadingCopy(p: ApPageProps) {
           const n = counts(c, "tables");
           return {
             headline: fmtShare(pctOf(small, files)), unit: "of files",
-            base: `${fmtInt(n.flagged)}${ofPop(n)} · avg ${(sum(c.rows, "total_gb") * 1024 / files).toFixed(1)} MB per file`,
+            base: `${fmtInt(n.flagged)}${ofPop(n)}. Files average ${(sum(c.rows, "total_gb") * 1024 / files).toFixed(1)} MB.`,
             cause: "Each file pays a fixed load overhead: batch them to 100–250 MB.",
             status: tileStatus(c.rows.filter(isFlagged)), openLabel: "By table ↓",
           };
@@ -1127,7 +1143,7 @@ export function PlLoadingCopy(p: ApPageProps) {
           const n = counts(c, "tables");
           return {
             headline: usd0(total), unit: "possible waste",
-            base: `${fmtInt(n.flagged)}${ofPop(n)} · ${fmtInt(flagged.filter((r) => numOrZero(r.read_queries) === 0).length)} with 0 reads`,
+            base: `${fmtInt(n.flagged)}${ofPop(n)}, ${fmtInt(flagged.filter((r) => numOrZero(r.read_queries) === 0).length)} with no reads at all.`,
             status: tileStatus(flagged), openLabel: "By table ↓",
           };
         }} />
@@ -1138,121 +1154,133 @@ export function PlLoadingCopy(p: ApPageProps) {
           const top = invalid[0] || extFlag[0];
           return {
             headline: fmtInt(n.flagged), unit: ofPop(n).trim(),
-            base: [`${fmtInt(invalid.length)} invalid`, `${fmtInt(extFlag.filter((r) => numOrZero(r.read_queries) === 0).length)} with 0 reads`].join(" · "),
-            cause: top ? `${nameId(top.table_fqn, top.table_id)}: ${String(top.reasons || "flagged").split(";")[0]}` : "Every external table is valid and read.",
+            base: `${fmtInt(invalid.length)} invalid, ${fmtInt(extFlag.filter((r) => numOrZero(r.read_queries) === 0).length)} with no reads.`,
+            cause: top ? `${nameId(top.table_fqn, top.table_id)}: ${String(top.reasons || "flagged").split(";")[0]}.` : "Every external table is valid and read.",
             status: tileStatus(extFlag), openLabel: "Freshness ↓",
           };
         }} />
       </Tiles4>
       <Grid>
         <div id="lc-failed">
-        <PlCard c={ce} open={open("sf_load_copy_errors")} title="Failed % by table" subtitle="failed or partly loaded files, of all files · why, by each table's last error">
+        <PlCard c={ce} open={open("sf_load_copy_errors")} title="Failed % by table" subtitle="Failed or partly loaded files, of all files · bars scaled to the highest">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => bad(r) > 0).map((r) => {
+            const hit = c.rows.filter((r) => bad(r) > 0);
+            if (!hit.length) return null;
+            const items: CxBarRow[] = hit.map((r) => {
               const pct = pctOf(bad(r), numOrZero(r.files)) ?? 0;
               return {
-                key: `${r.account_id}|${r.table_id}|${r.pipe_full_name}`, name: tableName(r), value: pct, status: rowStatus(r), tableId: r.table_id,
-                valueText: `${fmtShare(pct)} · ${fmtInt(r.failed_files)} failed + ${fmtInt(r.partial_files)} partial of ${fmtInt(r.files)}`,
+                key: `${r.account_id}|${r.table_id}|${r.pipe_full_name}`, name: String(r.table_full_name || r.table_fqn || r.table_name || "(no name in this export)"), id: r.table_id, value: pct, status: rowStatus(r),
+                strong: fmtShare(pct), rest: `${fmtInt(r.failed_files)} failed + ${fmtInt(r.partial_files)} partial of ${fmtInt(r.files)}${loadVia(r, hit)}`,
+                onClick: () => DrawerBus.open({ id: "sf_load_copy_errors", col: "table_id", val: String(r.table_id), label: tableName(r) }),
               };
-            });
-            if (!items.length) return null;
+            }).sort((x, y) => y.value - x.value);
             const m = new Map<string, number>();
-            let none = 0;
-            c.rows.forEach((r) => { const b = bad(r); if (b <= 0) return; const k = errKind(r.last_error_message); if (k) m.set(k, (m.get(k) || 0) + b); else none += b; });
-            const segs = [...m.entries()].map(([label, value]) => ({ key: label, label, value }));
-            if (none > 0) segs.push({ key: "__none", label: "(no error message)", value: none, unknown: true } as any);
+            let total = 0;
+            hit.forEach((r) => { const k = errKind(r.last_error_message) || "(no error message)"; m.set(k, (m.get(k) || 0) + bad(r)); total += bad(r); });
+            const why = rankTally([...m.entries()], total, (v) => `${fmtInt(v)} files`, 6, (k) => k.charAt(0).toUpperCase() + k.slice(1));
             return (
-              <div className="pl-stack">
-                <StatusBars items={items} max={100} n={8} ariaLabel="Failed files by table" onBarClick={(it) => DrawerBus.open({ id: "sf_load_copy_errors", col: "table_id", val: String(it.tableId), label: it.name })} />
-                {segs.length > 0 && <StackedShareBar segments={segs} pareto valueFmt={(v) => `${fmtInt(v)} files`} ariaLabel="Failed files by error kind" />}
+              <div>
+                <CxBarRows rows={items} ariaLabel="Failed files by table" />
+                {why.length > 0 && <div className="cx-block"><CxEyebrow>Why, by each table's last error</CxEyebrow><CxRanked items={why} ariaLabel="Failed files by error kind" /></div>}
               </div>
             );
           }}
         </PlCard>
         </div>
         <div id="lc-small">
-        <PlCard c={sf} open={open("sf_load_small_files")} title="Small files by table" subtitle="share of files under the small-file mark · avg MB">
+        <PlCard c={sf} open={open("sf_load_small_files")} title="Small files by table" subtitle="Share of each table's files under the small-file mark · average file size">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r.files) > 0).map((r) => ({
-              key: `${r.account_id}|${r.table_id}|${r.pipe_full_name}`, name: tableName(r), value: numOrZero(r.small_file_pct), status: rowStatus(r),
-              valueText: `${pctText(r.small_file_pct)} small · avg ${Number(numOrZero(r.avg_file_mb)).toFixed(1)} MB`,
-            }));
-            return items.length ? <StatusBars items={items} max={100} n={10} ariaLabel="Small files by table" /> : null;
+            const hit = c.rows.filter((r) => numOrZero(r.files) > 0);
+            const items: CxBarRow[] = hit.map((r) => ({
+              key: `${r.account_id}|${r.table_id}|${r.pipe_full_name}`, name: String(r.table_full_name || r.table_fqn || r.table_name || "(no name in this export)"), id: r.table_id, value: numOrZero(r.small_file_pct), status: rowStatus(r),
+              strong: `${pctText(r.small_file_pct)} small`, rest: `avg ${Number(numOrZero(r.avg_file_mb)).toFixed(1)} MB${loadVia(r, hit)}`,
+            })).sort((x, y) => y.value - x.value);
+            return items.length ? <CxBarRows rows={items} max={100} n={10} ariaLabel="Small files by table" /> : null;
           }}
         </PlCard>
         </div>
       </Grid>
       <Grid>
-        <PlCard c={bulk} open={open("sf_load_bulk_copy_vs_snowpipe")} title="Frequent small COPY loads · Snowpipe estimate"
-          subtitle="COPY run time on the warehouse vs Snowpipe's credits per GB · an estimate, never added to savings">
-          {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => r.verdict === "snowpipe_fits").map((r) => {
-              const v = c.priced ? usd(c, r, "est_saving_usd_list") : numOrZero(r.est_saving_credits);
-              return {
-                key: `${r.account_id}|${r.warehouse_id}|${r.user_name}`, name: `${nameId(r.warehouse_name, r.warehouse_id)} · ${r.user_name}`, value: v, status: rowStatus(r),
-                wh: r.warehouse_id,
-                valueText: [`est. ${c.priced ? usd0(v) : `${fmtInt(Math.round(v))} credits`}`, `${fmtInt(r.copies_per_day)} a day`, `${Number(numOrZero(r.median_mb)).toFixed(1)} MB each`,
-                  num(r.auto_suspend_s) === 0 ? "auto-suspend off" : null].filter(Boolean).join(" · "),
-              };
-            });
-            return items.length ? <StatusBars items={items} n={8} ariaLabel="Frequent small COPY loads by warehouse and user"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_load_bulk_copy_vs_snowpipe", col: "warehouse_id", val: String(it.wh), label: it.name })} />
-              : <Note>No frequent, small COPY load runs on a warehouse.</Note>;
-          }}
-        </PlCard>
         <PlCard c={listing} open={open("sf_load_copy_listing_overhead")} title="COPY time spent listing files"
-          subtitle="share of COPY time listing the stage path · runs in cloud services, so no $">
+          subtitle="Share of COPY time spent listing the stage path, by user and warehouse · listing runs in cloud services, so it has no price here">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r.list_minutes) > 0).map((r) => ({
-              key: `${r.account_id}|${r.warehouse_id}|${r.user_name}`, name: `${nameId(r.warehouse_name, r.warehouse_id)} · ${r.user_name}`, value: numOrZero(r.list_pct), status: rowStatus(r),
-              valueText: `${pctText(r.list_pct)} · ${dur(numOrZero(r.list_minutes) * 60)} listing in ${fmtInt(r.copies)} COPYs`,
-            }));
-            return items.length ? <StatusBars items={items} max={100} n={8} ariaLabel="COPY listing time by warehouse and user" /> : null;
+            const items: CxBarRow[] = c.rows.filter((r) => numOrZero(r.list_minutes) > 0).map((r) => ({
+              key: `${r.account_id}|${r.warehouse_id}|${r.user_name}`, name: String(r.user_name || "(no user in this export)"), value: numOrZero(r.list_pct), status: rowStatus(r),
+              strong: pctText(r.list_pct), rest: `${dur(numOrZero(r.list_minutes) * 60)} listing in ${fmtInt(r.copies)} COPY ${numOrZero(r.copies) === 1 ? "run" : "runs"} · on ${nameId(r.warehouse_name, r.warehouse_id)}`,
+            })).sort((x, y) => y.value - x.value);
+            return items.length ? <CxBarRows rows={items} n={8} ariaLabel="COPY listing time by warehouse and user" /> : null;
           }}
         </PlCard>
-      </Grid>
-      <Grid>
-        <div id="lc-ice">
-        <PlCard c={ic} open={open("sf_obj_iceberg_compaction_cost")} title="Iceberg compaction vs reads" subtitle="compaction cost by table, with its reads">
-          {(c) => {
-            const col = c.priced ? "est_compaction_usd_list" : "compaction_credits";
-            const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r[col]) > 0).map((r) => {
-              const v = c.priced ? usd(c, r, col) : numOrZero(r[col]);
-              const dropped = r.is_dropped === true || String(r.is_dropped).toLowerCase() === "true";
-              return {
-                key: `${r.account_id}|${r.table_id}`, name: nameId(r.table_fqn, r.table_id), value: v, status: rowStatus(r),
-                valueText: `${c.priced ? usd0(v) : `${fmtInt(v)} credits`} · ${fmtInt(r.read_queries)} reads${dropped ? " · dropped" : ""}`,
-              };
-            });
-            return items.length ? <StatusBars items={items} n={10} ariaLabel="Iceberg compaction cost by table" /> : null;
-          }}
-        </PlCard>
+        <div>
+          <div id="lc-ice">
+          <XCard c={ic} open={open("sf_obj_iceberg_compaction_cost")} title="Iceberg compaction vs reads" subtitle="Compaction cost by table, with its reads">
+            {(c) => {
+              const col = c.priced ? "est_compaction_usd_list" : "compaction_credits";
+              const items: CxBarRow[] = c.rows.filter((r) => numOrZero(r[col]) > 0).map((r) => {
+                const v = c.priced ? usd(c, r, col) : numOrZero(r[col]);
+                const dropped = r.is_dropped === true || String(r.is_dropped).toLowerCase() === "true";
+                return {
+                  key: `${r.account_id}|${r.table_id}`, name: String(r.table_fqn || r.table_name || "(no name in this export)"), id: r.table_id, value: v, status: rowStatus(r),
+                  strong: c.priced ? usd0(v) : `${fmtInt(v)} credits`, rest: `${fmtInt(r.read_queries)} ${numOrZero(r.read_queries) === 1 ? "read" : "reads"}${dropped ? " · table dropped" : ""}`,
+                };
+              }).sort((x, y) => y.value - x.value);
+              return items.length ? <CxBarRows rows={items} n={10} legend={false} ariaLabel="Iceberg compaction cost by table" /> : null;
+            }}
+          </XCard>
+          </div>
+          <XCard c={bulk} open={open("sf_load_bulk_copy_vs_snowpipe")} title="Frequent small COPY loads"
+            subtitle="COPY run time on the warehouse vs Snowpipe's credits per GB · an estimate, never added to savings">
+            {(c) => {
+              const fits = c.rows.filter((r) => r.verdict === "snowpipe_fits");
+              const val = (r: Row) => (c.priced ? usd(c, r, "est_saving_usd_list") : numOrZero(r.est_saving_credits));
+              const money = (v: number) => (c.priced ? usd0(v) : `${fmtInt(Math.round(v))} credits`);
+              const line = (r: Row) => `${r.user_name} on ${nameId(r.warehouse_name, r.warehouse_id)} runs ${fmtInt(r.copies_per_day)} COPY loads a day of ${Number(numOrZero(r.median_mb)).toFixed(1)} MB each${num(r.auto_suspend_s) === 0 ? ", with auto-suspend off" : ""}.`;
+              if (!fits.length) return <Note>No frequent, small COPY load runs on a warehouse.</Note>;
+              if (fits.length === 1) {
+                const n = counts(c, "warehouses");
+                return (
+                  <div>
+                    <div className="cx-statnum"><b>{money(val(fits[0]))}</b><span className="cx-muted">{` possible saving, estimated · ${fmtInt(n.flagged)}${ofPop(n)}`}</span></div>
+                    <CxStat>{`${line(fits[0])} Snowpipe could load them for less.`}</CxStat>
+                  </div>
+                );
+              }
+              const items: CxBarRow[] = fits.map((r) => ({
+                key: `${r.account_id}|${r.warehouse_id}|${r.user_name}`, name: String(r.user_name || "(no user in this export)"), value: val(r), status: rowStatus(r),
+                strong: `est. ${money(val(r))}`, rest: `${fmtInt(r.copies_per_day)} a day · ${Number(numOrZero(r.median_mb)).toFixed(1)} MB each · on ${nameId(r.warehouse_name, r.warehouse_id)}`,
+                onClick: () => DrawerBus.open({ id: "sf_load_bulk_copy_vs_snowpipe", col: "warehouse_id", val: String(r.warehouse_id), label: nameId(r.warehouse_name, r.warehouse_id) }),
+              })).sort((x, y) => y.value - x.value);
+              return <CxBarRows rows={items} n={8} ariaLabel="Frequent small COPY loads by warehouse and user" />;
+            }}
+          </XCard>
         </div>
-        <div id="lc-fresh">
-        <PlCard c={{ ...ext, loading: ext.loading || ice.loading, note: ext.note && ice.note ? ext.note : null }} open={open("sf_obj_external_tables")}
-          title="External and Iceberg tables · freshness" subtitle="snapshot at export · days since the last refresh or change · reads in the window · click a row">
-          {() => {
-            const asOf = p.meta && p.meta.as_of_date ? Date.parse(String(p.meta.as_of_date).slice(0, 10)) : NaN;
-            const daysSince = (v: any) => { const t = v ? Date.parse(String(v).slice(0, 10)) : NaN; return Number.isFinite(t) && Number.isFinite(asOf) ? Math.max(0, Math.round((asOf - t) / 86400000)) : null; };
-            const list = [
-              ...ext.rows.map((r) => ({ r, id: "sf_obj_external_tables", kind: "external", days: daysSince(r.last_refreshed_on) })),
-              ...ice.rows.map((r) => ({ r, id: "sf_obj_iceberg_tables", kind: "Iceberg", days: num(r.days_since_change) })),
-            ].sort((a, b) => (isFlagged(b.r) ? 1 : 0) - (isFlagged(a.r) ? 1 : 0) || (b.days ?? -1) - (a.days ?? -1));
-            return (
-              <DrillTable aria="External and Iceberg tables, freshness" n={10} empty="No external or Iceberg tables in this export."
-                more={ext.note || ice.note ? <span>{` ${ext.note ? `External tables: ${ext.note.replace(/^– /, "")}` : `Iceberg tables: ${String(ice.note).replace(/^– /, "")}`}`}</span> : null}
-                cols={[{ label: "Table" }, { label: "Kind", width: "auto" }, { label: "Days since", num: true, width: "auto" }, { label: "Reads", num: true, width: "auto" }, { label: "Why", width: "minmax(80px, auto)" }]}
-                rows={list.map((o) => ({
-                  key: `${o.kind}|${o.r.account_id}|${o.r.table_fqn}`, status: rowStatus(o.r),
-                  onOpen: openRow(o.id, "table_fqn", o.r.table_fqn, nameId(o.r.table_fqn, o.r.table_id)),
-                  cells: [nameId(o.r.table_fqn, o.r.table_id), o.kind, o.days != null ? `${fmtInt(o.days)} d` : "–", fmtInt(o.r.read_queries),
-                    isFlagged(o.r) ? chip(String(o.r.reasons || "flagged").split(";")[0].slice(0, 40), rowStatus(o.r)) : chip("ok", "OK")],
-                }))} />
-            );
-          }}
-        </PlCard>
-        </div>
       </Grid>
+      <div id="lc-fresh">
+      <PlCard c={{ ...ext, loading: ext.loading || ice.loading, note: ext.note && ice.note ? ext.note : null }} open={open("sf_obj_external_tables")}
+        title="External and Iceberg tables · freshness" subtitle="Snapshot at export · days since the last refresh or change · reads in the window · select a row for its panel">
+        {() => {
+          const asOf = p.meta && p.meta.as_of_date ? Date.parse(String(p.meta.as_of_date).slice(0, 10)) : NaN;
+          const daysSince = (v: any) => { const t = v ? Date.parse(String(v).slice(0, 10)) : NaN; return Number.isFinite(t) && Number.isFinite(asOf) ? Math.max(0, Math.round((asOf - t) / 86400000)) : null; };
+          const list = [
+            ...ext.rows.map((r) => ({ r, id: "sf_obj_external_tables", kind: "External", days: daysSince(r.last_refreshed_on) })),
+            ...ice.rows.map((r) => ({ r, id: "sf_obj_iceberg_tables", kind: "Iceberg", days: num(r.days_since_change) })),
+          ].sort((a, b) => (isFlagged(b.r) ? 1 : 0) - (isFlagged(a.r) ? 1 : 0) || (b.days ?? -1) - (a.days ?? -1));
+          if (!list.length) return <Note>No external or Iceberg tables in this export.</Note>;
+          const reason = (v: any) => { const t = String(v || "flagged").split(";").map((x) => x.trim()).filter(Boolean).join("; "); return t.charAt(0).toUpperCase() + t.slice(1); };
+          return (
+            <CxTable ariaLabel="External and Iceberg tables, freshness" n={10}
+              foot={ext.note || ice.note ? (ext.note ? `External tables: ${ext.note.replace(/^– /, "")}` : `Iceberg tables: ${String(ice.note).replace(/^– /, "")}`) : undefined}
+              cols={[{ label: "Table" }, { label: "Kind" }, { label: "Days since", num: true }, { label: "Reads", num: true }, { label: "Why" }]}
+              rows={list.map((o) => ({
+                key: `${o.kind}|${o.r.account_id}|${o.r.table_fqn}`, status: rowStatus(o.r),
+                onClick: openRow(o.id, "table_fqn", o.r.table_fqn, nameId(o.r.table_fqn, o.r.table_id)),
+                cells: [<CxObjName full={String(o.r.table_fqn || o.r.table_name || "(no name in this export)")} id={o.r.table_id} />, o.kind, o.days != null ? `${fmtInt(o.days)} d` : "–", fmtInt(o.r.read_queries),
+                  isFlagged(o.r) ? <span className="cx-why">{reason(o.r.reasons)}</span> : "OK"],
+              }))} />
+          );
+        }}
+      </PlCard>
+      </div>
     </div>
   );
 };
