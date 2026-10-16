@@ -416,6 +416,46 @@ export function CxAreaCounts({ rows, ariaLabel }: { rows: CxAreaRow[]; ariaLabel
   );
 }
 
+/** One small-multiple panel: daily columns on their own scale, 3 y ticks, first / middle / last day. */
+export function CxMiniCols({ title, sub, days, values, color, partialLast, selected, onDay, dayLabel }: {
+  title: React.ReactNode; sub?: React.ReactNode; days: string[]; values: number[]; color: string; partialLast?: boolean;
+  selected?: string | null; onDay?: (d: string) => void; dayLabel: (d: string) => string;
+}) {
+  const max = Math.max(1, ...values);
+  const top = max <= 4 ? max : Math.ceil(max / 2) * 2;
+  const W = 240, H = 96, L = 22, B = 16, T = 8;
+  const bw = (W - L) / Math.max(1, days.length);
+  const y = (v: number) => T + (H - B - T) * (1 - v / top);
+  const ticks = [0, top / 2, top].map((t) => (Number.isInteger(t) ? t : Math.round(t * 10) / 10));
+  const mid = Math.floor((days.length - 1) / 2);
+  return (
+    <div className="cx-mini">
+      <div className="cx-mini-title"><span className="cx-legend-sq" style={{ background: color }} />{title}</div>
+      {sub && <div className="cx-mini-sub">{sub}</div>}
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={typeof title === "string" ? `${title} per day` : undefined}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1" />
+            <text x={L - 4} y={y(t) + 3} textAnchor="end" fontSize="9" fill="var(--text-3)">{t}</text>
+          </g>
+        ))}
+        {days.map((d, i) => {
+          const v = values[i] || 0;
+          const last = partialLast && i === days.length - 1;
+          return (
+            <rect key={d} x={L + i * bw + bw * 0.2} y={y(v)} width={Math.max(1, bw * 0.6)} height={(H - B) - y(v)}
+              fill={color} opacity={selected && selected !== d ? 0.35 : last ? 0.55 : 1} style={onDay ? { cursor: "pointer" } : undefined}
+              onClick={onDay ? () => onDay(d) : undefined}><title>{`${dayLabel(d)}: ${v}${last ? " (today, partial)" : ""}`}</title></rect>
+          );
+        })}
+        {[0, mid, days.length - 1].filter((i, k, a) => days[i] && a.indexOf(i) === k).map((i, k) => (
+          <text key={i} x={L + i * bw + bw / 2} y={H - 3} textAnchor={k === 0 ? "start" : k === 2 ? "end" : "middle"} fontSize="9" fill="var(--text-3)">{dayLabel(days[i])}</text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 /** A legend of coloured squares with words. */
 export function CxSwatches({ items }: { items: [string, string][] }) {
   return <div className="cx-legend" aria-hidden="true">{items.map(([c, w]) => <span key={w}><span className="cx-legend-sq" style={{ background: c }} />{w}</span>)}</div>;

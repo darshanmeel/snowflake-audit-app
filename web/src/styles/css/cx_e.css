@@ -179,3 +179,11 @@
 /* Every card in these pages keeps one gap under it, stacked or in a grid. */
 .cx-e .chart-card-v2 { margin-bottom: 14px; }
 .cx-e .pl-grid, .cx-e .cj-charts-2 { margin-bottom: 0; row-gap: 0; }
+.cx-dotlabel { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+/* Small multiples */
+.cx-minis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.cx-mini { border: 1px solid var(--border); border-radius: 10px; padding: 12px 12px 6px; min-width: 0; }
+.cx-mini-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; letter-spacing: .04em; }
+.cx-mini-sub { font-size: 12px; color: var(--text-3); margin: 2px 0 6px; }
+.cx-callout { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; padding: 10px 14px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; color: var(--text-2); margin-bottom: 12px; }
+.cx-callout b { color: var(--text); font-weight: 600; }

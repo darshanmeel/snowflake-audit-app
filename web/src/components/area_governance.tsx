@@ -14,7 +14,7 @@ import { ApPanel, ApRow } from "./area_pages";
 import type { ApPageProps } from "./area_pages";
 import { Columns, Dumbbell, RankedBars } from "./charts_more";
 import {
-  DayKindTimeline, IssueTile, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf,
+  IssueTile, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf,
 } from "./blocks";
 import type { ShareItem, ShareSegment, StatusBarItem } from "./blocks";
 import { ChartCard, KindChip, bandOf } from "./primitives";
@@ -25,7 +25,7 @@ import {
   CheckTile, MoneyTile, Row2, Slot, dtChip, fmtSize, isFlagged, nameId, useCheck, useLede,
 } from "./area_ai_storage";
 import type { Chk } from "./area_ai_storage";
-import { CxBarRows, CxChip, CxEyebrow, CxMissing, CxObjName, CxRanked, CxStat, CxTable, CxTwoBar } from "./cx_e";
+import { CxBarRows, CxChip, CxDot, CxDotLegend, CxEyebrow, CxMiniCols, CxMissing, CxObjName, CxRanked, CxStat, CxSwatches, CxTable, CxTwoBar, rankTally } from "./cx_e";
 import type { CxBarRow, CxRankItem } from "./cx_e";
 import type { FetchState, Finding, Row } from "../types";
 
@@ -38,6 +38,8 @@ function worse(a: string | null | undefined, b: string | null | undefined): stri
 }
 const plural = (n: number, one: string, many?: string) => `${fmtInt(n)} ${n === 1 ? one : (many || `${one}s`)}`;
 const words = (v: any) => String(v ?? "").replace(/_/g, " ").toLowerCase();
+/** Words with a capital first letter, acronyms kept upper case: "MFA bypass", "IP address". */
+const capWords = (v: any) => words(v).replace(/\b(mfa|ip|sso|ddl|pii|dmf|url)\b/g, (x) => x.toUpperCase()).replace(/^./, (x) => x.toUpperCase());
 const isTrue = (v: any) => v === true || v === "true" || v === 1;
 const day = (v: any) => (v ? String(v).slice(0, 10) : null);
 const ADMIN_RE = /ACCOUNTADMIN|SECURITYADMIN|ORGADMIN/i;
@@ -575,21 +577,23 @@ export function ApAuditAdmins(p: ApPageProps) {
   const users = adminUsers(ah.rows || []);
   const noMfa = users.filter((u) => !u.mfa);
   const top = users.filter((u) => ["ORGADMIN", "ACCOUNTADMIN", "SECURITYADMIN"].includes(u.role.toUpperCase()));
+  // The check's own "N of M" (the figure the checks list shows), else the users counted here.
+  const topAff = ah.f && ah.f.affected && Number(ah.f.affected.total) > 0 ? { flagged: Number(ah.f.affected.flagged) || 0, total: Number(ah.f.affected.total), noun: String(ah.f.affected.noun || "users") } : null;
   const pwOnly = (si.rows || []).reduce((s, r) => s + numOrZero(r.password_only_logins), 0);
   const logins = (si.rows || []).reduce((s, r) => s + numOrZero(r.logins), 0);
   useLede(p, ah.loading || si.loading, [
     ah.rows && users.length ? `${fmtInt(noMfa.length)} of ${plural(users.length, "admin")} have no MFA.` : null,
     si.rows && logins ? `${fmtShare(pctOf(pwOnly, logins))} of admin sign-ins used a password only.` : null,
-    ah.rows && users.length ? `${fmtInt(top.length)} hold ACCOUNTADMIN, SECURITYADMIN or ORGADMIN.` : null,
+    ah.rows && users.length ? `${topAff ? ofText(topAff) : fmtInt(top.length)} hold ACCOUNTADMIN, SECURITYADMIN or ORGADMIN.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <CheckTile c={ah} label="Admins without MFA" badge build={() => {
           const aa = users.filter((u) => u.role.toUpperCase() === "ACCOUNTADMIN");
           return {
             headline: fmtShare(pctOf(noMfa.length, users.length)), unit: " of admins",
-            base: `${fmtInt(noMfa.length)} of ${plural(users.length, "admin")} · ${fmtInt(aa.filter((u) => !u.mfa).length)} of ${fmtInt(aa.length)} ACCOUNTADMIN holders`,
+            base: `${fmtInt(noMfa.length)} of ${plural(users.length, "admin")}, including ${fmtInt(aa.filter((u) => !u.mfa).length)} of the ${fmtInt(aa.length)} ACCOUNTADMIN holders.`,
             cause: "Each one is a phished password away from the account.", openLabel: "By role ↓",
           };
         }} />
@@ -597,28 +601,28 @@ export function ApAuditAdmins(p: ApPageProps) {
           const who = rows.filter((r) => numOrZero(r.password_only_logins) > 0);
           return {
             headline: fmtShare(pctOf(pwOnly, logins)), unit: " of admin sign-ins",
-            base: `${fmtInt(pwOnly)} of ${fmtInt(logins)} sign-ins · ${fmtInt(who.length)} of ${plural(rows.length, "admin")}`,
-            cause: who.length ? `${who.slice(0, 2).map((r) => String(r.user_name)).join(" and ")}: no SSO, key pair or MFA` : "Every admin sign-in used SSO, a key pair or MFA",
+            base: `${fmtInt(pwOnly)} of ${fmtInt(logins)} sign-ins, by ${fmtInt(who.length)} of ${plural(rows.length, "admin")}.`,
+            cause: who.length ? `${who.slice(0, 2).map((r) => String(r.user_name)).join(" and ")}: no SSO, key pair or MFA.` : "Every admin sign-in used SSO, a key pair or MFA.",
             openLabel: "By user ↓",
           };
         }} />
-        <CheckTile c={ah} label="Hold ACCOUNTADMIN, SECURITYADMIN or ORGADMIN" badge build={() => ({
-          headline: fmtInt(top.length), unit: ` of ${plural(users.length, "admin user")}`,
-          base: `${fmtShare(pctOf(top.length, users.length))} · snapshot at export · ${fmtInt(users.filter((u) => u.defaultAdmin).length)} use it as DEFAULT_ROLE`,
-          cause: "Two or three per role is enough; none needs it as a default role.",
+        <CheckTile c={ah} label="Top admin role holders" badge build={() => ({
+          headline: fmtInt(topAff ? topAff.flagged : top.length), unit: ` of ${topAff ? `${fmtInt(topAff.total)} ${topAff.noun}` : plural(users.length, "admin user")}`,
+          base: `Hold ACCOUNTADMIN, SECURITYADMIN or ORGADMIN; ${fmtInt(users.filter((u) => u.defaultAdmin).length)} use it as their default role. Snapshot at export.`,
+          cause: "Two or three per role is enough.",
         })} />
-        <CheckTile c={du} label="Everyday data work under admin roles" badge build={(rows) => {
+        <CheckTile c={du} label="Data work under admin roles" badge build={(rows) => {
           const fl = rows.filter(isFlagged);
           const roles = [...new Set(fl.map((r) => String(r.role_name || "")))].filter(Boolean);
           return {
             headline: fmtInt(roles.length), unit: ` of ${plural(distinct(rows, "role_name"), "admin role")}`,
-            base: `${roles.slice(0, 2).join(", ")}${roles.length > 2 ? " …" : ""} · ${fmtInt(fl.reduce((s, r) => s + numOrZero(r.queries), 0))} statements`,
-            cause: "Pipelines and dashboards that run as an admin role carry its power everywhere they go.",
+            base: `${fmtInt(fl.reduce((s, r) => s + numOrZero(r.queries), 0))} statements ran as ${roles.join(" or ")}.`,
+            cause: "Pipelines and dashboards that belong under a working role.",
           };
         }} />
       </SummaryTileRow>
       <Row2>
-        <Slot c={ah} title="Admins by highest role and MFA" subtitle="enabled users who can use an admin role · dark bar = no MFA">
+        <Slot c={ah} title="Admins by highest role and MFA" subtitle={`Enabled users who can use an admin role · ${fmtInt(users.length)} in all`}>
           {() => {
             const by = new Map<string, { value: number; whole: number }>();
             users.forEach((u) => {
@@ -627,34 +631,39 @@ export function ApAuditAdmins(p: ApPageProps) {
               if (!u.mfa) cur.value += 1;
               by.set(u.role, cur);
             });
-            const items = [...by.entries()].sort((a, b) => rankAdmin(a[0]) - rankAdmin(b[0])).map(([name, v]) => ({ name, value: v.value, whole: v.whole }));
-            return items.length ? (
-              <RankedBars items={items} n={8} valueFmt={(v) => fmtInt(v)} unitLabel="users" ariaLabel="Admins by highest role, without MFA"
-                note="Dark bar: no MFA. Light track: all users whose highest admin role it is." />
-            ) : null;
+            const items = [...by.entries()].sort((a, b) => rankAdmin(a[0]) - rankAdmin(b[0]));
+            if (!items.length) return null;
+            const max = Math.max(...items.map(([, v]) => v.whole));
+            return (
+              <div>
+                <CxSwatches items={[["var(--c1)", "No MFA"], ["color-mix(in srgb, var(--c1) 35%, var(--surface))", "All users whose highest admin role it is"]]} />
+                <CxTable ariaLabel="Admins by highest role, without MFA" cols={[{ label: "Role" }, { label: "", width: "45%" }, { label: "No MFA", num: true }]}
+                  rows={items.map(([name, v]) => ({ key: name, cells: [name, <CxTwoBar part={v.value} whole={v.whole} max={max} />, <span><b>{fmtInt(v.value)}</b>{` of ${fmtInt(v.whole)}`}</span>] }))} />
+              </div>
+            );
           }}
         </Slot>
-        <Slot c={si} title="Admin sign-ins with a password only, by user" subtitle="sign-ins per admin user · bar = password-only sign-ins">
+        <Slot c={si} title="Password-only admin sign-ins, by user" subtitle="Bar = password-only sign-ins · after it, of all that user's sign-ins">
           {(rows) => {
-            const items: StatusBarItem[] = rows.filter((r) => numOrZero(r.logins) > 0).map((r) => ({
-              key: String(r.user_name), name: String(r.user_name || "(no user)"), value: numOrZero(r.password_only_logins), status: r.status,
-              valueText: `${fmtInt(numOrZero(r.password_only_logins))} of ${fmtInt(numOrZero(r.logins))}`,
-            }));
-            return items.length ? <StatusBars items={items} n={8} unitLabel="sign-ins" ariaLabel="Password-only sign-ins by admin user"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_audit_admin_signins", col: "user_name", val: String(it.key), label: it.name })} /> : null;
+            const items: CxBarRow[] = rows.filter((r) => numOrZero(r.logins) > 0).map((r) => ({
+              key: String(r.user_name), name: nameId(r.user_name, r.user_id, "(no user)"), value: numOrZero(r.password_only_logins), status: r.status,
+              strong: fmtInt(numOrZero(r.password_only_logins)), rest: `of ${fmtInt(numOrZero(r.logins))}`,
+              onClick: () => DrawerBus.open({ id: "sf_audit_admin_signins", col: "user_name", val: String(r.user_name), label: String(r.user_name) }),
+            })).sort((x, y) => y.value - x.value);
+            return items.length ? <CxBarRows rows={items} ariaLabel="Password-only sign-ins by admin user" /> : null;
           }}
         </Slot>
       </Row2>
-      <Slot c={du} title="Everyday data work under admin roles" subtitle="statements run as an admin role in the window · click a row">
-        {(rows) => (
-          <DrillTable aria="Data work under admin roles" n={10}
-            cols={[{ label: "User" }, { label: "Role", width: "minmax(80px, 1fr)" }, { label: "Kind", width: "auto" }, { label: "Statements", num: true, width: "auto" }, { label: "Last", num: true, width: "auto" }]}
+      <Slot c={du} title="Everyday data work under admin roles" subtitle="Statements run as an admin role in the window · select a row">
+        {(rows) => rows.some(isFlagged) ? (
+          <CxTable ariaLabel="Data work under admin roles" n={10}
+            cols={[{ label: "User" }, { label: "Role" }, { label: "Kind" }, { label: "Statements", num: true }, { label: "Last", num: true }]}
             rows={rows.filter(isFlagged).sort((a, b) => numOrZero(b.queries) - numOrZero(a.queries)).map((r, i) => ({
               key: `${r.user_id ?? r.user_name}|${r.role_name}|${r.work_kind}|${i}`, status: r.status,
-              onOpen: drawerBy("sf_govx_admin_role_daily_use", "user_name", r.user_name, nameId(r.user_name, r.user_id)),
+              onClick: drawerBy("sf_govx_admin_role_daily_use", "user_name", r.user_name, nameId(r.user_name, r.user_id)),
               cells: [nameId(r.user_name, r.user_id, "(no user)"), String(r.role_name || "–"), words(r.work_kind) || "–", fmtInt(numOrZero(r.queries)), lastDay(r.last_query)],
-            }))} empty="No data work ran under an admin role." />
-        )}
+            }))} />
+        ) : okNote("No data work ran under an admin role.")}
       </Slot>
     </div>
   );
@@ -662,16 +671,33 @@ export function ApAuditAdmins(p: ApPageProps) {
 
 // ═══════════════════════ Audit › Changes ═══════════════════════
 
-const DDL_COLORS: Record<string, string> = { CREATE: "var(--c1)", ALTER: "var(--c2)", REPLACE: "var(--c3)", UNDROP: "var(--c4)" };
+// DROP in a muted rose, so it does not read as Critical; colours are categories, not status.
+const DDL_COLORS: Record<string, string> = {
+  DROP: "color-mix(in srgb, var(--st-crit) 55%, var(--c4))", ALTER: "var(--c2)", CREATE: "var(--c1)", UNDROP: "var(--c4)", REPLACE: "var(--c3)",
+};
+const DDL_ORDER = ["DROP", "ALTER", "CREATE", "UNDROP", "REPLACE"];
 
+/** DDL per day as small multiples, each kind on its own scale; a kind that dwarfs the rest reads as a sentence. */
 function DdlTimeline({ rows, p }: { rows: Row[]; p: ApPageProps }) {
   const [sel, setSel] = React.useState<string | null>(null);
   const span = windowSpan(p.meta && p.meta.as_of_date, p.filters.window, p.meta && p.meta.snapshot_days);
   const days: string[] = [];
   if (span) for (let t = span.first; t <= span.last; t += 86400000) days.push(new Date(t).toISOString().slice(0, 10));
-  const tl = rows.map((r) => ({ day: String(r.usage_date || "").slice(0, 10), kind: String(r.operation || "OTHER").toUpperCase(), value: numOrZero(r.statements) || 1 }));
-  const drops = tl.filter((r) => r.kind === "DROP").reduce((s, r) => s + r.value, 0);
-  const total = tl.reduce((s, r) => s + r.value, 0);
+  else [...new Set(rows.map((r) => String(r.usage_date || "").slice(0, 10)).filter(Boolean))].sort().forEach((d) => days.push(d));
+  const byKind = new Map<string, Map<string, number>>();
+  rows.forEach((r) => {
+    const k = String(r.operation || "OTHER").toUpperCase(), d = String(r.usage_date || "").slice(0, 10);
+    const m = byKind.get(k) || new Map<string, number>();
+    m.set(d, (m.get(d) || 0) + (numOrZero(r.statements) || 1));
+    byKind.set(k, m);
+  });
+  const totalOf = (k: string) => [...(byKind.get(k) || new Map()).values()].reduce((s, v) => s + v, 0);
+  const total = [...byKind.keys()].reduce((s, k) => s + totalOf(k), 0);
+  const kinds = [...byKind.keys()].sort((a, b) => (DDL_ORDER.indexOf(a) < 0 ? 99 : DDL_ORDER.indexOf(a)) - (DDL_ORDER.indexOf(b) < 0 ? 99 : DDL_ORDER.indexOf(b)));
+  // A kind with most of the statements flattens every other panel: say it in a line instead.
+  const big = kinds.find((k) => totalOf(k) > total / 2) || null;
+  const panels = kinds.filter((k) => k !== big);
+  const partial = !!(p.meta && p.meta.cost_cutoff && p.meta.cost_cutoff.partial_day && days[days.length - 1] === String(p.meta.cost_cutoff.partial_day).slice(0, 10));
   const onDay = rows.filter((r) => sel && String(r.usage_date || "").slice(0, 10) === sel);
   const byUser = new Map<string, StatusBarItem>();
   onDay.forEach((r) => {
@@ -681,17 +707,27 @@ function DdlTimeline({ rows, p }: { rows: Row[]; p: ApPageProps }) {
     cur.status = worse(cur.status, r.status);
     byUser.set(k, cur);
   });
+  const peakOf = (k: string) => { const m = byKind.get(k)!; let best = ""; m.forEach((v, d) => { if (!best || v > (m.get(best) || 0)) best = d; }); return best; };
   return (
     <div>
-      <Headline><b>{plural(total, "DDL statement")}</b>{` · ${fmtInt(drops)} DROP (${fmtShare(pctOf(drops, total))})`}</Headline>
-      <DayKindTimeline rows={tl} days={days.length ? days : null} dangerKinds={["DROP"]} kindColors={DDL_COLORS}
-        onDayClick={(d) => setSel(sel === d ? null : d)} selectedDay={sel} unitLabel="statements" ariaLabel="Object changes by day and kind" />
-      {sel ? (
+      {big && (
+        <div className="cx-callout"><span><span className="cx-legend-sq" style={{ background: DDL_COLORS[big] || "var(--c-other)", marginRight: 6 }} /><b>{big}</b></span>
+          <span>{`About ${fmtInt(Math.round(totalOf(big) / Math.max(1, days.length)))} a day: ${fmtInt(totalOf(big))} of the ${fmtInt(total)} statements (${fmtShare(pctOf(totalOf(big), total))}). A line here, so the kinds below can be seen.`}</span></div>
+      )}
+      <div className="cx-minis">
+        {panels.map((k) => (
+          <CxMiniCols key={k} title={k} color={DDL_COLORS[k] || "var(--c-other)"} days={days} values={days.map((d) => (byKind.get(k)!.get(d) || 0))}
+            sub={`${fmtInt(totalOf(k))} in all · most on ${fmtDayShort(peakOf(k))}`} partialLast={partial} selected={sel}
+            onDay={(d) => setSel(sel === d ? null : d)} dayLabel={(d) => fmtDayShort(d)} />
+        ))}
+      </div>
+      <div className="cx-foot"><span>{"Y axis: statements / day, each panel on its own scale."}</span><span>{sel ? "" : "Select a day for who made its changes."}</span></div>
+      {sel && (
         <div className="gov-sub">
           <div className="gov-sub-title">{`${fmtDayShort(sel)}: who changed what`}</div>
           <StatusBars items={[...byUser.values()]} n={8} unitLabel="statements" ariaLabel={`Changes on ${sel}`} onBarClick={openCheck(p, "sf_audit_object_ddl_timeline")} />
         </div>
-      ) : <div className="chart-note-oneline">Click a day for who made its changes.</div>}
+      )}
     </div>
   );
 }
@@ -709,57 +745,58 @@ export function ApAuditChanges(p: ApPageProps) {
     dd.rows && ddl ? `${plural(ddl, "DDL statement")} in all; ${fmtInt(drops)} were DROPs.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <AffTile c={pg} label="Privileged grants" noun="grantees" openLabel="By grantee ↓"
-          extra={(rows) => plural(rows.length, "grant")}
-          cause={(rows) => `${fmtInt(rows.filter((r) => isFlagged(r) && String(r.grantee_type).toUpperCase() === "USER").length)} went to people, not roles.`} />
+          cause={(rows) => `${plural(rows.length, "grant")}. ${fmtInt(rows.filter((r) => isFlagged(r) && String(r.grantee_type).toUpperCase() === "USER").length)} went to people, not roles.`} />
         <CheckTile c={sc} label="Who changes security" badge build={(rows) => {
           const roles = distinct(rows, "role_name"), fl = distinct(rows.filter(isFlagged), "role_name");
           const kinds = tally(rows, (r) => words(r.change_kind), (r) => numOrZero(r.statements)).sort((a, b) => b.value - a.value);
           return {
             headline: fmtInt(fl), unit: ` of ${plural(roles, "role")}`,
-            base: `${fmtShare(pctOf(fl, roles))} · ${fmtInt(rows.reduce((s, r) => s + numOrZero(r.statements), 0))} statements`,
-            cause: kinds.length ? `Most: ${kinds.slice(0, 2).map((k) => k.name).join(", ")}` : undefined, openLabel: "By kind ↓",
+            base: `${fmtShare(pctOf(fl, roles))}. ${plural(rows.reduce((s, r) => s + numOrZero(r.statements), 0), "statement")}${kinds.length ? `, mostly ${kinds.slice(0, 2).map((k) => k.name).join(" and ")}` : ""}.`,
+            openLabel: "By kind ↓",
           };
         }} />
-        <AffTile c={ga} label="Grants and revokes by role" as="count" noun="change groups"
-          cause={(rows) => `${fmtInt(rows.filter((r) => isFlagged(r) && String(r.grantee_name).toUpperCase() === "PUBLIC").length)} to PUBLIC`} />
-        <AffTile c={dd} label="Objects created, changed or dropped" as="count" noun="change groups"
-          extra={() => `${fmtInt(ddl)} DDL statements · ${fmtInt(drops)} DROP (${fmtShare(pctOf(drops, ddl))})`} />
+        <AffTile c={ga} label="Grants and revokes by role" as="count" noun="sets of changes"
+          cause={(rows) => `${plural(rows.filter((r) => isFlagged(r) && String(r.grantee_name).toUpperCase() === "PUBLIC").length, "grant")} went to PUBLIC, which every user has.`} />
+        <AffTile c={dd} label="Objects created, changed or dropped" as="count" noun="sets of changes"
+          cause={() => `${plural(ddl, "DDL statement")}; ${fmtInt(drops)} were DROPs (${fmtShare(pctOf(drops, ddl))}).`} />
       </SummaryTileRow>
+      <Slot c={dd} title="Changes per day, by kind" subtitle="DDL statements per day · each panel on its own scale · last day partial">
+        {(rows) => (rows.length ? <DdlTimeline rows={rows} p={p} /> : null)}
+      </Slot>
       <Row2>
-        <Slot c={dd} title="Changes per day, by kind" subtitle="DDL statements per day · DROP on top · last day partial">
-          {(rows) => (rows.length ? <DdlTimeline rows={rows} p={p} /> : null)}
-        </Slot>
-        <Slot c={sc} title="Security-relevant changes, by kind" subtitle="statements that change users, roles, grants or security policies · then who made them">
+        <Slot c={sc} title="Security changes, by kind" subtitle={`Statements that change users, roles, grants or security policies`}>
           {(rows) => {
-            const segs: ShareSegment[] = tally(rows, (r) => words(r.change_kind) || "(no kind)", (r) => numOrZero(r.statements)).map((g) => ({ key: g.name, label: g.name, value: g.value }));
-            const items: StatusBarItem[] = tally(rows, (r) => String(r.role_name || "(no role)"), (r) => numOrZero(r.statements))
-              .map((g) => ({ key: g.name, name: g.name, value: g.value, status: g.status, valueText: plural(g.value, "statement") }));
+            const total = rows.reduce((s, r) => s + numOrZero(r.statements), 0);
+            const kinds = rankTally(tally(rows, (r) => words(r.change_kind) || "(no kind)", (r) => numOrZero(r.statements)).map((g) => [g.name, g.value] as [string, number]),
+              total, (v) => plural(v, "statement"), 7, capWords).map((x) => ({ ...x, strong: x.rest, rest: x.strong }));
+            const who: CxBarRow[] = tally(rows, (r) => String(r.role_name || "(no role)"), (r) => numOrZero(r.statements))
+              .map((g) => ({ key: g.name, name: g.name, value: g.value, status: g.status, strong: plural(g.value, "statement"),
+                onClick: () => DrawerBus.open({ id: "sf_sec_security_config_changes", col: "role_name", val: g.name, label: g.name }) })).sort((x, y) => y.value - x.value);
             return (
-              <div className="ais-stack-pair">
-                <StackedShareBar segments={segs} pareto valueFmt={(v) => plural(v, "statement")} ariaLabel="Security changes by kind" />
-                <StatusBars items={items} n={6} ariaLabel="Security changes by role"
-                  onBarClick={(it) => DrawerBus.open({ id: "sf_sec_security_config_changes", col: "role_name", val: String(it.key), label: it.name })} />
+              <div>
+                <CxRanked items={kinds} ariaLabel="Security changes by kind" />
+                <div className="cx-block"><CxEyebrow>Who made them</CxEyebrow><CxBarRows rows={who} n={6} ariaLabel="Security changes by role" /></div>
               </div>
             );
           }}
         </Slot>
+        <Slot c={pg} title="Privileged grants, by grantee" subtitle="Admin roles, ownership and account privileges granted in the window">
+          {(rows) => {
+            const items: CxRankItem[] = tally(rows, (r) => String(r.grantee || r.user_name || r.grantee_role || "(no grantee)")).map((g) => {
+              const type = g.rows[0] && g.rows[0].grantee_type ? words(g.rows[0].grantee_type) : "";
+              return {
+                key: g.name, label: <span className="cx-dotlabel"><CxDot status={g.status} /><span>{g.name}{type ? <span className="cx-muted">{` · ${type}`}</span> : null}</span></span>, value: g.n,
+                strong: plural(g.n, "grant"), rest: [...new Set(g.rows.map((r) => String(r.privilege || "")))].filter(Boolean).slice(0, 2).join(", "),
+                onClick: () => DrawerBus.open({ id: "sf_sec_privileged_grant_changes", col: "grantee", val: g.name, label: g.name }),
+              };
+            }).sort((x, y) => y.value - x.value);
+            return items.length ? <div><CxDotLegend statuses={rows.map((r) => r.status)} /><RankedAbove items={items} noun="grantees" ariaLabel="Privileged grants by grantee" /></div> : null;
+          }}
+        </Slot>
       </Row2>
-      <Slot c={pg} title="Privileged grants, by grantee" subtitle="admin roles, ownership and account privileges granted in the window · dot = status">
-        {(rows) => {
-          const items: StatusBarItem[] = tally(rows, (r) => {
-            const who = r.grantee || r.user_name || r.grantee_role || "(no grantee)";
-            return `${who}${r.grantee_type ? ` · ${words(r.grantee_type)}` : ""}`;
-          }).map((g) => ({
-            key: g.name, name: g.name, value: g.n, status: g.status,
-            valueText: `${plural(g.n, "grant")} · ${[...new Set(g.rows.map((r) => String(r.privilege || "")))].filter(Boolean).slice(0, 2).join(", ")}`,
-          }));
-          return items.length ? <StatusBars items={items} n={8} ariaLabel="Privileged grants by grantee"
-            onBarClick={(it) => { const g = String(it.key).split(" · ")[0]; DrawerBus.open({ id: "sf_sec_privileged_grant_changes", col: "grantee", val: g, label: g }); }} /> : null;
-        }}
-      </Slot>
     </div>
   );
 }
@@ -773,7 +810,7 @@ function unmaskedRanked(rows: Row[], key: (r: Row) => string, col: string | null
   return tally(rows, key).map((g) => {
     const v = g.rows.filter((r) => !isTrue(r.is_masked)).length;
     return {
-      key: g.name, label: cap ? g.name.charAt(0).toUpperCase() + g.name.slice(1) : g.name, value: pctOf(v, g.n) ?? 0, strong: `${fmtInt(v)} of ${fmtInt(g.n)}`, rest: fmtShare(pctOf(v, g.n)),
+      key: g.name, label: cap ? capWords(g.name) : g.name, value: pctOf(v, g.n) ?? 0, strong: `${fmtInt(v)} of ${fmtInt(g.n)}`, rest: fmtShare(pctOf(v, g.n)),
       onClick: col ? drawerBy("sf_gov_sensitive_columns_unprotected", col, g.name, g.name) : null,
     };
   }).sort((a, b) => b.value - a.value || String(a.label).localeCompare(String(b.label)));
@@ -1143,6 +1180,26 @@ export function ApPiiQuality(p: ApPageProps) {
 
 // ═══════════════════════ Lineage › Dependencies & lineage ═══════════════════════
 
+/** A day as "Sep 19", with the year when it falls before the window. */
+function dayYear(v: any, p: ApPageProps): string {
+  const d = day(v);
+  if (!d) return "–";
+  const span = windowSpan(p.meta && p.meta.as_of_date, p.filters.window, p.meta && p.meta.snapshot_days);
+  const t = Date.parse(`${d}T00:00:00Z`);
+  return span && Number.isFinite(t) && t < span.first ? `${fmtDayShort(d)}, ${d.slice(0, 4)}` : fmtDayShort(d);
+}
+
+/** Label-above-bar rows, the first 8, then "Show N more". */
+function RankedAbove({ items, noun, ariaLabel, n = 8 }: { items: CxRankItem[]; noun: string; ariaLabel: string; n?: number }) {
+  const [all, setAll] = React.useState(false);
+  return (
+    <div>
+      <CxRanked items={all ? items : items.slice(0, n)} layout="above" max={Math.max(1, ...items.map((x) => x.value))} ariaLabel={ariaLabel} />
+      {items.length > n && <div className="cx-foot"><button type="button" className="cx-linkbtn" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show ${fmtInt(items.length - n)} more ${noun}`}</button></div>}
+    </div>
+  );
+}
+
 export function ApLineageDeps(p: ApPageProps) {
   const br = useCheck(p, "sf_obj_broken_views");
   const bl = useCheck(p, "sf_lin_blast_radius");
@@ -1154,52 +1211,53 @@ export function ApLineageDeps(p: ApPageProps) {
     bl.rows && bl.rows.length ? `${plural(bl.rows.length, "source object")} carry ${plural(deps, "declared dependent")}.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <AffTile c={br} label="Views pointing at dropped objects" as="count" noun="views" openLabel="Which ones ↓"
           cause={(rows) => {
             const fns = rows.filter((r) => /FUNCTION/i.test(String(r.object_type || ""))).length;
-            return `${plural(rows.length - fns, "view")}, ${plural(fns, "function")} · ${plural(rows.reduce((s, r) => s + numOrZero(r.dependents), 0), "dependent")} break with them`;
+            return `${plural(rows.length - fns, "view")} and ${plural(fns, "function")}. ${plural(rows.reduce((s, r) => s + numOrZero(r.dependents), 0), "dependent")} break with them.`;
           }} />
         <AffTile c={bl} label="Objects most depended on" as="count" noun="source objects" openLabel="By source ↓"
-          extra={(rows) => `${plural(deps, "declared dependent")} · depth up to ${fmtInt(Math.max(0, ...rows.map((r) => numOrZero(r.max_depth))))}`}
+          extra={(rows) => `${plural(deps, "declared dependent")}, up to ${plural(Math.max(0, ...rows.map((r) => numOrZero(r.max_depth))), "level")} deep.`}
           cause={(rows) => { const t = [...rows].sort((a, b) => numOrZero(b.total_dependents) - numOrZero(a.total_dependents))[0]; return t ? `${t.source_fqn} carries ${fmtShare(pctOf(numOrZero(t.total_dependents), deps))} of the declared lineage.` : undefined; }} />
         <AffTile c={tf} label="Tables that feed the most tables" as="count" noun="tables" openLabel="By source ↓"
           extra={(rows) => `${plural(rows.filter(isFlagged).reduce((s, r) => s + numOrZero(r.feeds_tables), 0), "downstream table")}`}
-          cause={() => "Written lineage, not declared: CTAS, INSERT … SELECT and MERGE in the window."} />
+          cause={() => "From what queries actually wrote (CTAS, INSERT … SELECT and MERGE), not declared lineage."} />
       </SummaryTileRow>
       <Row2>
-        <Slot c={bl} title="Declared dependents, by source" subtitle="objects downstream of a table or view · bar = dependents · dot = status">
+        <Slot c={bl} title="Declared dependents, by source" subtitle={`Objects downstream of a table or view · all ${plural((bl.rows || []).length, "source")}`}>
           {(rows) => {
-            const items: StatusBarItem[] = rows.map((r) => ({
-              key: String(r.source_fqn), name: String(r.source_fqn || "(unnamed object)"), value: numOrZero(r.total_dependents), status: r.status,
-              valueText: `${fmtInt(numOrZero(r.total_dependents))} · depth ${fmtInt(numOrZero(r.max_depth))}`,
+            const items: CxRankItem[] = [...rows].sort((x, y) => numOrZero(y.total_dependents) - numOrZero(x.total_dependents)).map((r) => ({
+              key: String(r.source_fqn), label: <span className="cx-dotlabel"><CxDot status={r.status} /><CxObjName full={String(r.source_fqn || "(unnamed object)")} /></span>, value: numOrZero(r.total_dependents),
+              strong: plural(numOrZero(r.total_dependents), "dependent"), rest: `depth ${fmtInt(numOrZero(r.max_depth))}`,
+              onClick: () => DrawerBus.open({ id: "sf_lin_blast_radius", col: "source_fqn", val: String(r.source_fqn), label: String(r.source_fqn) }),
             }));
-            return items.length ? <StatusBars items={items} n={8} unitLabel="dependents" ariaLabel="Dependents per source object"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_lin_blast_radius", col: "source_fqn", val: String(it.key), label: it.name })} /> : null;
+            return items.length ? <div><CxDotLegend statuses={rows.map((r) => r.status)} /><RankedAbove items={items} noun="sources" ariaLabel="Dependents per source object" /><div className="cx-foot">{"Bar = declared dependents · depth = levels downstream."}</div></div> : null;
           }}
         </Slot>
-        <Slot c={tf} title="Tables that feed the most other tables" subtitle="downstream tables written from each source in the window · bar = tables">
+        <Slot c={tf} title="Tables that feed the most other tables" subtitle="Downstream tables written from each source in the window">
           {(rows) => {
-            const items: StatusBarItem[] = rows.filter((r) => numOrZero(r.feeds_tables) > 0).map((r) => ({
-              key: String(r.table_fqn), name: String(r.table_fqn || "(unnamed table)"), value: numOrZero(r.feeds_tables), status: r.status,
-              valueText: `${plural(numOrZero(r.feeds_tables), "table")} · ${plural(numOrZero(r.writers), "writer")}`,
+            const items: CxRankItem[] = rows.filter((r) => numOrZero(r.feeds_tables) > 0).sort((x, y) => numOrZero(y.feeds_tables) - numOrZero(x.feeds_tables)).map((r) => ({
+              key: String(r.table_fqn), label: <span className="cx-dotlabel"><CxDot status={r.status} /><CxObjName full={String(r.table_fqn || "(unnamed table)")} /></span>, value: numOrZero(r.feeds_tables),
+              strong: plural(numOrZero(r.feeds_tables), "table"), rest: plural(numOrZero(r.writers), "writer"),
+              onClick: () => DrawerBus.open({ id: "sf_lin_table_flows", col: "table_fqn", val: String(r.table_fqn), label: String(r.table_fqn) }),
             }));
-            return items.length ? <StatusBars items={items} n={8} ariaLabel="Tables feeding other tables"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_lin_table_flows", col: "table_fqn", val: String(it.key), label: it.name })} /> : null;
+            return items.length ? <div><CxDotLegend statuses={rows.map((r) => r.status)} /><RankedAbove items={items} noun="tables" ariaLabel="Tables feeding other tables" /></div> : null;
           }}
         </Slot>
       </Row2>
-      <Slot c={br} title="Views and functions that point at dropped objects" subtitle="they fail on first use · click a row for the fix">
-        {(rows) => (
-          <DrillTable aria="Broken views and functions" n={10}
-            cols={[{ label: "Object" }, { label: "Kind", width: "auto" }, { label: "Points at (missing)", width: "minmax(90px, 1.6fr)" }, { label: "Dependents", num: true, width: "auto" }]}
+      <Slot c={br} title="Views and functions that point at dropped objects" subtitle="They fail on first use · select a row for the fix">
+        {(rows) => rows.length ? (
+          <CxTable ariaLabel="Broken views and functions" n={10}
+            cols={[{ label: "Object" }, { label: "Kind" }, { label: "Points at (missing)" }, { label: "Dependents", num: true }]}
             rows={[...rows].sort((a, b) => numOrZero(b.dependents) - numOrZero(a.dependents)).map((r) => ({
               key: `${r.account_id}|${r.object_id ?? r.object_fqn}`, status: r.status,
-              onOpen: drawerBy("sf_obj_broken_views", "object_fqn", r.object_fqn, nameId(r.object_fqn, r.object_id)),
-              cells: [nameId(r.object_fqn, r.object_id, "(unnamed object)"), words(r.object_type), dtChip(String(r.missing_refs || "–").split(",")[0], r.status), fmtInt(numOrZero(r.dependents))],
-            }))} empty="No view or function points at a dropped object." />
-        )}
+              onClick: drawerBy("sf_obj_broken_views", "object_fqn", r.object_fqn, nameId(r.object_fqn, r.object_id)),
+              cells: [<CxObjName full={String(r.object_fqn || "(unnamed object)")} id={r.object_id} />, words(r.object_type),
+                <code className="cx-code">{String(r.missing_refs || "–").split(",")[0]}</code>, fmtInt(numOrZero(r.dependents))],
+            }))} />
+        ) : okNote("No view or function points at a dropped object.")}
       </Slot>
     </div>
   );
@@ -1225,23 +1283,23 @@ export function ApLineageUsage(p: ApPageProps) {
   ].filter(Boolean).join(" ") || null);
   const usd = (r: Row) => numOrZero(r.est_storage_usd_month) * (1 - da.disc);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <CheckTile c={ua} label="Hold roles, run nothing" badge build={(rows) => ({
           headline: fmtShare(pctOf(idle.length, rows.length)), unit: " of users",
-          base: `${fmtInt(idle.length)} of ${plural(rows.length, "user")}`,
+          base: `${fmtInt(idle.length)} of ${plural(rows.length, "user")} hold roles but ran nothing.`,
           cause: `${fmtInt(idle.filter((r) => isTrue(r.has_admin_role)).length)} of them can use an admin role.`, openLabel: "By last sign-in ↓",
         })} />
         <AffTile c={uv} label="Views never read" as="count" noun="views" openLabel="Which ones ↓"
-          cause={(rows) => `${fmtInt(rows.filter((r) => isFlagged(r) && isTrue(r.is_secure)).length)} secure views · no query in the window`} />
+          cause={(rows) => `No query in the window; ${fmtInt(rows.filter((r) => isFlagged(r) && isTrue(r.is_secure)).length)} of them are secure views.`} />
         <CheckTile c={da} label="Databases nobody queries" badge build={(rows) => {
           const dbs = tally(rows.filter((r) => r.schema_name), (r) => String(r.database_name || "(no database)"));
           const deadDbs = dbs.filter((g) => g.rows.every((r) => isTrue(r.never_used)));
           const priced = rows.some((r) => r.price_basis === "priced");
           return {
             headline: fmtInt(deadDbs.length), unit: ` of ${plural(dbs.length, "database")}`,
-            base: `${fmtInt(never.length)} of ${plural(schemas.length, "schema")} never used`,
-            cause: priced ? `${fmtMoney(never.reduce((s, r) => s + usd(r), 0), 0)}/mo storage in never-used schemas` : undefined, openLabel: "By schema ↓",
+            base: `${fmtInt(never.length)} of ${plural(schemas.length, "schema")} were never used.`,
+            cause: priced ? `${fmtMoney(never.reduce((s, r) => s + usd(r), 0), 0)} a month of storage sits in never-used schemas.` : undefined, openLabel: "By schema ↓",
           };
         }} />
         <CheckTile c={da} label="Where the reads go" build={() => {
@@ -1249,8 +1307,8 @@ export function ApLineageUsage(p: ApPageProps) {
           const all = reads.reduce((s, v) => s + v, 0);
           const top = reads.slice(0, 3).reduce((s, v) => s + v, 0);
           return {
-            headline: fmtShare(pctOf(top, all)), unit: " of read queries hit 3 schemas", pill: <KindChip>Context</KindChip>,
-            base: `${fmtInt(top)} of ${fmtInt(all)} queries · 3 of ${plural(schemas.length, "schema")}`, openLabel: "By schema ↓",
+            headline: fmtShare(pctOf(top, all)), unit: " of read queries",
+            base: `${fmtInt(top)} of ${fmtInt(all)} read queries hit 3 of ${plural(schemas.length, "schema")}. For context.`, openLabel: "By schema ↓",
           };
         }} />
       </SummaryTileRow>
@@ -1274,45 +1332,48 @@ export function ApLineageUsage(p: ApPageProps) {
               cur.whole += 1;
               if (isTrue(r.has_admin_role)) cur.value += 1;
             });
-            const items = [...by.entries()].filter(([, v]) => v.whole > 0).map(([name, v]) => ({ name: name === "never" ? "never signed in" : name, value: v.value, whole: v.whole }));
+            // Bands stay in time order, the most recent first; "never" last.
+            const items = [...by.entries()].filter(([, v]) => v.whole > 0).map(([name, v]) => ({ name: name === "never" ? "Never signed in" : name.charAt(0).toUpperCase() + name.slice(1), value: v.value, whole: v.whole }));
             if (items.length < 2) return null;
             const old = by.get("over 90 days")!.whole + by.get("never")!.whole;
+            const max = Math.max(...items.map((x) => x.whole));
             return (
               <div>
-                <Headline><b>{`${fmtInt(old)} of ${plural(rows.length, "user")}`}</b>{" not signed in for 90+ days or never"}</Headline>
-                <RankedBars items={items} n={6} valueFmt={(v) => fmtInt(v)} unitLabel="users" ariaLabel="Users by last sign-in, admins"
-                  note="Dark bar: can use an admin role. Light track: all users in the band." />
+                <CxStat>{<span><b>{`${fmtInt(old)} of ${plural(rows.length, "user")}`}</b>{" have not signed in for over 90 days, or never."}</span>}</CxStat>
+                <div className="cx-block"><CxTable ariaLabel="Users by last sign-in, admins" cols={[{ label: "Last sign-in" }, { label: "", width: "40%" }, { label: "Users", num: true }, { label: "Admins", num: true }]}
+                  foot="Dark part: can use an admin role."
+                  rows={items.map((x) => ({ key: x.name, cells: [x.name, <CxTwoBar part={x.value} whole={x.whole} max={max} />, fmtInt(x.whole), x.value ? <b>{fmtInt(x.value)}</b> : "–"] }))} /></div>
               </div>
             );
           }}
         </Slot>
-        <Slot c={da} title="Schemas: storage against reads" subtitle="storage per month, with the queries that used each schema · dot = never used">
+        <Slot c={da} title="Schemas: storage against reads" subtitle="Storage per month, with the queries that used each schema · amber dot = never used">
           {(rows) => {
             const list = rows.filter((r) => r.schema_name);
             if (!list.length) return null;
             const priced = list.some((r) => r.price_basis !== "unpriced" && r.est_storage_usd_month != null);
             const valOf = (r: Row) => (priced ? usd(r) : numOrZero(r.storage_gb));
             const fmtV = (v: number) => (priced ? `${fmtMoney(v, 0)}/mo` : fmtSize(v));
-            const items: StatusBarItem[] = list.map((r) => {
+            const items: CxBarRow[] = list.map((r) => {
               const q = numOrZero(r.read_queries) + numOrZero(r.write_queries);
               return {
-                key: `${r.database_name}.${r.schema_name}`, name: nameId(`${r.database_name}.${r.schema_name}`, r.schema_id), value: valOf(r),
-                status: isTrue(r.never_used) ? "WARN" : "OK",
-                valueText: `${fmtV(valOf(r))} · ${isTrue(r.never_used) ? "never used" : `${fmtInt(q)} queries`}`,
+                key: `${r.database_name}.${r.schema_name}`, name: `${r.database_name}.${r.schema_name}`, id: r.schema_id, value: valOf(r),
+                status: isTrue(r.never_used) ? "WARN" : "OK", strong: fmtV(valOf(r)), rest: isTrue(r.never_used) ? "never used" : `${fmtInt(q)} queries`, onClick: () => da.open(),
               };
-            }).filter((it) => it.value > 0);
-            return <StatusBars items={items} n={8} unitLabel={priced ? "$ per month" : "GB"} ariaLabel="Schema storage and queries" onBarClick={() => da.open()} />;
+            }).filter((it) => it.value > 0).sort((x, y) => y.value - x.value);
+            return items.length ? <CxBarRows rows={items} ariaLabel="Schema storage and queries" /> : null;
           }}
         </Slot>
       </Row2>
-      <Slot c={uv} title="Never read in the window" subtitle="views with no reader · click a row for the fix">
+      <Slot c={uv} title="Never read in the window" subtitle="Views with no reader · select a row for the fix">
         {(rows) => (
-          <DrillTable aria="Views never read" n={10}
-            cols={[{ label: "View" }, { label: "Owner", width: "minmax(70px, 1fr)" }, { label: "Created", num: true, width: "auto" }, { label: "Last changed", num: true, width: "auto" }]}
+          rows.some(isFlagged) ? <CxTable ariaLabel="Views never read" n={10}
+            cols={[{ label: "View" }, { label: "Owner" }, { label: "Created", num: true }, { label: "Last changed", num: true }]}
             rows={rows.filter(isFlagged).map((r) => ({
-              key: `${r.account_id}|${r.view_fqn}`, status: r.status, onOpen: drawerBy("sf_lin_unused_views", "view_fqn", r.view_fqn, String(r.view_fqn)),
-              cells: [`${r.view_fqn}${isTrue(r.is_secure) ? " · secure" : ""}`, String(r.view_owner || "–"), lastDay(r.created), lastDay(r.last_altered)],
-            }))} empty="Every view was read in the window." />
+              key: `${r.account_id}|${r.view_fqn}`, status: r.status, onClick: drawerBy("sf_lin_unused_views", "view_fqn", r.view_fqn, String(r.view_fqn)),
+              cells: [<span><CxObjName full={String(r.view_fqn)} />{isTrue(r.is_secure) ? <div className="cx-muted">{"Secure view"}</div> : null}</span>, String(r.view_owner || "–"),
+                dayYear(r.created, p), dayYear(r.last_altered, p)],
+            }))} /> : okNote("Every view was read in the window.")
         )}
       </Slot>
     </div>
