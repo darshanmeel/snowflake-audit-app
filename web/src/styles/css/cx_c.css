@@ -1,0 +1,157 @@
+/* web/src/styles/css/cx_c.css -- the redesign blocks of components/cx_c.tsx (AI & apps, Sharing & org,
+   Storage). Tokens only, so dark mode is a token swap. Page rules are scoped to .cx-c. */
+
+/* ─────────── page frame: serif card titles, cards sized to content ─────────── */
+.cx-c .chart-card-v2-title { font-family: var(--f-serif); font-size: 24px; font-weight: 400; line-height: 1.2; letter-spacing: -.005em; }
+.cx-c .chart-card-v2-subtitle { font-size: 13px; color: var(--text-3); }
+.cx-c .chart-card-v2 { border-radius: 14px; }
+.cx-c > * + * { margin-top: 16px; }
+.cx-c > .summary-tile-row { margin-bottom: 0; }
+.cx-row2 { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.cx-row2 > * { flex: 1 1 380px; min-width: 0; margin: 0 !important; }
+.cx-c .summary-tile-row { align-items: stretch; }
+/* Long object names in a tile wrap inside it, never past the card. */
+.cx-c .issue-tile-cause, .cx-c .summary-tile-base { overflow-wrap: anywhere; }
+
+/* ─────────── names and status ─────────── */
+.cx-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; background: var(--c-other); }
+.cx-dot.st-critical { background: var(--st-crit); }
+.cx-dot.st-warn { background: var(--st-warn); }
+.cx-dot.st-ok { background: var(--st-ok); }
+.cx-dot.st-not_assessed { background: transparent; border: 1px dashed var(--border-strong); box-sizing: border-box; }
+.cx-status { display: inline-flex; align-items: center; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.cx-name { min-width: 0; overflow-wrap: break-word; color: var(--text); }
+.cx-name-pre { color: var(--text-3); }
+.cx-name-id { color: var(--text-3); margin-left: 4px; }
+.cx-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 13px; color: var(--text-3); }
+.cx-legend-item { display: inline-flex; align-items: center; }
+.cx-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-top: 10px; }
+.cx-foot > .cx-more { margin-left: auto; }
+.cx-more { background: none; border: 0; padding: 0; min-height: 32px; font: inherit; font-size: 13px; color: var(--link); cursor: pointer; }
+.cx-more:hover { text-decoration: underline; }
+.cx-click { cursor: pointer; }
+.cx-click:hover { background: var(--surface-2); }
+.cx-click:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cx-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cx-strong { font-weight: 600; color: var(--text); }
+.cx-sub { color: var(--text-3); font-weight: 400; }
+
+/* ─────────── ranked bars on fixed columns ─────────── */
+/* One grid for the whole list, rows on its subgrid: every track starts and ends at the same x. */
+.cx-gbars { display: grid; grid-template-columns: var(--cx-cols); column-gap: 14px; font-size: 14px; margin: 0 -8px; }
+.cx-gb-row {
+  grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 6px; align-items: center;
+  padding: 7px 8px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left;
+}
+.cx-gbars > .cx-foot { grid-column: 1 / -1; padding-left: 8px; padding-right: 8px; }
+.cx-gb-head { padding-top: 0; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle); border-radius: 0; margin-bottom: 4px;
+  font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.cx-gb-name { display: flex; align-items: baseline; min-width: 0; }
+.cx-gb-name .cx-dot { transform: translateY(-1px); }
+.cx-gb-row .cx-num { font-size: 13px; color: var(--text-2); }
+.cx-gb-row .cx-num.cx-strong { font-size: 14px; color: var(--text); }
+.cx-gb-head .cx-num { font-size: 11px; color: var(--text-3); }
+.cx-track { display: block; height: 12px; border-radius: 3px; background: var(--surface-3); overflow: hidden; min-width: 40px; }
+.cx-track-thin { height: 8px; border-radius: 4px; }
+.cx-fill { display: block; height: 100%; border-radius: inherit; }
+.cx-hatch { background: var(--hatch, repeating-linear-gradient(135deg, var(--c-other) 0 3px, transparent 3px 7px)); }
+
+.chart-card-v2-body > .cx-gbars:not(:first-child), .chart-card-v2-body > .cx-bars:not(:first-child) { margin-top: 14px; }
+
+/* Label-above-bar rows. */
+.cx-bars { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.cx-bar { display: flex; flex-direction: column; gap: 5px; padding: 6px 8px; margin: 0 -8px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; width: calc(100% + 16px); }
+.cx-bar-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.cx-bar-name { display: flex; align-items: baseline; min-width: 0; }
+.cx-bar-val { flex: none; max-width: 55%; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ─────────── one table style ─────────── */
+.cx-table-box { overflow-x: auto; }
+.cx-table { display: grid; grid-template-columns: var(--cx-cols); column-gap: 24px; min-width: 0; }
+.cx-tr {
+  grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center;
+  padding: 12px 8px; border: 0; border-top: 1px solid var(--border-subtle); background: none; color: inherit; font: inherit; font-size: 14px; text-align: left;
+}
+.cx-th { padding-top: 0; padding-bottom: 8px; border-top: 0; font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.cx-txt { min-width: 0; overflow-wrap: break-word; }
+.cx-tr .cx-num { font-size: 13px; }
+.cx-empty-line { font-size: 13px; color: var(--text-3); }
+
+/* ─────────── secondary KPI strip ─────────── */
+.cx-strip {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+}
+.cx-cell { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border-left: 1px solid var(--border-subtle); margin-left: -1px; }
+.cx-cell.is-missing .cx-cell-value { color: var(--text-3); }
+.cx-cell-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
+.cx-eyebrow { font-size: 12px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); line-height: 1.35; }
+.cx-chip { flex: none; padding: 1px 7px; border-radius: 6px; font-size: 12px; }
+.cx-chip.chip-critical { background: var(--st-crit-tint); color: var(--st-crit-ink); }
+.cx-chip.chip-warn { background: var(--st-warn-tint); color: var(--st-warn-ink); }
+.cx-chip.chip-not_assessed { border: 1px dashed var(--border-strong); color: var(--text-3); }
+.cx-cell-value { font-size: 28px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cx-cell-unit { font-size: 14px; font-weight: 400; letter-spacing: 0; color: var(--text-2); margin-left: 6px; }
+.cx-cell-line { font-size: 13px; color: var(--text-2); line-height: 1.45; overflow-wrap: anywhere; }
+.cx-cell-line + .cx-cell-line { color: var(--text-3); }
+.cx-cell-open { margin-top: auto; padding: 8px 0 0; align-self: flex-start; background: none; border: 0; font: inherit; font-size: 13px; color: var(--link); cursor: pointer; min-height: 32px; }
+.cx-cell-open:hover { text-decoration: underline; }
+.cx-kinds-note { margin: 10px 0 0; font-size: 13px; color: var(--text-3); }
+
+/* ─────────── dashed empty strip ─────────── */
+.cx-empty {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 14px 20px;
+  border: 1px dashed var(--border-strong); border-radius: 14px; background: var(--surface-2); font-size: 14px; color: var(--text-3);
+}
+.cx-empty-title { font-family: var(--f-serif); font-size: 19px; color: var(--text-2); }
+.cx-empty-fix { font-family: var(--f-mono); font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; overflow-wrap: anywhere; }
+
+.cx-c .chart-card-v2-body > .metric-note { margin: 10px 0; }
+
+/* A group label between two bar lists ("The other 7 accounts · on their own scale"). */
+.cx-group-head { margin: 14px 0 4px; font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+/* A name over a muted second line (database, then its target). */
+.cx-two { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cx-two > .cx-sub { font-size: 12px; }
+
+/* Columns per day, an outlier cut to fit. */
+.cx-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.cx-days-legend { margin-bottom: 10px; }
+.cx-days-unit { font-size: 12px; color: var(--text-3); margin-bottom: 4px; }
+.cx-days-plot { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; height: 200px; padding-bottom: 22px; }
+.cx-days-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; margin: -7px 0; }
+.cx-days-cols { position: relative; display: flex; align-items: stretch; gap: 3px; border-bottom: 1px solid var(--axis); }
+.cx-days-grid { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--grid); pointer-events: none; }
+.cx-days-btn { flex: 1 1 0; min-width: 0; display: flex; padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: default; }
+button.cx-days-btn { cursor: pointer; }
+button.cx-days-btn:hover .cx-days-stack { filter: brightness(1.1); }
+.cx-days-col { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: flex-end; }
+.cx-days-stack { position: relative; display: flex; flex-direction: column-reverse; max-width: 48px; width: 100%; margin: 0 auto; border-radius: 3px 3px 0 0; overflow: hidden; }
+.cx-days-stack > span { display: block; min-height: 1px; }
+.cx-days-break { position: absolute; left: -2px; right: -2px; top: 14px; height: 6px; background: var(--surface); transform: skewY(-12deg); }
+.cx-days-flag { position: absolute; top: 0; left: calc(50% + 28px); white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.cx-days-x { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; color: var(--text-3); }
+
+/* Hours up: a bar and its figure in one cell. */
+.cx-hours { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cx-hours > .dt-bar { flex: 1 1 auto; }
+.cx-hours > .cx-num { min-width: 48px; font-size: 13px; }
+
+/* ─────────── a phone ─────────── */
+@media (max-width: 700px) {
+  .cx-gbars { grid-template-columns: minmax(60px, 1fr) repeat(var(--cx-k), auto); overflow-x: auto; margin: 0; }
+  .cx-gb-row { padding-left: 0; padding-right: 0; }
+  .cx-gb-row > .cx-gb-name { grid-column: 1 / -1; }
+  .cx-gb-head > span:nth-child(-n+2) { display: none; }
+  .cx-gb-head > span:nth-child(3) { grid-column: 2; }
+  .cx-table { min-width: var(--cx-minw); column-gap: 16px; }
+  /* On a phone the status is the dot alone (the word is in its title). */
+  .cx-status-word { display: none; }
+  /* Every other day label, so the dates never collide. */
+  .cx-days-x.cx-minor { display: none; }
+  .cx-th-status { font-size: 0; }
+  .cx-bar-top { flex-wrap: wrap; }
+  .cx-bar-val { max-width: none; }
+  .cx-cell { border-left: 0; border-top: 1px solid var(--border-subtle); margin-left: 0; margin-top: -1px; }
+  .cx-row2 > * { flex-basis: 100%; }
+}
