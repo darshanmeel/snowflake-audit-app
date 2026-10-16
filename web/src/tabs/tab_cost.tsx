@@ -9,14 +9,15 @@
 // ── small local presentational helpers: a per-sub-tab metric grid and a one-line caveat ──────────
 import React from "react";
 import { acctId } from "../api";
-import { fmtCredits, fmtDayShort, fmtInt, fmtMoney } from "../format";
+import { fmtCredits, fmtDayShort, fmtInt, fmtMoney, fmtMoneyShort } from "../format";
 import { acctPhrase, resolveName, useNames } from "../components/names";
 import { SPIKE_PCT, buildMonthBars, fmtChangePct, aggTotal, numOrZero, sumBy, totalSpikeDays, useFindingAgg, useFindingData } from "../components/hooks";
 import { COST_MONEY_COL } from "../components/tab_registry";
-import { Card, Facts, KindChip, PatternCard, bandOf, noDataText } from "../components/primitives";
+import { Card, Facts, PatternCard, bandOf, noDataText } from "../components/primitives";
 import { AreaContent } from "../area_content";
 import { ChartNote, paletteColor } from "../components/charts";
-import { DivergingBars, RankedBars } from "../components/charts_more";
+import { CxBars, SmallMultiples } from "../components/cx_a";
+import type { CxBarItem } from "../components/cx_a";
 import { DayKindTimeline, IssueTile, ReconciliationStrip, fmtShare, pctOf } from "../components/blocks";
 import type { ReconStep } from "../components/blocks";
 import { NameId } from "../components/blocks_2";
@@ -27,7 +28,7 @@ import { CsvButton } from "../components/csv";
 import type { CsvColumn } from "../components/csv";
 import { useCostCenterAllocation } from "../components/tag_rollup";
 import { NO_PRICE_LEDE, NO_PRICE_READING, isUnpricedAgg, notAssessedText } from "../components/scope";
-import { scrollToAnchor, windowShortLabel, windowSpan } from "../components/overview_tile";
+import { KpiRow, scrollToAnchor, windowShortLabel, windowSpan } from "../components/overview_tile";
 import { DAY_KINDS, dayKindOf, fillGaps, sumPick } from "./tab_overview";
 import { withoutTotalRows } from "./tab_area";
 import type { FactItems } from "../components/primitives";
@@ -219,6 +220,22 @@ export function periodRowsBy(rows: Row[], keyFn: (r: Row) => any, valueOf: (r: R
 // same rows: never added together.
 export const CHANGE_METRICS = [{ key: "spend", label: "Spend" }, { key: "change", label: "Change" }];
 
+// Spend or change as ranked rows: the top n by size, then the rest as one grey row (a remainder, so it closes the total).
+function breakdownBars(items: { name: any; value: number }[], n: number, isSpend: boolean): CxBarItem[] {
+  const fmt = (v: number) => (isSpend ? fmtMoney(v, 0) : `${v >= 0 ? "+" : "−"}${fmtMoney(Math.abs(v), 0)}`);
+  const sorted = items.filter((it) => it.value).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  const cut = sorted.length === n + 1 ? n + 1 : n;
+  const out: CxBarItem[] = sorted.slice(0, cut).map((it) => ({
+    key: String(it.name), label: String(it.name), value: it.value, valueText: fmt(it.value), tone: isSpend ? "c1" as const : it.value >= 0 ? "c2" as const : "c3" as const,
+  }));
+  const rest = sorted.slice(cut);
+  if (rest.length) {
+    const v = rest.reduce((s, it) => s + it.value, 0);
+    out.push({ key: "__rest__", label: `${fmtInt(rest.length)} other${rest.length === 1 ? "" : "s"}`, value: v, valueText: fmt(v), tone: "other" });
+  }
+  return out;
+}
+
 export function ChangeBreakdownCard({ periodState, filters, maxCat, meta }: { periodState: FetchState; filters: Filters; maxCat?: number; meta?: Meta | null }) {
   useNames();
   const [level, setLevel] = React.useState("service");
@@ -274,23 +291,14 @@ export function ChangeBreakdownCard({ periodState, filters, maxCat, meta }: { pe
           <button key={l.key} type="button" className={l.key === level ? "on" : ""} onClick={() => setLevel(l.key)}>{l.label}</button>
         ))}
       </div>
-      {gap ? <div className="chart-note-oneline">{gap}</div> : items && isSpend ? (
-        <RankedBars
-          items={items}
-          n={maxCat}
-          valueFmt={(v) => fmtMoney(v, 0)}
-          unitLabel="$"
-          emptyText={noDataText(meta, filters.window)}
-          note={`Total for the last ${filters.window} days.`}
-        />
+      {gap ? <div className="chart-note-oneline">{gap}</div> : items && !items.some((it) => it.value) ? (
+        <div className="chart-note-oneline">{noDataText(meta, filters.window)}</div>
       ) : items ? (
-        <DivergingBars
-          items={items}
-          n={maxCat}
-          valueFmt={(v) => `${v >= 0 ? "+" : "-"}${fmtMoney(Math.abs(v), 0)}`}
-          unitLabel="Change"
-          note="This period against the one just before it, same length. 25% up is over the warning line, 50% is critical."
-        />
+        <React.Fragment>
+          <CxBars ariaLabel={isSpend ? `Spend by ${lv.label.toLowerCase()}` : `Change by ${lv.label.toLowerCase()}`} items={breakdownBars(items, maxCat || 8, isSpend)} />
+          <div className="cx-moved-note">{isSpend ? `Total for the last ${filters.window} days.`
+            : "This period against the one just before it, same length. 25% up is over the warning line, 50% is critical."}</div>
+        </React.Fragment>
       ) : <ChartNote state={state} label={lv.qid || "cost_period_over_period"} />}
     </Card>
   );
@@ -542,13 +550,23 @@ export function TrendByCard({ filters, meta, serviceAgg }: { filters: Filters; m
           <button type="button" className="link-out" onClick={() => setPicked(null)}>{`Back to the top ${TOP_LINES}`}</button>
         </div>
       )}
-      {lineRows.length
+      {lineRows.length && grain === "day"
+        // One panel per line on its own scale: the biggest service no longer flattens the rest.
+        ? <SmallMultiples per={priced ? "$ / day" : "credits / day"} days={days.slice(-DAY_ROWS_MAX)} partialLast={hasPartialDay}
+            fmt={(v) => (priced ? fmtMoneyShort(v) : `${Number(v.toPrecision(2))}`)}
+            series={lineRows.map((r, i) => ({
+              key: r.it.key, label: itemLabel(r.it), color: sel ? "var(--c1)" : paletteColor(i), values: r.vals.slice(-DAY_ROWS_MAX),
+              meta: [fmtV(r.total), grand > 0 && r.total != null ? fmtShare(pctOf(r.total, grand)) : null,
+                r.change != null ? `${fmtChangePct(r.change)} last 7 d` : null].filter(Boolean).join(" · "),
+              onClick: sel ? null : () => setPicked(r.it.key),
+            }))} />
+        : lineRows.length
         ? <SmallScale max={drawnMax} fmt={scaleFmt} per={grain}>
             <GrainLines grain={grain} days={days} series={lineRows.map((r, i) => ({ label: itemLabel(r.it), color: sel ? "var(--c1)" : paletteColor(i), data: r.vals }))} />
           </SmallScale>
         : <div className="chart-note-oneline">{`No ${kd.noun} used any ${priced ? "$" : "credits"} in ${span}.`}</div>}
       <div className="ct-table-head">
-        <span className="muted">{`${fmtInt(rows.length)} ${rows.length === 1 ? kd.noun : kd.plural}, most first · click one for its own line`}</span>
+        <span className="muted">{`${fmtInt(rows.length)} ${rows.length === 1 ? kd.noun : kd.plural}, most first · pick one for its own panel`}</span>
         <CsvButton fileName={`trend_by_${kind}_${filters.window}d`} columns={csvCols} rows={rows} />
       </div>
       <DrillTable aria={`${kd.plural} by ${priced ? "spend" : "credits"}`} n={showAll ? rows.length : 10}
@@ -569,13 +587,13 @@ export function TrendByCard({ filters, meta, serviceAgg }: { filters: Filters; m
   );
 
   return (
-    <Card title="Trend by service, warehouse, task or pipe" right={<GrainSwitch value={grain} onChange={setGrain} />}>
+    <Card title={`Trend by ${kd.noun}`} right={<GrainSwitch value={grain} onChange={setGrain} />}>
       <div className="ws-actions">
         {TREND_KINDS.map((k) => (
           <button key={k.key} type="button" className={k.key === kind ? "on" : ""} onClick={() => { setKind(k.key); setPicked(null); setShowAll(false); }}>{k.label}</button>
         ))}
       </div>
-      <div className="pc-sub">{`${priced ? "$" : "Credits"} per ${grain} · ${sel ? "one item" : `top ${TOP_LINES}`}${span ? ` · ${span}` : ""}${partialNote}`}</div>
+      <div className="pc-sub">{`${priced ? "$" : "Credits"} per ${grain} · ${sel ? "one item" : `top ${TOP_LINES}`}${span ? ` · ${span}` : ""}${grain === "day" ? " · each panel on its own scale" : ""}${partialNote}`}</div>
       {body}
     </Card>
   );
@@ -583,15 +601,6 @@ export function TrendByCard({ filters, meta, serviceAgg }: { filters: Filters; m
 
 // ═══ Fastest-growing services, last 12 months (cost_monthly_actuals) ═══
 const GROWTH_GROUP = ["billing_origin_product", "month_start", "partial_reason"];
-
-function SvcSparkbars({ values, partial }: { values: number[]; partial: boolean[] }) {
-  const max = Math.max(0, ...values) || 1;
-  return (
-    <div className="sku-spark" aria-hidden="true">
-      {values.map((v, i) => <div key={i} className={`sku-spark-bar${partial[i] ? " partial" : ""}`} style={{ height: `${Math.max(4, (v / max) * 100)}%` }} />)}
-    </div>
-  );
-}
 
 export function FastestGrowingCard({ filters, maxCat }: { filters: Filters; maxCat?: number }) {
   const agg = useFindingAgg("cost_monthly_actuals", filters.window, filters.accountIds, GROWTH_GROUP, "sum", "net_list_cost_usd");
@@ -631,24 +640,26 @@ export function FastestGrowingCard({ filters, maxCat }: { filters: Filters; maxC
   else if (isUnpricedAgg(agg.data)) body = <div className="chart-note-oneline">{`– ${NO_PRICE_READING} ${covers}`}</div>;
   else body = (
     <React.Fragment>
-      <div className="sku-trend-list">
-        {shown.map((s) => (
-          <div className="sku-trend-row" key={s.svc}>
-            <div className="sku-trend-name" title={serviceWords(s.svc || null)}>{serviceWords(s.svc || null)}{s.isNew && <span className="faint"> · new</span>}</div>
-            <SvcSparkbars values={s.vals} partial={monthKeys.map((k) => partialKeys.has(k))} />
-            <div className={`sku-trend-growth${s.growth != null && s.growth >= 100 ? " tone-crit" : s.growth != null && s.growth >= 50 ? " tone-warn" : ""}`}>
-              {s.isNew ? "new" : s.growth != null ? fmtChangePct(s.growth) : "–"}
-            </div>
-            <div className="sku-trend-usd mono">{s.last != null ? `${fmtMoney(s.last, 0)}/mo` : "–"}</div>
-          </div>
-        ))}
-      </div>
+      <table className="cx-tbl">
+        <thead><tr><th>Service</th><th className="num">Growth</th><th className="num">Per month</th></tr></thead>
+        <tbody>
+          {shown.map((s) => (
+            <tr key={s.svc}>
+              <td>{serviceWords(s.svc || null)}</td>
+              <td className={`num${s.growth != null && s.growth >= 100 ? " crit" : s.growth != null && s.growth >= 50 ? " up" : ""}`}>
+                {s.isNew ? "new" : s.growth != null ? fmtChangePct(s.growth) : "–"}</td>
+              <td className="num">{s.last != null ? fmtMoney(s.last, 0) : "–"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {shown.some((s) => s.isNew) && <div className="cx-tbl-foot">{`“New” = no spend in the ${fmtInt(n)} month${n === 1 ? "" : "s"} before.`}</div>}
       {n < 1 && <div className="sx-foot">{`Growth needs 2 full months. ${covers}`}</div>}
     </React.Fragment>
   );
   return (
-    <PatternCard title="Fastest-growing services, last 12 months"
-      sub={drawn ? `${n >= 1 ? `Last ${n} full month${n === 1 ? "" : "s"} vs the ${n} before` : "Month by month"} · hatched bar = partial month${monthKeys.length < 13 ? ` · ${covers}` : ""}` : "Each service's monthly spend, ranked by growth"}>
+    <PatternCard title="Fastest-growing services"
+      sub={drawn ? `${n >= 1 ? `Last ${n} full month${n === 1 ? "" : "s"} vs the ${n} before` : "Month by month"} · per month is the recent average${monthKeys.length < 13 ? ` · ${covers}` : ""}` : "Each service's monthly spend, ranked by growth"}>
       {body}
     </PatternCard>
   );
@@ -772,11 +783,11 @@ export function CostTrendContent({ findings, filters, meta, maxCat, onVerdict, g
 
   const loadingAll = dayKindAgg.phase === "loading" || periodState.phase === "loading" || forecastState.phase === "loading";
   const lede = loadingAll ? "…" : spend == null ? (unpricedSpend ? NO_PRICE_LEDE : "Spend could not be assessed for this window.")
-    : [`${fmtMoney(spend, 0)} over the last ${daily ? daily.length : filters.window} days`,
-      changePct != null && mv ? `, ${fmtChangePct(changePct)} (${signedUsd(mv.delta)}) vs the previous ${filters.window}` : "",
+    : [`Spend was ${fmtMoney(spend, 0)} over the last ${daily ? daily.length : filters.window} days`,
+      changePct != null && mv ? `, ${changePct >= 0 ? "up" : "down"} ${fmtShare(Math.abs(changePct))} (${signedUsd(mv.delta)}) on the previous ${filters.window}` : "",
       ".",
-      daily ? ` ${fmtInt(spikeDays.length)} of ${fmtInt(daily.length)} days spiked` : "",
-      projected != null ? `; the month is heading for ${fmtMoney(projected, 0)}.` : (daily ? "." : "")].join("");
+      daily ? ` ${fmtInt(spikeDays.length)} of the ${fmtInt(daily.length)} days spiked` : "",
+      projected != null ? `${daily ? ", and t" : " T"}he month is heading for ${fmtMoney(projected, 0)}.` : (daily ? "." : "")].join("");
   React.useEffect(() => { if (onVerdict) onVerdict(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (subtab: string) => (goTo ? () => goTo({ tab: "cost", subtab }) : undefined);
@@ -784,8 +795,8 @@ export function CostTrendContent({ findings, filters, meta, maxCat, onVerdict, g
   const shownMovers = moverItems.slice(0, 5);
   const restDelta = mv ? mv.delta - shownMovers.reduce((s, g) => s + g.delta, 0) : 0;
   const moverBars = [
-    ...shownMovers.map((g) => ({ name: serviceWords(g.svc || null) + (g.prev < 1 && g.cur >= 1 ? " · new" : ""), value: g.delta })),
-    ...(moverItems.length > shownMovers.length && Math.abs(restDelta) >= 0.5 ? [{ name: `${fmtInt(moverItems.length - shownMovers.length)} others`, value: restDelta }] : []),
+    ...shownMovers.map((g) => ({ name: serviceWords(g.svc || null) + (g.prev < 1 && g.cur >= 1 ? " · new" : ""), value: g.delta, other: false })),
+    ...(moverItems.length > shownMovers.length && Math.abs(restDelta) >= 0.5 ? [{ name: `${fmtInt(moverItems.length - shownMovers.length)} other services`, value: restDelta, other: true }] : []),
   ];
   const spikeList = spikeDays.slice(0, 5).map((d) => fmtDayShort(d)).join(", ");
 
@@ -795,40 +806,43 @@ export function CostTrendContent({ findings, filters, meta, maxCat, onVerdict, g
 
   return (
     <div className="sx-page">
-      <div className="summary-tile-row compact sx-tiles-4">
-        <IssueTile label={`Spend · ${filters.window} days`} loading={dayKindAgg.phase === "loading"} pill={<KindChip>Context</KindChip>}
-          headline={spend != null ? fmtMoney(spend, 0) : null} missingReason={notAssessedText(dayKindAgg.data)}
-          base={spend != null ? [range, avg != null ? `daily avg ${fmtMoney(avg, 0)}` : null, mv ? `${fmtInt(mv.services)} services` : null].filter(Boolean).join(" · ") : null}
-          cause="Metered at your effective $ per credit." onOpen={go("service")} openLabel="By service →" />
-        <IssueTile label={`Change vs previous ${filters.window} days`} loading={periodState.phase === "loading"} pill={<KindChip>Context</KindChip>}
-          headline={changePct != null ? fmtChangePct(changePct) : null} unit={mv ? signedUsd(mv.delta) : undefined}
+      <KpiRow note="Spend is context. The change and the forecast are their own figures, never added to spend or waste.">
+        <IssueTile label="Spend" loading={dayKindAgg.phase === "loading"}
+          headline={spend != null ? fmtMoney(spend, 0) : null} unit={`last ${filters.window} days`} missingReason={notAssessedText(dayKindAgg.data)}
+          base={spend != null ? `${range}.${avg != null ? ` Daily average ${fmtMoney(avg, 0)}.` : ""}` : null}
+          cause={mv ? `${fmtInt(mv.services)} services, metered at your effective $ per credit.` : "Metered at your effective $ per credit."} onOpen={go("service")} openLabel="By service →" />
+        <IssueTile label="Change" loading={periodState.phase === "loading"}
+          headline={changePct != null ? fmtChangePct(changePct) : null} unit={`vs previous ${filters.window} days`}
           missingReason={periodGap}
-          base={mv && changePct != null ? `${fmtMoney(mv.prev, 0)} → ${fmtMoney(mv.cur, 0)}${riseShare != null ? ` · ${fmtInt(topRisers.length)} services are ${fmtShare(riseShare)} of the rise` : ""}` : null}
-          cause="A change, never added to spend or waste." onOpen={() => scrollToAnchor("ct-movers")} openLabel="What moved spend ↓" />
+          base={mv && changePct != null ? `${fmtMoney(mv.prev, 0)} → ${fmtMoney(mv.cur, 0)}, ${signedUsd(mv.delta)}.${riseShare != null ? ` ${fmtInt(topRisers.length)} services make up ${fmtShare(riseShare)} of the rise.` : ""}` : null}
+          onOpen={() => scrollToAnchor("ct-movers")} openLabel="What moved spend ↓" />
         <IssueTile label="Spike days" loading={dayKindAgg.phase === "loading" || anomalyState.phase === "loading"} status={daily ? (spikeDays.length ? spikeSev : "ok") : "neutral"}
           headline={daily ? `${fmtInt(spikeDays.length)} of ${fmtInt(daily.length)}` : null} unit="days" missingReason={notAssessedText(dayKindAgg.data)}
-          base={worst ? `Worst ${fmtDayShort(worst.day)} · ${dayFmt(worst.value)} · ${(worst.value / worst.median).toFixed(1)}× the 7-day median` : null}
+          base={worst ? `Worst was ${fmtDayShort(worst.day)} at ${dayFmt(worst.value)}, ${(worst.value / worst.median).toFixed(1)}× the 7-day median.` : null}
           cause={aboveExpected != null && aboveExpected > 0 ? `${fmtMoney(aboveExpected, 0)} above expected on flagged days: a change, not added to spend.` : `Rule: ${unpricedSpend ? "credits " : ""}${SPIKE_PCT}%+ over the 7-day median, or Snowflake's anomaly flag.`}
           onOpen={() => scrollToAnchor("ct-days")} openLabel="Spend by day ↓" />
         <IssueTile label="Month-end forecast" loading={forecastState.phase === "loading"} status={projected != null ? sevOfFinding(fById("sf_cost_month_end_forecast")) : "neutral"}
           headline={projected != null ? fmtMoney(projected, 0) : null} unit={monthName || undefined}
           missingReason={forecastState.phase === "ready" ? notAssessedText(forecastState.data) : undefined}
-          base={projected != null ? [forecast && forecast.monthToDate != null ? `${fmtMoney(forecast.monthToDate, 0)} to date` : null,
-            lastFull ? `last full month ${fmtMoney(lastFull.total, 0)} (${lastFull.shortLabel})` : null].filter(Boolean).join(" · ") : null}
-          cause={projected != null && lastFull && lastFull.total > 0 ? `${fmtChangePct((projected / lastFull.total - 1) * 100)} vs ${lastFull.label}; a projection, partial.` : null}
+          base={projected != null ? [forecast && forecast.monthToDate != null ? `${fmtMoney(forecast.monthToDate, 0)} so far.` : null,
+            lastFull ? `${lastFull.label}, the last full month, was ${fmtMoney(lastFull.total, 0)}.` : null].filter(Boolean).join(" ") : null}
+          cause={projected != null && lastFull && lastFull.total > 0 ? `A projection: ${fmtChangePct((projected / lastFull.total - 1) * 100)} on ${lastFull.label}.` : null}
           onOpen={() => scrollToAnchor("ct-months")} openLabel="By calendar month ↓" />
-      </div>
+      </KpiRow>
 
       <div className="cj-charts-2">
         <div id="ct-movers">
-          <PatternCard title={mv ? `What moved spend ${signedUsd(mv.delta)}` : "What moved spend"}
-            sub={`Change vs the previous ${filters.window} days, by service${riseShare != null ? ` · ${fmtInt(topRisers.length)} services are ${fmtShare(riseShare)} of the rise` : ""}`}
+          <PatternCard title="What moved spend"
+            sub={`Change vs the previous ${filters.window} days, by service`}
             link="By service →" onLink={go("service") || null}>
-            {mv ? (moverBars.length ? <DivergingBars items={moverBars} n={6} valueFmt={signedUsd} unitLabel="Change" ariaLabel="Change in spend by service" />
+            {mv && <div className="cx-moved-head"><span className="prev">{fmtMoney(mv.prev, 0)}</span><span className="prev" aria-hidden="true">→</span>
+              <span className="cur">{fmtMoney(mv.cur, 0)}</span><span className={mv.delta >= 0 ? "up" : "down"}>{signedUsd(mv.delta)}</span></div>}
+            {mv ? (moverBars.length ? <CxBars ariaLabel="Change in spend by service" items={moverBars.map((b, i) => ({
+              key: `${i}`, label: b.name, value: b.value, valueText: signedUsd(b.value), tone: b.other ? "other" as const : b.value >= 0 ? "c2" as const : "c3" as const }))} />
               : <div className="chart-note-oneline">{`No service changed in ${range}.`}</div>)
               : periodRows ? <div className="chart-note-oneline">{`– ${periodGap}`}</div>
               : <ChartNote state={periodState} label="cost_period_over_period" />}
-            {mv && <div className="sx-foot">{`${fmtMoney(mv.prev, 0)} → ${fmtMoney(mv.cur, 0)} · change is its own kind: shown apart, never added to waste or saving.`}</div>}
+            {mv && <div className="cx-moved-note">{`${riseShare != null ? `${fmtInt(topRisers.length)} services make up ${fmtShare(riseShare)} of the rise. ` : ""}Change is its own figure, never added to waste or saving.`}</div>}
           </PatternCard>
         </div>
         <div id="ct-months">

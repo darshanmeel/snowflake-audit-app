@@ -6,22 +6,24 @@ import React from "react";
 import { fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { FLAGGED_STATUSES, fmtChangePct, aggTotal, monitorCoverage, numOrZero, totalSpikeDays, useFindingAgg, useFindingData } from "../components/hooks";
 import { AREA_REGISTRY, COST_MONEY_COL } from "../components/tab_registry";
-import { KindChip, PatternCard, bandOf, noDataText } from "../components/primitives";
+import { PatternCard, bandOf, noDataText } from "../components/primitives";
 import { useNames } from "../components/names";
 import { reconciliationLine, useCostCenterAllocation } from "../components/tag_rollup";
-import { DayKindTimeline, IssueTile, StackedShareBar, StatusBars, fmtShare, pctOf, statusBarColor } from "../components/blocks";
+import { DayKindTimeline, IssueTile, StatusBars, fmtShare, pctOf, statusBarColor } from "../components/blocks";
 import { NameId } from "../components/blocks_2";
 import { whNameId } from "../components/de_blocks";
 import { ChartNote } from "../components/charts";
 import { ChecksList } from "../components/checks_list";
 import { DrawerBus } from "../components/drawer";
 import { NO_PRICE_LEDE, NO_PRICE_READING, isUnpricedAgg, notAssessedText } from "../components/scope";
-import { windowShortLabel } from "../components/overview_tile";
+import { KpiRow, windowShortLabel } from "../components/overview_tile";
+import { CxBars, RanLine, TieLine, costCenterBars } from "../components/cx_a";
+import type { CxBarItem } from "../components/cx_a";
 import { buildWasteWorklist, overlapNote, wasteTotal } from "../components/waste_total";
 import { getCheckLabel } from "../components/labels";
 import { SpendMoversCard, buildSpendMovers } from "./tab_money";
 import { withoutTotalRows } from "./tab_area";
-import { ChecksRanStrip, DAY_KINDS, OV_TOTAL_CREDITS, SecurityScorecard, dayKindOf, fillGaps, sumPick } from "./tab_overview";
+import { DAY_KINDS, OV_TOTAL_CREDITS, SecurityScorecard, dayKindOf, fillGaps, sumPick } from "./tab_overview";
 import type { ScoreRow, OverviewProps } from "./tab_overview";
 import type { FetchState, Finding, Row } from "../types";
 
@@ -96,10 +98,13 @@ export function FinopsOverviewContent({ filters, meta, goTo, setVerdict, allFind
   const settled = findingsReady && dayKindAgg.phase !== "loading" && periodState.phase !== "loading" && ccAlloc.phase !== "loading" && monState.phase !== "loading";
   const unpricedSpend = isUnpricedAgg(dk);
   const lede = !settled ? "…" : spend == null ? (unpricedSpend ? NO_PRICE_LEDE : "Spend could not be assessed for this export.")
-    : [`${fmtMoney(spend, 0)}${deltaPct != null ? ` · ${fmtChangePct(deltaPct)} vs previous ${filters.window} d` : ""}`,
-      wastePct != null ? `${fmtShare(wastePct)} possible waste` : null,
-      untaggedPct != null ? `${fmtShare(untaggedPct)} of the split untagged` : null,
-      monCov && monCov.total ? `${fmtInt(monCov.noCap)} of ${fmtInt(monCov.total)} warehouses with no monitor that suspends` : null].filter(Boolean).join(" · ");
+    : [deltaPct != null && Math.abs(deltaPct) >= 0.5
+        ? `Spend ${deltaPct >= 0 ? "rose" : "fell"} ${fmtShare(Math.abs(deltaPct))} to ${fmtMoney(spend, 0)}.`
+        : `Spend was ${fmtMoney(spend, 0)} over the last ${filters.window} days.`,
+      wastePct != null && wt.waste.usd != null ? `${fmtMoney(wt.waste.usd, 0)} of it (${fmtShare(wastePct)}) looks like possible waste${topWaste && wt.waste.usd > 0
+        ? `; the largest part is ${/^[A-Z][a-z]/.test(topWaste.title) ? topWaste.title.charAt(0).toLowerCase() + topWaste.title.slice(1) : topWaste.title}, ${fmtMoney(topWaste.usd, 0)}` : ""}.` : null,
+      monCov && monCov.total ? `${fmtInt(monCov.noCap)} of ${fmtInt(monCov.total)} warehouses have no monitor that suspends them${untaggedPct != null ? `, and ${fmtShare(untaggedPct)} of the split has no cost center` : ""}.`
+        : untaggedPct != null ? `${fmtShare(untaggedPct)} of the split has no cost center.` : null].filter(Boolean).join(" ");
   React.useEffect(() => { if (setVerdict) setVerdict(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Idle warehouses, largest possible waste first.
@@ -121,71 +126,67 @@ export function FinopsOverviewContent({ filters, meta, goTo, setVerdict, allFind
 
   return (
     <div>
-      <div className="summary-tile-row cto-tiles ln-tiles-3">
-        <IssueTile label="Spend" loading={dayKindAgg.phase === "loading"} pill={<KindChip>Context</KindChip>}
+      <KpiRow note strip={[
+        <IssueTile key="storage" label="Storage to free" loading={!findingsReady}
+          headline={wt.month.usd != null ? fmtMoney(wt.month.usd, 0) : null} unit="per month" missingReason={notRun(wt.month, "storage")}
+          base={wt.month.usd != null ? `${checksWord(wt.month.flagged)}.` : null}
+          cause={overlapNote(wt.month, (v) => fmtMoney(v, 0))}
+          onOpen={() => goTo({ tab: "storage" })} openLabel="Storage →" />,
+        <IssueTile key="cc" label="No cost center" loading={ccAlloc.phase === "loading"} status={untaggedPct != null && untaggedPct > 20 ? "warn" : "neutral"}
+          headline={untaggedPct != null ? fmtShare(untaggedPct) : null} unit="of the split"
+          missingReason={ccAlloc.data ? "no cost-center split for this window" : "cost-center split not in this export"}
+          base={untaggedPct != null ? [`${fmtMoney(ccUntagged, 0)} of ${fmtMoney(ccTotal, 0)}`,
+            affOf(tagF) ? `${fmtInt(affOf(tagF)!.flagged)} of ${fmtInt(affOf(tagF)!.total)} ${affOf(tagF)!.noun} untagged` : null].filter(Boolean).join(" · ") + "." : null}
+          onOpen={() => goTo({ tab: "tags" })} openLabel="Tags →" />,
+        <IssueTile key="mon" label="No suspending monitor" loading={!findingsReady || monState.phase === "loading"} status={sevOf(monF)}
+          headline={monCov && monCov.total ? `${fmtInt(monCov.noCap)} of ${fmtInt(monCov.total)}` : null} unit="warehouses"
+          missingReason={naReason(monF)}
+          base={monCov && monCov.total ? `${fmtShare(pctOf(monCov.noCap, monCov.total))} have no resource monitor that suspends.${monCov.hidden ? ` ${fmtInt(monCov.hidden)} more not visible.` : ""}` : null}
+          onOpen={() => goTo({ tab: "cost", subtab: "budgets" })} openLabel="Budgets & guardrails →" />,
+      ]}>
+        <IssueTile label="Spend" loading={dayKindAgg.phase === "loading"}
           headline={spend != null ? fmtMoney(spend, 0) : null} unit={`last ${filters.window} days`} missingReason={notAssessedText(dayKindAgg.data)}
-          base={[credits != null ? `${fmtInt(Math.round(credits))} credits` : null, deltaPct != null ? `${fmtChangePct(deltaPct)} vs previous ${filters.window} d` : null].filter(Boolean).join(" · ") || null}
+          base={[deltaPct != null ? `${fmtChangePct(deltaPct)} vs previous ${filters.window} days` : null, credits != null ? `${fmtInt(Math.round(credits))} credits` : null].filter(Boolean).join(" · ") || null}
           spark={daily.length > 1 ? daily.map((d) => d.value) : null}
           sparkAnomalies={spikes.map((s) => daily.findIndex((d) => d.day === s.day)).filter((i) => i >= 0)}
-          cause={worstSpike ? `▲ ${fmtDayShort(worstSpike.day)} · ${fmtChangePct(worstSpike.pct)} above the week's median` : null}
+          cause={worstSpike ? `${fmtDayShort(worstSpike.day)} spiked ${fmtChangePct(worstSpike.pct)} above the week's median.` : null}
           onOpen={() => goTo({ tab: "cost" })} openLabel="Cost →" />
         <IssueTile label="Possible waste" loading={!findingsReady || dayKindAgg.phase === "loading"}
           status={wt.waste.usd == null ? "not_assessed" : wt.waste.flagged > 0 ? "warn" : "ok"}
-          headline={wastePct != null ? fmtShare(wastePct) : (wt.waste.usd != null ? fmtMoney(wt.waste.usd, 0) : null)}
-          unit={wastePct != null ? "of spend is possible waste" : undefined} missingReason={notRun(wt.waste)}
-          base={wt.waste.usd != null ? `${fmtMoney(wt.waste.usd, 0)}${spend != null ? ` of ${fmtMoney(spend, 0)}` : ""} · ${fmtInt(wt.waste.flagged)} of ${checksWord(wt.waste.ran)}` : null}
-          cause={topWaste ? `${topWaste.title}: ${fmtMoney(topWaste.usd, 0)}${topWaste.affected ? `, ${fmtInt(topWaste.affected.flagged)} of ${fmtInt(topWaste.affected.total)} ${topWaste.affected.noun}` : ""}.` : null}
+          headline={wt.waste.usd != null ? fmtMoney(wt.waste.usd, 0) : null}
+          unit={wastePct != null ? `${fmtShare(wastePct)} of spend` : undefined} missingReason={notRun(wt.waste)}
+          base={wt.waste.usd != null ? `Flagged by ${fmtInt(wt.waste.flagged)} of ${checksWord(wt.waste.ran)}.` : null}
+          cause={topWaste ? `Largest: ${topWaste.title}, ${fmtMoney(topWaste.usd, 0)}${topWaste.affected ? ` across ${fmtInt(topWaste.affected.flagged)} of ${fmtInt(topWaste.affected.total)} ${topWaste.affected.noun}` : ""}.` : null}
           onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
-        <IssueTile label="Possible saving" loading={!findingsReady || dayKindAgg.phase === "loading"} pill={<KindChip>kind, kept apart</KindChip>}
-          headline={savingPct != null ? fmtShare(savingPct) : (wt.saving.usd != null ? fmtMoney(wt.saving.usd, 0) : null)}
-          unit={savingPct != null ? "of spend from resizing" : undefined} missingReason={notRun(wt.saving)}
-          base={wt.saving.usd != null ? `${fmtMoney(wt.saving.usd, 0)} · ${checksWord(wt.saving.flagged)}` : null}
-          cause="Kept apart from possible waste: the same minutes, never added."
+        <IssueTile label="Possible saving" loading={!findingsReady || dayKindAgg.phase === "loading"}
+          headline={wt.saving.usd != null ? fmtMoney(wt.saving.usd, 0) : null}
+          unit={savingPct != null ? `${fmtShare(savingPct)} of spend` : undefined} missingReason={notRun(wt.saving)}
+          base={wt.saving.usd != null ? `From resizing, across ${checksWord(wt.saving.flagged)}.` : null}
+          cause="Some of these minutes are already in possible waste, so the two are never added together."
           onOpen={() => goTo({ tab: "warehouses" })} openLabel="Warehouses →" />
-        <IssueTile label="Storage to free" loading={!findingsReady} pill={<KindChip>kind, kept apart</KindChip>}
-          headline={wt.month.usd != null ? fmtMoney(wt.month.usd, 0) : null} unit="/ month" missingReason={notRun(wt.month, "storage")}
-          base={wt.month.usd != null ? `${checksWord(wt.month.flagged)} · per month` : null}
-          cause={overlapNote(wt.month, (v) => fmtMoney(v, 0))}
-          onOpen={() => goTo({ tab: "storage" })} openLabel="Storage →" />
-        <IssueTile label="Untagged" loading={ccAlloc.phase === "loading"} status={untaggedPct != null && untaggedPct > 20 ? "warn" : "neutral"}
-          headline={untaggedPct != null ? fmtShare(untaggedPct) : null} unit="of the split has no cost center"
-          missingReason={ccAlloc.data ? "no cost-center split for this window" : "cost-center split not in this export"}
-          base={untaggedPct != null ? [`${fmtMoney(ccUntagged, 0)} of ${fmtMoney(ccTotal, 0)}`,
-            affOf(tagF) ? `${fmtInt(affOf(tagF)!.flagged)} of ${fmtInt(affOf(tagF)!.total)} ${affOf(tagF)!.noun}` : null].filter(Boolean).join(" · ") : null}
-          onOpen={() => goTo({ tab: "tags" })} openLabel="Tags →" />
-        <IssueTile label="Budgets" loading={!findingsReady || monState.phase === "loading"} status={sevOf(monF)}
-          headline={monCov && monCov.total ? fmtShare(pctOf(monCov.noCap, monCov.total)) : null} unit="of warehouses, no monitor that suspends"
-          missingReason={naReason(monF)}
-          base={monCov && monCov.total ? `${fmtInt(monCov.noCap)} of ${fmtInt(monCov.total)} warehouses${monCov.hidden ? ` · ${fmtInt(monCov.hidden)} not visible` : ""}` : null}
-          onOpen={() => goTo({ tab: "cost", subtab: "budgets" })} openLabel="Budgets & guardrails →" />
-      </div>
+      </KpiRow>
 
       <div className="cj-charts-2">
-        <PatternCard title="Where the waste is" sub={wt.waste.usd != null ? `${fmtMoney(wt.waste.usd, 0)} possible waste, by check · last ${filters.window} d` : "Possible waste, by check"}
+        <PatternCard title="Where the waste is" sub={wt.waste.usd != null ? `${fmtMoney(wt.waste.usd, 0)} possible waste, by check · last ${filters.window} days` : "Possible waste, by check"}
           link="Waste & savings →" onLink={() => goTo({ tab: "waste" })}>
           {!findingsReady ? <div className="chart-note-oneline">…</div>
             : wasteParts.length ? (
-              <div>
-                <StackedShareBar height={26} pareto maxSegments={5} valueFmt={(v) => fmtMoney(v, 0)} ariaLabel="Possible waste by check"
-                  segments={wasteParts.map((w) => ({ key: w.id, label: w.title, value: w.usd!, onClick: () => DrawerBus.open({ id: w.id }) }))} />
-                <div className="pc-foot">Each check prices its own minutes; saving and storage are other kinds and are not added.</div>
-              </div>
+              <CxBars layout="above" ariaLabel="Possible waste by check" items={wasteBars(wasteParts, wt.waste.usd)} />
             ) : <div className="chart-note-oneline">{wt.waste.usd == null ? `– ${notRun(wt.waste)}` : noDataText(meta, filters.window)}</div>}
         </PatternCard>
-        <PatternCard title="Chargeback by cost center" sub={ccTotal != null ? `The ${fmtMoney(ccTotal, 0)} split in one bar · untagged hatched` : "The billed split by cost center"}
+        <PatternCard title="Chargeback by cost center" sub={ccTotal != null ? `The ${fmtMoney(ccTotal, 0)} split, by cost center` : "The billed split by cost center"}
           link="Tags →" onLink={() => goTo({ tab: "tags" })}>
           {ccRows && ccTotal ? (
             <div>
-              <StackedShareBar height={26} pareto maxSegments={6} valueFmt={(v) => fmtMoney(v, 0)} ariaLabel="Billed split by cost center"
-                segments={ccRows.map((e) => ({ key: String(e.value), label: e.value === "__untagged__" ? "No cost center" : String(e.label), value: numOrZero(e.metrics && e.metrics.usd), unknown: e.value === "__untagged__" }))} />
-              {tie && <div className="pc-foot">{tie.text}</div>}
+              <CxBars ariaLabel="Billed split by cost center" labelWidth={130} items={costCenterBars(ccRows.map((e) => ({
+                name: e.value === "__untagged__" ? "No cost center" : String(e.label), value: numOrZero(e.metrics && e.metrics.usd), untagged: e.value === "__untagged__" })), ccTotal)} />
+              <TieLine tie={tie} />
             </div>
           ) : <div className="chart-note-oneline">{ccAlloc.phase === "loading" ? "…" : "– the cost-center split is not in this export"}</div>}
         </PatternCard>
       </div>
 
-      <SpendMoversCard periodState={periodState} filters={filters} meta={meta}
-        title={movers && movers.totalPrev > 0 ? `What moved spend ${movers.totalDelta >= 0 ? "+" : "−"}${fmtMoney(Math.abs(movers.totalDelta), 0)}` : "What moved spend"}
+      <SpendMoversCard periodState={periodState} filters={filters} meta={meta} title="What moved spend"
         sub={`Change vs the previous ${filters.window} days, by service`} link="Cost › Trend →" onLink={() => goTo({ tab: "cost", subtab: "trend" })} />
 
       <PatternCard title="Spend per day, by kind" sub={`${windowText}${partialDay ? " · the last day is partial" : ""}`}>
@@ -223,10 +224,24 @@ export function FinopsOverviewContent({ filters, meta, goTo, setVerdict, allFind
           : <ChartNote state={idleState} label="sf_wh_idle_minutes" />}
       </PatternCard>
 
-      <ChecksList findings={listFindings} filters={filters} meta={meta} goTo={goTo} title="Checks in this view" />
-      <ChecksRanStrip meta={meta} byId={byId} goTo={goTo} />
+      <ChecksList findings={listFindings} filters={filters} meta={meta} goTo={goTo} title="Checks in this view" limit={8}
+        summary={<RanLine meta={meta} byId={byId} goTo={goTo} />} />
     </div>
   );
+}
+
+// The waste checks as ranked rows: the top 5, then the rest as one grey "Other checks (n)" row.
+function wasteBars(parts: { id: string; title: string; usd: number | null }[], _total: number | null): CxBarItem[] {
+  const sum = parts.reduce((s, w) => s + (w.usd || 0), 0);
+  const share = (v: number) => fmtShare(pctOf(v, sum));
+  const top = parts.slice(0, 5);
+  const rest = parts.slice(5);
+  const items: CxBarItem[] = top.map((w) => ({ key: w.id, label: w.title, value: w.usd!, valueText: fmtMoney(w.usd, 0), share: share(w.usd!), onClick: () => DrawerBus.open({ id: w.id }) }));
+  if (rest.length) {
+    const v = rest.reduce((s, w) => s + (w.usd || 0), 0);
+    items.push({ key: "__other__", label: `Other checks (${fmtInt(rest.length)})`, value: v, valueText: fmtMoney(v, 0), share: share(v), tone: "other" });
+  }
+  return items;
 }
 
 // ─────────── Governance Overview ───────────

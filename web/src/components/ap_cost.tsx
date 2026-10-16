@@ -10,14 +10,18 @@ import { fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { fmtChangePct, monitorCoverage, numOrZero, useFindingAgg, useFindingData } from "./hooks";
 import { KindChip, PatternCard, bandOf, noDataText } from "./primitives";
 import { notAssessedText } from "./scope";
-import { DayKindTimeline, IssueTile, ReconciliationStrip, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf } from "./blocks";
-import type { IssueTileProps, ReconStep, ShareItem, ShareSegment, StatusBarItem } from "./blocks";
-import { NameId, StatStrip } from "./blocks_2";
+import { DayKindTimeline, IssueTile, ReconciliationStrip, ShareBarList, fmtShare, pctOf } from "./blocks";
+import type { IssueTileProps, ReconStep, ShareItem } from "./blocks";
+import { NameId } from "./blocks_2";
 import { DrawerBus } from "./drawer";
 import { DrillTable, MiniBar, SplitBar } from "./drill_table";
 import { whNameId } from "./de_blocks";
-import { reconciliationLine, rollupNote, useCostCenterAllocation } from "./tag_rollup";
-import { scrollToAnchor, windowShortLabel } from "./overview_tile";
+import { ROLLUP_LEVEL_LABEL, TagRollupTreeRow, reconciliationLine, rollupNote, rollupTreeDepth, useCostCenterAllocation, useRollupData, useRollupKeys } from "./tag_rollup";
+import { usePopoverClose } from "./tag_picker";
+import { ROLLUP_ACCOUNT_LEVEL } from "../api";
+import { KpiRow, scrollToAnchor, windowShortLabel } from "./overview_tile";
+import { CxBars, RankedTable, SplitBar as CxSplitBar, TieLine, plural } from "./cx_a";
+import type { CxBarItem, RankedRow } from "./cx_a";
 import { ChargebackByDimension } from "./cost_chargeback_picker";
 import { withoutTotalRows } from "../tabs/tab_area";
 import { dayKindOf, DAY_KINDS } from "../tabs/tab_overview";
@@ -81,7 +85,8 @@ function useLede(p: ApPageProps, text: string | null) {
 function rangeOf(p: ApPageProps) {
   return (windowShortLabel(p.meta && p.meta.as_of_date, p.filters.window, p.meta && p.meta.snapshot_days) || "").split(",")[0] || `the last ${p.filters.window} days`;
 }
-function Tiles({ children }: { children?: React.ReactNode }) { return <div className="summary-tile-row compact sx-tiles-4">{children}</div>; }
+// The KPI row: max 4 cards, units on the number's baseline, never cut.
+function Tiles({ children }: { children?: React.ReactNode }) { return <KpiRow className="sx-kpi">{children}</KpiRow>; }
 
 // A service code in plain words, the same on every Cost page: WAREHOUSE_METERING -> Warehouse metering.
 export function costServiceWords(code: any) {
@@ -130,6 +135,30 @@ export function ThisVsPrevBars({ items, n = 8, valueFmt = usd0, onOpen }: { item
       {sorted.length > shown.length && <div className="blk-more">{`+${fmtInt(sorted.length - shown.length)} more not shown`}</div>}
     </div>
   );
+}
+
+// "28.0×": this period as a multiple of the previous one.
+const multiple = (growthPct: number) => `${(1 + growthPct / 100).toFixed(1)}×`;
+
+// Services ranked by this period's spend, change beside it (amber when faster than the account), the rest as one grey row.
+function serviceRows(services: { key: string; name: string; cur: number; prev: number }[], acctPct: number | null, open: (code: string) => void, n = 10): RankedRow[] {
+  const sorted = services.filter((s) => s.cur > 0).sort((a, b) => b.cur - a.cur);
+  const cut = sorted.length === n + 1 ? n + 1 : n;
+  const chg = (cur: number, prev: number) => (prev > 0 ? ((cur - prev) / prev) * 100 : null);
+  const rows: RankedRow[] = sorted.slice(0, cut).map((s) => {
+    const g = chg(s.cur, s.prev);
+    return {
+      key: s.key, label: s.name, value: s.cur, valueText: usd0(s.cur), onClick: () => open(s.key),
+      extra: g == null ? "new" : `${g > 0 ? "+" : g < 0 ? "−" : ""}${fmtShare(Math.abs(g))}`,
+      extraTone: g == null || (acctPct != null && g > acctPct) ? "up" : undefined,
+    };
+  });
+  const rest = sorted.slice(cut);
+  if (rest.length) {
+    const v = rest.reduce((s, x) => s + x.cur, 0);
+    rows.push({ key: "__rest__", label: `${fmtInt(rest.length)} other services`, value: v, valueText: usd0(v), tone: "other", extra: "–" });
+  }
+  return rows;
 }
 
 // ═══════════════════════ By service ═══════════════════════
@@ -195,69 +224,72 @@ export function ApCostByService(p: ApPageProps) {
       <Tiles>
         <IssueTile label="Warehouse compute" loading={busy(svc)} pill={<KindChip>Context</KindChip>}
           headline={ready ? fmtShare(pctOf(wh ? wh.cur : 0, total)) : null} unit="of spend" missingReason={why(svc) || "no priced service rows"}
-          base={ready ? `${usd0(wh ? wh.cur : 0)} of ${usd0(total)} · 1 of ${fmtInt(live.length)} services` : null}
+          base={ready ? `${usd0(wh ? wh.cur : 0)} of ${usd0(total)}, from 1 of ${fmtInt(live.length)} services.` : null}
           cause={ready ? `Serverless, AI & features ${fmtShare(pctOf(kinds[1].v, total))} (${usd0(kinds[1].v)}); storage & transfer ${fmtShare(pctOf(kinds[2].v, total))} (${usd0(kinds[2].v)}).` : null}
           onOpen={() => scrollToAnchor("cs-where")} openLabel="Where it goes ↓" />
         <IssueTile label="Cloud services billed" loading={busy(cs)} status={sevOf(csF)}
           headline={cs.rows && csDays.size ? `${fmtInt(billedDays)} of ${fmtInt(csDays.size)}` : null} unit="days over the 10% allowance" missingReason={why(cs) || "no cloud services usage"}
-          base={cs.rows && csDays.size ? [csUsd != null ? `${usd0(csUsd)} billed` : `${fmtInt(Math.round(csBilled))} credits billed`, csUsed > 0 ? `${fmtShare(pctOf(csBilled, csUsed))} of cloud services credits` : null].filter(Boolean).join(" · ") : null}
+          base={cs.rows && csDays.size ? [csUsd != null ? `${usd0(csUsd)} billed` : `${fmtInt(Math.round(csBilled))} credits billed`, csUsed > 0 ? `${fmtShare(pctOf(csBilled, csUsed))} of cloud services credits` : null].filter(Boolean).join(", ") + "." : null}
           cause="The free 10% is counted per day against warehouse compute." onOpen={() => scrollToAnchor("cs-days")} openLabel="By day ↓" />
-        <IssueTile label="Growing faster than the account" loading={busy(svc)} status={!(ready && acctPct != null) ? "not_assessed" : growers.length ? sevOf(svcF) : "ok"}
+        <IssueTile label="Faster than the account" loading={busy(svc)} status={!(ready && acctPct != null) ? "not_assessed" : growers.length ? sevOf(svcF) : "ok"}
           headline={ready && acctPct != null ? `${fmtInt(growers.length)} of ${fmtInt(live.length)}` : null} unit="services"
           missingReason={why(svc) || "no previous period to compare"}
-          base={ready && acctPct != null ? `${usd0(growers.reduce((s, x) => s + x.cur, 0))} of ${usd0(total)} spend · account ${fmtChangePct(acctPct)}` : null}
-          cause={growers.length ? growers.slice(0, 2).map((s) => `${s.name} ${growth(s) == null ? "new" : fmtChangePct(growth(s))}`).join(", ") + "." : null}
+          base={ready && acctPct != null ? `${usd0(growers.reduce((s, x) => s + x.cur, 0))} of ${usd0(total)} spend. The account grew ${fmtChangePct(acctPct)}.` : null}
+          cause={growers.length ? `Fastest: ${growers.slice(0, 2).map((s) => `${s.name} ${growth(s) == null ? "new" : fmtChangePct(growth(s))}`).join(", ")}.` : null}
           onOpen={() => scrollToAnchor("cs-change")} openLabel="Change vs the account ↓" />
         <IssueTile label="Data transfer egress" loading={busy(eg)} status={sevOf(egF)}
           headline={eg.rows && egRows.length ? (egFlag.length ? usd0(egFlagUsd) : "None") : null} unit={egFlag.length ? `on ${fmtInt(egFlag.length)} route${egFlag.length === 1 ? "" : "s"}` : undefined}
           missingReason={why(eg) || "no transfer in this window"}
-          base={eg.rows && egRows.length ? `of ${usd0(egAll)} transfer spend · ${fmtInt(egFlag.length)} of ${fmtInt(egRows.length)} routes flagged${egFlag.length ? ` · ${fmtShare(pctOf(egFlagUsd, egAll))}` : ""}` : null}
+          base={eg.rows && egRows.length ? `${egFlag.length ? `${fmtShare(pctOf(egFlagUsd, egAll))} of ` : "Of "}${usd0(egAll)} transfer spend. ${fmtInt(egFlag.length)} of ${fmtInt(egRows.length)} routes flagged.` : null}
           cause="Priced at your per-TB rate card: the usage views carry no transfer price." onOpen={openDrawer("sf_cost_data_transfer_egress")} openLabel="Open check →" />
       </Tiles>
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cs-where">
-          <PatternCard title="Where spend goes, by service" sub={ready ? `${usd0(total)} across ${fmtInt(live.length)} services · this period` : "This period"}>
+          <PatternCard title="Where spend goes, by service" sub={ready ? `${usd0(total)} across ${fmtInt(live.length)} services · change vs the previous ${p.filters.window} days` : "This period"}>
             {!ready ? <Note text={svc.note || "– No priced service rows in this window."} /> : (
               <div>
-                <StackedShareBar height={26} pareto maxSegments={6} valueFmt={usd0} ariaLabel="Spend by service"
-                  segments={live.map((s) => ({ key: s.key, label: s.name, value: s.cur, onClick: () => openSvc(s.key) }))} />
-                <div className="sx-sub">Warehouses vs serverless vs storage</div>
-                <StackedShareBar height={22} valueFmt={usd0} ariaLabel="Spend by kind"
-                  segments={kinds.map((k, i) => ({ key: k.k, label: k.k, value: k.v, color: ["var(--c1)", "var(--c2)", "var(--c-other)"][i] }))} />
-                {csUsd != null && billedDays > 0 && <div className="sx-foot">{`Cloud services above the free allowance: ${usd0(csUsd)} on ${fmtInt(billedDays)} of ${fmtInt(csDays.size)} days, billed on top of warehouse compute.`}</div>}
+                <RankedTable ariaLabel="Spend by service, with change" head={["Service", "This period", "Spend", "Change"]} rows={serviceRows(services, acctPct, openSvc)} />
+                {acctPct != null && <div className="cx-moved-note">{`Change in bold amber = grew faster than the account's ${fmtChangePct(acctPct)}. Pick a service for its rows.`}</div>}
               </div>
             )}
           </PatternCard>
         </div>
-        <PatternCard title="Ranked by spend, with change" sub="This period vs the one before · click a service for its rows">
-          {!ready ? <Note text={svc.note || "–"} /> : <ThisVsPrevBars items={services} n={9} onOpen={openSvc} />}
+        <PatternCard title="By kind of spend" sub="Warehouses vs serverless vs storage">
+          {!ready ? <Note text={svc.note || "–"} /> : (
+            <div>
+              <CxSplitBar ariaLabel="Spend by kind" parts={kinds.map((k, i) => ({ key: k.k, label: k.k, value: k.v, sub: usd0(k.v), color: ["var(--c1)", "var(--c2)", "var(--c3)"][i] }))} />
+              {csUsd != null && billedDays > 0 && <div className="cx-moved-note">{`Cloud services above the free allowance: ${usd0(csUsd)} on ${fmtInt(billedDays)} of ${fmtInt(csDays.size)} days, billed on top of warehouse compute.`}</div>}
+            </div>
+          )}
         </PatternCard>
       </div>
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cs-change">
-          <PatternCard title={acctPct != null ? `Change vs the account's ${fmtChangePct(acctPct)}` : "Change vs the account"}
-            sub={acctPct != null ? `Each service's growth against the whole account's · ${fmtInt(growers.length)} of ${fmtInt(live.length)} grew faster` : "Needs the previous period"}>
-            {!ready || acctPct == null ? <Note text={svc.note || "– No previous period to compare in this export."} /> : (
-              <DrillTable aria="Services growing faster than the account" n={8}
-                empty={`No service grew faster than the account in ${rangeOf(p)}.`}
-                cols={[{ label: "Service" }, { label: "This service", width: "minmax(60px, 1fr)" }, { label: "Whole account", width: "minmax(60px, 1fr)" }, { label: "Change", num: true, width: "auto" }]}
-                rows={growers.map((s) => ({
-                  key: s.key, onOpen: () => openSvc(s.key),
-                  cells: [s.name, <MiniBar key="a" value={growth(s) ?? maxPct} max={maxPct} />, <MiniBar key="b" value={Math.max(0, acctPct)} max={maxPct} />,
-                    `${growth(s) == null ? "new" : fmtChangePct(growth(s))} vs ${fmtChangePct(acctPct)}`],
-                }))} />
+          <PatternCard title="Grew faster than the account"
+            sub={acctPct != null ? `This period ÷ the previous, per service · the whole account: ${fmtChangePct(acctPct)}, marked on each bar` : "Needs the previous period"}>
+            {!ready || acctPct == null ? <Note text={svc.note || "– No previous period to compare in this export."} />
+              : !growers.length ? <Note text={`No service grew faster than the account in ${rangeOf(p)}.`} /> : (
+              <div>
+                <RankedTable ariaLabel="Services growing faster than the account" head={["Service", "Growth", ""]}
+                  max={Math.max(...growers.slice(0, 8).map((s) => 1 + (growth(s) ?? maxPct) / 100), 1 + acctPct / 100)}
+                  rows={growers.slice(0, 8).map((s) => ({
+                    key: s.key, label: s.name, value: 1 + (growth(s) ?? maxPct) / 100, tone: "c2" as const, marker: 1 + acctPct / 100,
+                    valueText: growth(s) == null ? "new" : multiple(growth(s)!), onClick: () => openSvc(s.key),
+                  }))} />
+                <div className="cx-legend-line"><span className="cx-rt-marker" aria-hidden="true" />{`Whole account, ${multiple(acctPct)}${growers.length > 8 ? ` · ${fmtInt(growers.length - 8)} more not shown` : ""}`}</div>
+              </div>
             )}
           </PatternCard>
         </div>
         <div id="cs-days">
-          <PatternCard title="Cloud services vs the 10% allowance, by day" sub="Cloud services credits as a share of that day's warehouse compute · amber: over 10% and billed">
+          <PatternCard title="Cloud services vs the 10% allowance" sub="Cloud services credits as % of that day's warehouse compute · amber: over the free 10% and billed">
             {cs.rows && csTimeline.length ? (
               <DayKindTimeline rows={csTimeline} days={csTimeline.map((d) => d.day)} kinds={["Within 10%", "Over the allowance"]} height={170}
                 kindColors={{ "Within 10%": "var(--c1)", "Over the allowance": "var(--st-warn)" }}
                 partialDay={(p.meta && p.meta.cost_cutoff && p.meta.cost_cutoff.partial_day) || null}
-                valueFmt={(v) => fmtShare(v)} unitLabel="of compute" ariaLabel="Cloud services ratio by day" />
+                valueFmt={(v) => fmtShare(v)} unitLabel="% of warehouse compute" ariaLabel="Cloud services ratio by day" />
             ) : <Note text={cs.note || "– No cloud services usage in this window."} />}
           </PatternCard>
         </div>
@@ -267,6 +299,23 @@ export function ApCostByService(p: ApPageProps) {
 }
 (ApCostByService as any).ownsTiles = true;
 (ApCostByService as any).ownsLede = true;
+
+// The top n as single-colour ranked rows with their share of `total`, then the rest as one grey row.
+function topBars(entries: [string, number][], n: number, fmt: (v: number) => string, total: number, noun: string): CxBarItem[] {
+  const sorted = [...entries].filter((e) => e[1] > 0).sort((a, b) => b[1] - a[1]);
+  const cut = sorted.length === n + 1 ? n + 1 : n;
+  const share = (v: number) => fmtShare(pctOf(v, total));
+  const items: CxBarItem[] = sorted.slice(0, cut).map(([k, v]) => ({ key: k, label: k, value: v, valueText: fmt(v), share: share(v) }));
+  const rest = sorted.slice(cut);
+  if (rest.length) {
+    const v = rest.reduce((s, e) => s + e[1], 0);
+    items.push({ key: "__rest__", label: `${fmtInt(rest.length)} other ${noun}`, value: v, valueText: fmt(v), share: share(v), tone: "other" });
+  }
+  return items;
+}
+
+// A role row the query history could not name reads as such, not as a raw placeholder.
+const roleWords = (name: string) => (/^\(no query history/i.test(name) ? "Unknown role (no query history)" : name);
 
 // ═══════════════════════ Who spent it ═══════════════════════
 // Warehouse compute = attributed to queries | idle | not attributed (queries under ~100 ms, lag). One
@@ -312,7 +361,7 @@ export function ApCostWho(p: ApPageProps) {
     if (r.status === "CRITICAL" || (r.status === "WARN" && g.status !== "CRITICAL")) g.status = r.status;
     byRole.set(k, g);
   });
-  const roleList = [...byRole.entries()].map(([name, g]) => ({ name, ...g })).sort((a, b) => b.v - a.v);
+  const roleList = [...byRole.entries()].map(([name, g]) => ({ name, label: roleWords(name), ...g })).sort((a, b) => b.v - a.v);
   const roleTotal = roleList.reduce((s, r) => s + r.v, 0);
   const unowned = roleList.filter((r) => !r.owned && r.v > 0);
   const unownedV = unowned.reduce((s, r) => s + r.v, 0);
@@ -378,17 +427,16 @@ export function ApCostWho(p: ApPageProps) {
           onOpen={() => scrollToAnchor("cw-tools")} openLabel="By source tool ↓" />
       </Tiles>
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cw-who">
           <PatternCard title="Who used the compute" sub={ready ? `Share of the attributed ${fmt(attributed)} · by user, then by role` : "Share of the attributed part"}>
             {!ready ? <Note text={att.note || "– No query attributed to a user in this window."} /> : (
-              <div>
-                <StackedShareBar height={26} pareto maxSegments={6} valueFmt={fmt} ariaLabel="Attributed compute by user"
-                  segments={users.map(([name, v]) => ({ key: name, label: name, value: v }))} />
-                <div className="sx-sub">{`By role${roleTotal > 0 ? ` · ${rFmt(roleTotal)} role-attributed` : ""}`}</div>
+              <div className="cx-fail">
+                <div className="cx-eyebrow">{`By user · top ${fmtInt(Math.min(6, users.length))} of ${fmtInt(users.length)} = ${fmtShare(pctOf(users.slice(0, 6).reduce((s, u) => s + u[1], 0), attributed))}`}</div>
+                <CxBars ariaLabel="Attributed compute by user" labelWidth={200} items={topBars(users, 6, fmt, attributed, "users")} />
+                <div className="cx-eyebrow">{`By role${roleTotal > 0 ? ` · ${rFmt(roleTotal)} role-attributed` : ""}`}</div>
                 {roles.rows && roleList.length
-                  ? <StackedShareBar height={22} pareto maxSegments={6} valueFmt={rFmt} ariaLabel="Attributed compute by role"
-                      segments={roleList.map((r) => ({ key: r.name, label: r.name, value: r.v }))} />
+                  ? <CxBars ariaLabel="Attributed compute by role" labelWidth={200} items={topBars(roleList.map((r) => [r.label, r.v] as [string, number]), 6, rFmt, roleTotal, "roles")} />
                   : <Note text={roles.note || "– No role attribution in this window."} />}
               </div>
             )}
@@ -409,7 +457,7 @@ export function ApCostWho(p: ApPageProps) {
         </PatternCard>
       </div>
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cw-tools">
           <PatternCard title="By source tool" sub="dbt per model and BI tools per dashboard, each from its own check">
             {busy(dbt) || busy(bi) ? <Note text="…" /> : tools.length ? (
@@ -425,7 +473,7 @@ export function ApCostWho(p: ApPageProps) {
               <DrillTable aria="Roles with no cost owner" n={8} empty="Every role that spent carries a cost tag."
                 cols={[{ label: "Role" }, { label: "", width: "minmax(60px, 1fr)" }, { label: "Spend", num: true, width: "auto" }, { label: "Users", num: true, width: "auto" }]}
                 rows={unowned.map((r) => ({ key: r.name, status: r.status, onOpen: openDrawer("sf_chg_by_role", "role_name", r.name, r.name),
-                  cells: [r.name, <MiniBar key="b" value={r.v} max={unowned[0] ? unowned[0].v : 1} />, rFmt(r.v), `${fmtInt(r.users)} user${r.users === 1 ? "" : "s"}`] }))} />
+                  cells: [r.label, <MiniBar key="b" value={r.v} max={unowned[0] ? unowned[0].v : 1} />, rFmt(r.v), `${fmtInt(r.users)} user${r.users === 1 ? "" : "s"}`] }))} />
             )}
           </PatternCard>
         </div>
@@ -435,6 +483,113 @@ export function ApCostWho(p: ApPageProps) {
 }
 (ApCostWho as any).ownsTiles = true;
 (ApCostWho as any).ownsLede = true;
+
+// ── Billed spend by tag: one card for the cost-center split and every other tag key ──────────────
+const LEVELS = ["work", "compute", ROLLUP_ACCOUNT_LEVEL, "account"];
+
+/** A styled tag-key picker: a button and a list, no native <select>. */
+function TagKeyPicker({ keys, value, onChange }: { keys: Row[]; value: string | null; onChange: (k: string) => void }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  usePopoverClose(open, setOpen, ref);
+  const cur = keys.find((k) => k.tag_key === value);
+  return (
+    <div className="cx-pick" ref={ref}>
+      <button type="button" className="cx-pick-btn" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="cx-pick-label">Tag</span><code>{cur ? cur.display_key || cur.tag_key : "…"}</code><span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="cx-pick-list" role="listbox" aria-label="Tag key">
+          {keys.map((k) => (
+            <button type="button" role="option" aria-selected={k.tag_key === value} key={k.tag_key} className={k.tag_key === value ? "on" : ""}
+              onClick={() => { onChange(k.tag_key); setOpen(false); }}>{k.display_key || k.tag_key}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TagSpendCard({ p }: { p: ApPageProps }) {
+  const keysState = useRollupKeys("cost", p.filters.window);
+  const fromFilter = p.filters.tag && p.filters.tag.groups && p.filters.tag.groups[0];
+  const [ownKey, setOwnKey] = React.useState<string | null>(null);
+  const keys = keysState.phase === "ready" ? keysState.keys : [];
+  // The cost-center key first, so the card opens on the split every other page quotes.
+  const defKey = (keys.find((k) => /cost.?cent/i.test(String(k.display_key || k.tag_key))) || keys[0] || {}).tag_key || null;
+  const chosen = (fromFilter && fromFilter.key) || ownKey || defKey;
+  const data = useRollupData("cost", chosen, p.filters.window, p.filters.accountIds, null);
+  const [view, setView] = React.useState("value");
+  const [expanded, setExpanded] = React.useState(() => new Set<string>(["account"]));
+  const onToggle = (id: string) => setExpanded((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const d: Row | null = data.phase === "ready" ? data.data : null;
+  const note = d ? rollupNote(d, "cost") : null;
+  const hasTree = !!(d && d.tree && rollupTreeDepth(d.tree) >= 2);
+  const shownView = hasTree ? view : "value";
+  const byValue: Row[] = d && d.outcome === "ok_rows" ? (d.by_value || []) : [];
+  const total = d && d.total ? numOrZero(d.total.usd) : 0;
+  const values = byValue.filter((e) => e.value !== "__untagged__").length;
+  // Untagged first and hatched, then values by spend; the tail as one row.
+  const sorted = [...byValue].sort((a, b) => Number(b.value === "__untagged__") - Number(a.value === "__untagged__") || numOrZero(b.metrics.usd) - numOrZero(a.metrics.usd));
+  const cut = sorted.length > 10 ? 9 : sorted.length;
+  const shown = sorted.slice(0, cut), rest = sorted.slice(cut);
+  const max = Math.max(1, ...sorted.map((e) => numOrZero(e.metrics.usd)), rest.reduce((s, e) => s + numOrZero(e.metrics.usd), 0));
+  const countedBy = (e: Row) => LEVELS.filter((l) => e.by_level && e.by_level[l] && numOrZero(e.by_level[l].usd) > 0).map((l) => ROLLUP_LEVEL_LABEL[l]).join(", ") || "–";
+  const keyName = (fromFilter && (fromFilter.display_key || fromFilter.key)) || (keys.find((k) => k.tag_key === chosen) || {}).display_key || chosen || "tag";
+  const tie = reconciliationLine(d && d.reconciliation);
+  const noKeys = keysState.phase === "ready" && keys.length === 0;
+  return (
+    <PatternCard title="Billed spend by tag" sub={total ? `The ${usd0(total)} split · ${fmtInt(values)} value${values === 1 ? "" : "s"} and the untagged remainder · ${rangeOf(p)}` : "Pick a tag key: its values, and what carries none"}>
+      <div className="cx-tag-tools">
+        {fromFilter ? <code>{keyName}</code> : keys.length > 0 && <TagKeyPicker keys={keys} value={chosen} onChange={setOwnKey} />}
+        {hasTree && (
+          <div className="cx-seg" role="group" aria-label="View">
+            <button type="button" className={shownView === "value" ? "on" : ""} aria-pressed={shownView === "value"} onClick={() => setView("value")}>By value</button>
+            <button type="button" className={shownView === "tree" ? "on" : ""} aria-pressed={shownView === "tree"} onClick={() => setView("tree")}>Tree</button>
+          </div>
+        )}
+      </div>
+      {noKeys ? <Note text="– Not assessed: the tag rollup is not in this export. Tags are read from TAG_REFERENCES and QUERY_TAG; the role needs to see them, then run the export again." />
+        : keysState.phase === "loading" || data.phase === "loading" ? <Note text="…" />
+        : data.phase === "error" ? <Note text="– Couldn't read the tag rollup from this export." />
+        : note ? <Note text={note} />
+        : !byValue.length ? <Note text={`No values for ${keyName} in ${rangeOf(p)}.`} />
+        : shownView === "tree" && d && d.tree ? (
+          <div className="hbar-list"><TagRollupTreeRow node={d.tree} depth={0} area="cost" primaryMetric="usd" expanded={expanded} onToggle={onToggle} /></div>
+        ) : (
+          <div className="cx-tag-wrap">
+            <table className="cx-tbl cx-tag-tbl">
+              <thead><tr><th>Value</th><th aria-hidden="true" /><th className="num">Spend</th><th className="num">Share</th><th>Counted by</th></tr></thead>
+              <tbody>
+                {shown.map((e) => {
+                  const v = numOrZero(e.metrics.usd), un = e.value === "__untagged__";
+                  return (
+                    <tr key={String(e.value)}>
+                      <td className={un ? "cx-untag" : undefined}>{un ? `No ${String(keyName).replace(/_/g, " ")}` : e.label}</td>
+                      <td className="cx-tag-bar"><span className={`cx-bar-fill ${un ? "t-hatch" : "t-c1"}`} style={{ width: `${Math.max(1.5, (100 * v) / max)}%` }} /></td>
+                      <td className="num"><b>{usd0(v)}</b></td>
+                      <td className="num">{fmtShare(numOrZero(e.share_of_total) * 100)}</td>
+                      <td className="cx-muted">{countedBy(e)}</td>
+                    </tr>
+                  );
+                })}
+                {rest.length > 0 && (() => {
+                  const v = rest.reduce((s, e) => s + numOrZero(e.metrics.usd), 0);
+                  return (
+                    <tr key="__rest__"><td>{`${fmtInt(rest.length)} other values`}</td>
+                      <td className="cx-tag-bar"><span className="cx-bar-fill t-other" style={{ width: `${(100 * v) / max}%` }} /></td>
+                      <td className="num"><b>{usd0(v)}</b></td><td className="num">{fmtShare(pctOf(v, total))}</td><td className="cx-muted">–</td></tr>
+                  );
+                })()}
+              </tbody>
+            </table>
+          </div>
+        )}
+      {d && d.cut_sources && d.cut_sources.length > 0 && <Note text={`The export cut ${d.cut_sources.join(", ")} at its row limit, so tagged spend can read low.`} />}
+      {byValue.length > 0 && tie && tie.tone !== "ok" && <TieLine tie={tie} />}
+    </PatternCard>
+  );
+}
 
 // ═══════════════════════ Chargeback & tags ═══════════════════════
 const TYPE_NOUN: Record<string, string> = { WAREHOUSE: "Warehouses", USER: "Users", ROLE: "Roles", DATABASE: "Databases" };
@@ -508,7 +663,7 @@ export function ApCostChargeback(p: ApPageProps) {
   ];
 
   const lede = cc.phase === "loading" ? "…" : ccPct != null
-    ? `${fmtShare(ccPct)} of billed spend (${usd0(untagged)} of ${usd0(ccTotal!)}) reaches no cost center.${cov.rows && spending.length ? ` ${fmtInt(noTag.length)} of ${fmtInt(spending.length)} spending objects carry no cost tag.` : ""}${tie ? ` ${tie.text}` : ""}`
+    ? `${fmtShare(ccPct)} of billed spend (${usd0(untagged)} of ${usd0(ccTotal!)}) reaches no cost center.${cov.rows && spending.length ? ` ${fmtInt(noTag.length)} of ${fmtInt(spending.length)} spending objects carry no cost tag.` : ""}`
     : null;
   useLede(p, lede);
 
@@ -535,17 +690,9 @@ export function ApCostChargeback(p: ApPageProps) {
           onOpen={dbTop ? openDrawer("sf_chg_by_database_schema", dbTop.database_id != null ? "database_id" : "database_name", dbTop.database_id ?? dbTop.database_name, dbTop.database_name) : undefined} openLabel="Open check →" />
       </Tiles>
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cc-split">
-          <PatternCard title="Billed spend by cost center" sub={ccTotal != null ? `${usd0(ccTotal)} split · ${fmtInt(ccValues)} cost centers and the untagged remainder` : "One 100% bar · untagged hatched"}>
-            {ccNote ? <Note text={ccNote} /> : (
-              <div>
-                <StackedShareBar height={26} segments={byValue.map((e): ShareSegment => ({ key: String(e.value), label: e.value === "__untagged__" ? "No cost center" : String(e.label || e.value), value: numOrZero(e.metrics && e.metrics.usd), unknown: e.value === "__untagged__" }))}
-                  valueFmt={usd0} pareto maxSegments={7} ariaLabel="Billed spend by cost center" />
-                {tie && <div className={`sx-foot${tie.tone === "crit" ? " tone-crit" : ""}`}>{tie.text}</div>}
-              </div>
-            )}
-          </PatternCard>
+          <TagSpendCard p={p} />
         </div>
         <div id="cc-types">
           <PatternCard title="No cost tag, by object type" sub="Untagged share of each type's own spend · compare them, never add them" link="Tags →" onLink={() => p.goTo({ tab: "tags" })}>
@@ -554,12 +701,12 @@ export function ApCostChargeback(p: ApPageProps) {
         </div>
       </div>
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cc-svc">
           <PatternCard title="What can be charged back, per service" sub={svcRec.length ? `Of each service's billed $, how much can be allocated · ${fmtInt(underHalf.length)} of ${fmtInt(svcRec.length)} under half` : "Per service"}>
             {!rec.rows ? <Note text={rec.note || "–"} /> : (
               <DrillTable aria="Chargeable share per service" n={8} empty={`No billed service in ${rangeOf(p)}.`}
-                cols={[{ label: "Service" }, { label: "Allocated · not", width: "minmax(70px, 1.3fr)" }, { label: "Billed", num: true, width: "auto" }, { label: "Chargeable", num: true, width: "auto" }]}
+                cols={[{ label: "Service" }, { label: "Billed, split", width: "minmax(70px, 1.3fr)" }, { label: "Billed", num: true, width: "auto" }, { label: "Chargeable", num: true, width: "auto" }]}
                 rows={svcRec.map((x) => ({
                   key: x.key, status: x.status, title: x.to ? `allocated to: ${x.to}` : undefined,
                   onOpen: openDrawer("sf_chg_allocation_reconciliation", "service_type", x.code, costServiceWords(x.code)),
@@ -569,7 +716,7 @@ export function ApCostChargeback(p: ApPageProps) {
           </PatternCard>
         </div>
         <PatternCard title="Ties to the bill" sub="Metered → billed to split → allocated" link="Contract & rate →" onLink={() => p.goTo({ tab: "cost", subtab: "contract" })}>
-          {cc.phase === "loading" ? <Note text="…" /> : <ReconciliationStrip steps={reconSteps} />}
+          {cc.phase === "loading" ? <Note text="…" /> : <><ReconciliationStrip steps={reconSteps} /><TieLine tie={tie} /></>}
         </PatternCard>
       </div>
 
@@ -628,7 +775,7 @@ export function ApCostContract(p: ApPageProps) {
   const ch0 = changed[0];
 
   const lede = busy(con) ? "…" : c0
-    ? `The contract ends in ${fmtInt(toEnd)} d with ${cur(c0.prepaid_balance)} left.${early != null && early > 0 ? ` At the current burn the balance is gone ${fmtInt(Math.round(early))} d early.` : ""}${eff != null ? ` The invoice says ${fmtMoney(eff, 2)} per credit${listN ? ` against ${fmtMoney(listN, 2)} in the app` : ""}.` : ""}`
+    ? `The contract ends ${c0.contract_end_date ? `on ${fmtDayShort(c0.contract_end_date)}` : `in ${fmtInt(toEnd)} days`} with ${cur(c0.prepaid_balance)} left${early != null && early > 0 ? `, but at the current burn the balance runs out ${fmtInt(Math.round(early))} days early` : ""}.${eff != null ? ` The invoice works out to ${fmtMoney(eff, 2)} per credit${listN ? ` against ${fmtMoney(listN, 2)} in the app` : ""}.` : ""}`
     : null;
   useLede(p, lede);
 
@@ -636,30 +783,25 @@ export function ApCostContract(p: ApPageProps) {
     <div className="sx-page">
       <Tiles>
         <IssueTile label="Balance runs out" loading={busy(con)} status={sevOf(conF)}
-          headline={runway != null ? (early != null && early > 0 ? `${fmtInt(Math.round(early))} d` : `${fmtInt(Math.round(runway))} d`) : null}
+          headline={runway != null ? (early != null && early > 0 ? `${fmtInt(Math.round(early))} days` : `${fmtInt(Math.round(runway))} days`) : null}
           unit={early != null && early > 0 ? "before the contract ends" : "of runway"} missingReason={why(con) || "no capacity contract in this export"}
-          base={c0 ? `${cur(c0.prepaid_balance)} left · ends ${fmtDayShort(c0.contract_end_date)}${toEnd != null ? `, in ${fmtInt(toEnd)} d` : ""}${contracts.length > 1 ? ` · 1 of ${fmtInt(contracts.length)} contracts` : ""}` : null}
-          cause={c0 && c0.projected_depletion_date ? `At ${cur(c0.daily_burn)} a day the balance is gone ${fmtDayShort(c0.projected_depletion_date)}.` : null}
+          base={c0 ? `${cur(c0.prepaid_balance)} left; the term ends ${fmtDayShort(c0.contract_end_date)}${toEnd != null ? `, in ${fmtInt(toEnd)} days` : ""}.${contracts.length > 1 ? ` 1 of ${fmtInt(contracts.length)} contracts.` : ""}` : null}
+          cause={c0 && c0.projected_depletion_date ? `At ${cur(c0.daily_burn)} a day the balance${runway != null ? ` lasts ${fmtInt(Math.round(runway))} days and` : ""} is gone on ${fmtDayShort(c0.projected_depletion_date)}.` : null}
           onOpen={openDrawer("sf_cost_contract_balance_burn")} openLabel="Open check →" />
         <IssueTile label="Effective $ per credit" loading={busy(inv)} status={sevOf(invF)}
-          headline={eff != null ? fmtMoney(eff, 2) : null} unit="per credit" missingReason={why(inv) || "no USD invoice lines"}
-          base={eff != null ? [listN ? `list ${fmtMoney(listN, 2)}` : null, effGap != null ? `${fmtChangePct(effGap)} vs list` : null, `${fmtInt(Math.round(usage))} credits invoiced`, affText(invF)].filter(Boolean).join(" · ") : null}
-          cause={listN && effGap != null && Math.abs(effGap) >= 1 ? "The app prices at its own $ per credit; set it to the invoice rate to match the bill." : null}
+          headline={eff != null ? fmtMoney(eff, 2) : null} unit={`per credit${listN ? ` · list ${fmtMoney(listN, 2)}` : ""}`} missingReason={why(inv) || "no USD invoice lines"}
+          base={eff != null ? `From ${fmtInt(Math.round(usage))} credits invoiced, ${rangeOf(p)}.` : null}
+          cause={[affText(invF, "billed above the app price") ? `${affText(invF, "billed above the app price")}.` : null,
+            listN && effGap != null && Math.abs(effGap) >= 1 ? "Set the app's $ per credit to the invoice rate to match the bill." : null].filter(Boolean).join(" ") || null}
           onOpen={() => scrollToAnchor("cr-inv")} openLabel="Invoiced vs metered ↓" />
         <IssueTile label="Rate changes mid-term" loading={busy(rate)} status={!(rate.rows && rates.length) ? "not_assessed" : changed.length ? sevOf(rateF) : "ok"}
           headline={rate.rows && rates.length ? `${fmtInt(changed.length)} of ${fmtInt(rates.length)}` : null} unit="rates" missingReason={why(rate) || "no rate sheet"}
-          base={ch0 ? `${ch0.usage_type} ${fmtMoney(numOrZero(ch0.first_rate), 2)} → ${fmtMoney(numOrZero(ch0.latest_rate), 2)}${ch0.change_pct != null ? ` · ${fmtChangePct(Number(ch0.change_pct))}` : ""}` : (rates.length ? "No rate changed in the window." : null)}
+          base={ch0 ? `${ch0.usage_type} went from ${fmtMoney(numOrZero(ch0.first_rate), 2)} to ${fmtMoney(numOrZero(ch0.latest_rate), 2)}${ch0.change_pct != null ? ` (${fmtChangePct(Number(ch0.change_pct))})` : ""}.` : (rates.length ? "No rate changed in the window." : null)}
           onOpen={() => scrollToAnchor("cr-rates")} openLabel="Rates ↓" />
       </Tiles>
 
-      <StatStrip ariaLabel="Contract figures" cells={[
-        { key: "rate", label: "$ per credit", value: eff != null ? fmtMoney(eff, 2) : null, unit: listN ? ` list ${fmtMoney(listN, 2)}` : undefined, base: "invoice view", missing: why(inv) || "no USD invoice lines" },
-        { key: "credits", label: "Credits invoiced", value: usage > 0 ? fmtInt(Math.round(usage)) : null, base: `${rangeOf(p)}`, missing: why(inv) || "–" },
-        { key: "burn", label: "Run-rate", value: c0 && c0.daily_burn != null ? cur(c0.daily_burn) : null, unit: " / day", base: "contract balance burn", missing: why(con) || "no contract" },
-        { key: "term", label: "Term left", pill: c0 ? sevOf(conF) : null, value: toEnd != null ? fmtInt(toEnd) : null, unit: " days", base: runway != null ? `balance lasts ${fmtInt(Math.round(runway))} d at the trend` : undefined, missing: why(con) || "no contract" },
-      ]} />
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cr-inv">
           <PatternCard title="Invoiced vs metered at the app price" sub={eff != null ? `${usd0(amount)} invoiced · by usage type · the gap is the invoice rate vs the app's $ per credit` : "By usage type"}>
             {inv.note && !typeList.length ? <Note text={inv.note} /> : (
@@ -674,12 +816,12 @@ export function ApCostContract(p: ApPageProps) {
           <PatternCard title="Rates by usage type" sub={rates.length ? `Contract rate vs the app's list price · ${fmtInt(rates.length)} rates · snapshot` : "Snapshot"}>
             {rate.note && !rates.length ? <Note text={rate.note} /> : (
               <DrillTable aria="Rates by usage type" n={9} empty="No rate sheet lines."
-                cols={[{ label: "Usage type" }, { label: "Contract", num: true, width: "auto" }, { label: "App price", num: true, width: "auto" }, { label: "Change", num: true, width: "auto" }]}
+                cols={[{ label: "Usage type" }, { label: "Contract", num: true, width: "auto" }, { label: "App price", num: true, width: "auto" }]}
                 rows={rates.map((r) => ({ key: `${r.usage_type}|${r.rating_type}|${r.billing_type}|${r.currency}`, status: r.status,
                   onOpen: openDrawer("sf_cost_rate_sheet", "usage_type", r.usage_type, String(r.usage_type)),
-                  cells: [`${r.usage_type}${r.rating_type ? ` · ${r.rating_type}` : ""}`, r.latest_rate != null ? fmtMoney(numOrZero(r.latest_rate), 2) : "–",
-                    r.app_credit_price_usd != null && String(r.rating_type) === "compute" ? fmtMoney(numOrZero(r.app_credit_price_usd), 2) : "–",
-                    numOrZero(r.distinct_rates) > 1 && r.change_pct != null ? fmtChangePct(Number(r.change_pct)) : "–"] }))} />
+                  cells: [<span key="n">{String(r.usage_type)}{r.rating_type ? <span className="cx-muted">{` · ${r.rating_type}`}</span> : null}</span>,
+                    r.latest_rate != null ? <span key="r" className={isFlagged(r) ? "cx-crit-num" : undefined}>{fmtMoney(numOrZero(r.latest_rate), 2)}</span> : "–",
+                    r.app_credit_price_usd != null && String(r.rating_type) === "compute" ? fmtMoney(numOrZero(r.app_credit_price_usd), 2) : "–"] }))} />
             )}
           </PatternCard>
         </div>
@@ -689,6 +831,75 @@ export function ApCostContract(p: ApPageProps) {
 }
 (ApCostContract as any).ownsTiles = true;
 (ApCostContract as any).ownsLede = true;
+
+// A parameter value in plain words: seconds also as hours, "unset" for none.
+function paramValue(name: any, v: any): string {
+  if (v == null || v === "") return "unset";
+  const n = Number(v);
+  if (/SECONDS$/i.test(String(name)) && Number.isFinite(n)) return n === 0 ? "0 (never times out)" : `${fmtInt(n)} s${n >= 3600 ? ` (${fmtInt(Math.round(n / 3600))} h)` : ""}`;
+  return Number.isFinite(n) ? fmtInt(n) : String(v);
+}
+
+// The check's rule ("> 0", "1..28800", ">= 1") in words.
+function plainRule(name: any, rule: any): string {
+  const r = String(rule).trim();
+  const unit = /SECONDS$/i.test(String(name)) ? " s" : /DAYS$/i.test(String(name)) ? " days" : "";
+  const num = (x: string) => (Number.isFinite(Number(x)) ? fmtInt(Number(x)) : x);
+  let m = /^(\d+(?:\.\d+)?)\s*\.\.\s*(\d+(?:\.\d+)?)$/.exec(r);
+  if (m) return `set between ${num(m[1])} and ${num(m[2])}${unit}${unit === " s" && Number(m[2]) >= 3600 ? ` (${fmtInt(Math.round(Number(m[2]) / 3600))} h)` : ""}`;
+  m = /^>=\s*(.+)$/.exec(r); if (m) return `set to ${num(m[1])}${Number(m[1]) === 1 ? unit.replace(/s$/, "") : unit} or more`;
+  m = /^>\s*(.+)$/.exec(r); if (m) return `set above ${num(m[1])}${unit}`;
+  m = /^<=\s*(.+)$/.exec(r); if (m) return `set to ${num(m[1])}${unit} or less`;
+  return `set ${r}`;
+}
+
+// Status from the value shown: over quota now is Critical, on pace to pass it a Warning; the check's
+// own status is kept when it is worse.
+function quotaSev(r: Row): string {
+  const used = numOrZero(r.used_pct), proj = r.projected_pct != null ? numOrZero(r.projected_pct) : used;
+  const byValue = used >= 100 ? "CRITICAL" : proj >= 100 ? "WARN" : "OK";
+  const rank: Record<string, number> = { CRITICAL: 0, WARN: 1, OK: 2 };
+  return (rank[r.status] ?? 2) < rank[byValue] ? r.status : byValue;
+}
+
+// Each monitor on one 0-300% scale: used so far, the lighter projected part, and a mark at the 100% quota.
+function MonitorBars({ rows }: { rows: Row[] }) {
+  const [all, setAll] = React.useState(false);
+  const sorted = [...rows].sort((a, b) => numOrZero(b.used_pct) - numOrZero(a.used_pct));
+  const shown = all ? sorted : sorted.slice(0, 8);
+  const top = 300;
+  const w = (v: number) => `${Math.min(100, (100 * Math.max(0, v)) / top)}%`;
+  const word: Record<string, string> = { CRITICAL: "Critical", WARN: "Warning", OK: "OK" };
+  const cls: Record<string, string> = { CRITICAL: "critical", WARN: "warn", OK: "ok" };
+  if (!rows.length) return <Note text="No monitor has a credit quota." />;
+  return (
+    <div className="cx-mon">
+      <div className="cx-ba-legend"><span><span className="cx-sm-sw" style={{ background: "var(--c1)" }} />Used so far</span>
+        <span><span className="cx-sm-sw" style={{ background: "var(--seq-1)" }} />Projected by the reset</span><span><span className="cx-mon-q static" />Quota (100%)</span></div>
+      <div className="cx-mon-tr cx-mon-th" aria-hidden="true"><span>Monitor</span><span>Status</span>
+        <span className="cx-mon-axis"><span style={{ left: 0 }}>0%</span><span style={{ left: w(100) }}>100%</span><span style={{ left: w(200) }}>200%</span><span style={{ right: 0 }}>300%</span></span><span className="num">Now → by reset</span></div>
+      {shown.map((r) => {
+        const used = numOrZero(r.used_pct), proj = r.projected_pct != null ? numOrZero(r.projected_pct) : null;
+        const sev = quotaSev(r);
+        return (
+          <button type="button" key={`${r.account_id}|${r.monitor_name}`} className="cx-mon-tr"
+            onClick={() => DrawerBus.open({ id: "sf_cost_resource_monitor_projection", col: "monitor_name", val: String(r.monitor_name), label: String(r.monitor_name) })}
+            title={`${r.monitor_name}: ${fmtInt(numOrZero(r.used_credits))} of ${fmtInt(numOrZero(r.credit_quota))} credits`}>
+            <span className="cx-mon-name">{String(r.monitor_name)}</span>
+            <span className={`cx-sev sev-${cls[sev]}`}><span className="cx-sev-dot" aria-hidden="true" />{word[sev]}</span>
+            <span className="cx-mon-track" aria-hidden="true">
+              {proj != null && proj > used && <span className="cx-mon-proj" style={{ width: w(proj) }} />}
+              <span className="cx-mon-used" style={{ width: w(used) }} />
+              <span className="cx-mon-q" style={{ left: w(100) }} />
+            </span>
+            <span className="num cx-mon-val">{fmtShare(used)}{proj != null && <>{" → "}<b className={proj >= 100 ? "over" : undefined}>{fmtShare(proj)}</b></>}{` of ${fmtInt(numOrZero(r.credit_quota))}`}</span>
+          </button>
+        );
+      })}
+      {sorted.length > 8 && <button type="button" className="ck-link" onClick={() => setAll(!all)}>{all ? "Show the top 8" : `Show all ${fmtInt(sorted.length)}`}</button>}
+    </div>
+  );
+}
 
 // ═══════════════════════ Budgets & guardrails ═══════════════════════
 export function ApCostBudgets(p: ApPageProps) {
@@ -725,11 +936,6 @@ export function ApCostBudgets(p: ApPageProps) {
   const early = pRows.filter(isFlagged);
   const nextReset = pRows.map((r) => r.next_reset).filter(Boolean).sort()[0];
   const lead = [...pRows].sort((a, b) => numOrZero(b.used_pct) - numOrZero(a.used_pct))[0];
-  const quotaItems: StatusBarItem[] = pRows.map((r) => ({
-    key: `${r.account_id}|${r.monitor_name}`, name: String(r.monitor_name), value: numOrZero(r.used_pct), status: r.status,
-    valueText: `${fmtShare(numOrZero(r.used_pct))}${r.projected_pct != null ? ` → ${fmtShare(numOrZero(r.projected_pct))}` : ""} of ${fmtInt(numOrZero(r.credit_quota))}`,
-    title: `${r.monitor_name}: ${fmtInt(numOrZero(r.used_credits))} of ${fmtInt(numOrZero(r.credit_quota))} credits${r.projected_pct != null ? `, on pace for ${fmtShare(numOrZero(r.projected_pct))} by the reset` : ""}`,
-  }));
 
   // Account parameters: judged ones only; NOT_ASSESSED is not "set".
   const params = (par.rows || []).filter((r) => r.status !== "NOT_ASSESSED");
@@ -751,12 +957,12 @@ export function ApCostBudgets(p: ApPageProps) {
   return (
     <div className="sx-page">
       <Tiles>
-        <IssueTile label="No resource monitor cap" loading={busy(mon)} status={sevOf(monF)}
+        <IssueTile label="No suspending monitor" loading={busy(mon)} status={sevOf(monF)}
           headline={whList.length ? `${fmtInt(noCap.length)} of ${fmtInt(whList.length)}` : null} unit="warehouses" missingReason={why(mon) || "no warehouses"}
           base={whList.length ? `${fmt(noCapV)} of ${fmt(whTotal)} warehouse spend · ${fmtShare(pctOf(noCapV, whTotal))}${mCov.hidden ? ` · ${fmtInt(mCov.hidden)} not visible` : ""}` : null}
           cause="No monitor can suspend them; a notify-only monitor stops nothing." onOpen={() => scrollToAnchor("cb-nocap")} openLabel="By warehouse ↓" />
-        <IssueTile label="Monitors hitting quota early" loading={busy(proj)} status={sevOf(projF)}
-          headline={proj.rows && pRows.length ? `${fmtInt(early.length)} of ${fmtInt(pRows.length)}` : null} unit="resource monitors" missingReason={why(proj) || "no monitor with a quota"}
+        <IssueTile label="Monitors over quota by the reset" loading={busy(proj)} status={sevOf(projF)}
+          headline={proj.rows && pRows.length ? `${fmtInt(early.length)} of ${fmtInt(pRows.length)}` : null} unit="monitors" missingReason={why(proj) || "no monitor with a quota"}
           base={pRows.length ? [`${fmtShare(pctOf(early.length, pRows.length))}`, "snapshot", nextReset ? `next reset ${fmtDayShort(nextReset)}` : null].filter(Boolean).join(" · ") : null}
           cause={lead ? `${lead.monitor_name} is at ${fmtShare(numOrZero(lead.used_pct))} of ${fmtInt(numOrZero(lead.credit_quota))} credits.` : null}
           onOpen={() => scrollToAnchor("cb-quota")} openLabel="Used of quota ↓" />
@@ -772,14 +978,13 @@ export function ApCostBudgets(p: ApPageProps) {
           onOpen={openDrawer("sf_acct_budgets")} openLabel="Open check →" />
       </Tiles>
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cb-quota">
-          <PatternCard title="Monitors: used of quota, and where they land by the reset" sub={pRows.length ? `${fmtInt(pRows.length)} resource monitors · credits this cycle → projected at the current pace` : "This cycle"}>
+          <PatternCard title="Monitors: used of quota, and where they land by the reset" sub={pRows.length ? `${fmtInt(pRows.length)} resource monitors · credits this cycle, projected at the current pace${nextReset ? ` to the ${fmtDayShort(nextReset)} reset` : ""}` : "This cycle"}>
             {!proj.rows ? <Note text={proj.note || "–"} /> : (
               <div>
-                <StatusBars items={quotaItems} n={8} max={100} unitLabel="of quota" ariaLabel="Resource monitors: credits used of quota" emptyText="No monitor has a credit quota."
-                  onBarClick={(it) => DrawerBus.open({ id: "sf_cost_resource_monitor_projection", col: "monitor_name", val: String(it.name), label: String(it.name) })} />
-                {(proj.rows || []).length > pRows.length && <div className="sx-foot">{`${fmtInt((proj.rows || []).length - pRows.length)} monitor(s) with no quota not shown.`}</div>}
+                <MonitorBars rows={pRows} />
+                {(proj.rows || []).length > pRows.length && <div className="cx-moved-note">{`Quotas in credits. ${plural((proj.rows || []).length - pRows.length, "monitor")} with no quota ${(proj.rows || []).length - pRows.length === 1 ? "is" : "are"} left out.`}</div>}
               </div>
             )}
           </PatternCard>
@@ -796,9 +1001,9 @@ export function ApCostBudgets(p: ApPageProps) {
         </PatternCard>
       </div>
 
-      <div className="cj-charts-2">
+      <div className="cj-charts-2 cx-top">
         <div id="cb-nocap">
-          <PatternCard title="Warehouses with no resource monitor cap, by spend" sub={whList.length ? `${fmtInt(noCap.length)} of ${fmtInt(whList.length)} warehouses · ${fmt(noCapV)} in ${rangeOf(p)}` : "By spend"}>
+          <PatternCard title="Warehouses with no suspending monitor, by spend" sub={whList.length ? `${fmtInt(noCap.length)} of ${fmtInt(whList.length)} warehouses · ${fmt(noCapV)} in ${rangeOf(p)}` : "By spend"}>
             {!mon.rows ? <Note text={mon.note || "–"} /> : (
               <DrillTable aria="Warehouses with no resource monitor cap" n={9} empty="Every warehouse has a monitor that can suspend it."
                 cols={[{ label: "Warehouse" }, { label: "", width: "minmax(60px, 1fr)" }, { label: "Spend", num: true, width: "auto" }, { label: "Monitor", width: "minmax(70px, auto)" }]}
@@ -814,9 +1019,9 @@ export function ApCostBudgets(p: ApPageProps) {
               <div className="sx-defs">
                 {costly.map((r) => (
                   <button type="button" key={String(r.parameter)} className="sx-kv blk-row-btn" onClick={openDrawer("sf_acct_parameters_posture", "parameter", r.parameter, String(r.parameter))}>
-                    <span className="sx-kv-name"><b>{String(r.parameter)}</b>{` ${String(r.level || "").toLowerCase()} · ${r.value == null || r.value === "" ? "unset" : r.value}`}</span>
-                    <span className={`dt-chip tone-${r.status === "CRITICAL" ? "crit" : "warn"}`}>{r.status === "CRITICAL" ? "Critical" : "Warning"}</span>
-                    <span className="sx-kv-val" title={r.verdict || undefined}>{r.recommended ? `set ${r.recommended}` : ""}</span>
+                    <span className="sx-kv-name"><code className="cx-param">{String(r.parameter)}</code>
+                      <span className="cx-param-line">{`Now ${paramValue(r.parameter, r.value)}${String(r.level || "").toLowerCase() === "default" || r.level == null ? " (default)" : ""}${r.recommended ? ` · ${plainRule(r.parameter, r.recommended)}` : ""}`}</span></span>
+                    <span className={`cx-sev sev-${r.status === "CRITICAL" ? "critical" : "warn"}`}><span className="cx-sev-dot" aria-hidden="true" />{r.status === "CRITICAL" ? "Critical" : "Warning"}</span>
                   </button>
                 ))}
               </div>

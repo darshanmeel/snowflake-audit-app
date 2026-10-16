@@ -6,14 +6,14 @@ import { fmtBytes, fmtCredits, fmtDayShort, fmtDuration, fmtInt, fmtMoney, fmtPc
 import { fmtChangePct, numOrZero, useFindingAgg } from "./hooks";
 import { Card, ChartCard, noDataText } from "./primitives";
 import { notAssessedText } from "./scope";
-import { Columns } from "./charts_more";
-import { NameId, StatStrip } from "./blocks_2";
-import type { StatCell } from "./blocks_2";
+import { IssueTile } from "./blocks";
+import { CxPicker, NaStrip } from "./cx_a";
+import { NameId } from "./blocks_2";
 import { DrillTable } from "./drill_table";
 import type { DrillRow } from "./drill_table";
 import { CsvButton } from "./csv";
 import type { CsvColumn } from "./csv";
-import { DAY_MS, windowSpan } from "./overview_tile";
+import { DAY_MS, KpiRow, windowSpan } from "./overview_tile";
 import type { ApPageProps } from "./area_pages";
 import type { FetchState, Finding, Row } from "../types";
 
@@ -110,6 +110,71 @@ function changeOf(m: Measure): { text: string; tone: string } {
 function Chip({ m }: { m: Measure }) {
   const c = changeOf(m);
   return <span className={`cost-delta tone-${c.tone}`}>{c.text}</span>;
+}
+
+// A round axis top at or above v: 1, 2, 2.5 or 5 times a power of ten.
+function niceTop(v: number): number {
+  if (!(v > 0)) return 1;
+  const e = 10 ** Math.floor(Math.log10(v));
+  return ([1, 2, 2.5, 5, 10].find((m) => m * e >= v) || 10) * e;
+}
+
+// Credits a day, before (orange) and after (blue) the change day, each side's average as a dashed line.
+// One day far above the rest is capped with a break mark and its value written above it, so it does not
+// flatten every other day.
+function BeforeAfterBars({ days, values, fix, fmt, label }: { days: string[]; values: number[]; fix: string; fmt: (v: number) => string; label: string }) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const max = sorted[sorted.length - 1] || 0;
+  const second = sorted.length > 1 ? sorted[sorted.length - 2] : max;
+  // Only a single day far above every other one is capped.
+  const cap = max > 2.5 * second && second > 0 ? niceTop(second * 1.15) : niceTop(max);
+  const bIdx = days.map((d, i) => (d < fix ? i : -1)).filter((i) => i >= 0);
+  const aIdx = days.map((d, i) => (d >= fix ? i : -1)).filter((i) => i >= 0);
+  const avg = (ix: number[]) => (ix.length ? ix.reduce((s, i) => s + values[i], 0) / ix.length : 0);
+  const avgB = avg(bIdx), avgA = avg(aIdx);
+  const W = 900, H = 220, L = 44, T = 22, B = 24;
+  const ph = H - T - B, pw = W - L - 6;
+  const bw = pw / days.length;
+  const y = (v: number) => T + ph - (ph * Math.min(v, cap)) / cap;
+  const xFix = L + bIdx.length * bw;
+  const ticks = [0, cap / 2, cap];
+  const capped = values.map((v, i) => (v > cap ? i : -1)).filter((i) => i >= 0);
+  const dl = fmtDayShort;
+  return (
+    <div className="cx-ba">
+      <div className="cx-ba-legend"><span><span className="cx-sm-sw" style={{ background: "var(--c2)" }} />Before</span><span aria-hidden="true">→</span><span><span className="cx-sm-sw" style={{ background: "var(--c1)" }} />After</span></div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label}>
+        <text x={0} y={10} className="cx-ba-unit">credits / day</text>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W} y1={y(t)} y2={y(t)} className="cx-sm-grid-line" />
+            <text x={L - 6} y={y(t) + 4} textAnchor="end" className="cx-ba-tick">{fmt(t)}</text>
+          </g>
+        ))}
+        {values.map((v, i) => {
+          const after = days[i] >= fix;
+          const top = y(v);
+          return <rect key={days[i]} x={L + i * bw + bw * 0.15} y={top} width={bw * 0.7} height={T + ph - top} fill={after ? "var(--c1)" : "var(--c2)"} />;
+        })}
+        {capped.map((i) => (
+          <g key={`cap${i}`}>
+            <path d={`M${L + i * bw + bw * 0.1} ${T + 8} l${bw * 0.8} -5 M${L + i * bw + bw * 0.1} ${T + 13} l${bw * 0.8} -5`} stroke="var(--surface)" strokeWidth="2.5" />
+            <text x={L + i * bw + bw / 2} y={T - 6} textAnchor="middle" className="cx-ba-tick strong">{fmt(values[i])}</text>
+          </g>
+        ))}
+        {bIdx.length > 0 && <line x1={L} x2={xFix} y1={y(avgB)} y2={y(avgB)} className="cx-ba-avg before" />}
+        {aIdx.length > 0 && <line x1={xFix} x2={W} y1={y(avgA)} y2={y(avgA)} className="cx-ba-avg after" />}
+        {bIdx.length > 0 && <text x={L + 4} y={y(avgB) - 5} className="cx-ba-tick">{`avg ${fmt(avgB)}`}</text>}
+        {aIdx.length > 0 && <text x={xFix + 4} y={y(avgA) - 5} className="cx-ba-tick">{`avg ${fmt(avgA)}`}</text>}
+        <line x1={xFix} x2={xFix} y1={T - 4} y2={T + ph} className="cx-ba-fix" />
+        <line x1={L} x2={W} y1={T + ph} y2={T + ph} className="cx-sm-base" />
+        <text x={L} y={H - 6} className="cx-ba-tick">{dl(days[0])}</text>
+        <text x={xFix} y={H - 6} textAnchor="middle" className="cx-ba-tick">{`${dl(fix)} · change`}</text>
+        <text x={W} y={H - 6} textAnchor="end" className="cx-ba-tick">{dl(days[days.length - 1])}</text>
+      </svg>
+      {capped.length > 0 && <div className="cx-moved-note">{`${capped.map((i) => fmtDayShort(days[i])).join(", ")} reached ${capped.map((i) => fmt(values[i])).join(", ")} and ${capped.length === 1 ? "is" : "are"} cut off so the other days stay readable.`}</div>}
+    </div>
+  );
 }
 
 export function ApCostBeforeAfter(p: ApPageProps) {
@@ -238,23 +303,34 @@ export function ApCostBeforeAfter(p: ApPageProps) {
     return out;
   }, [sel, fix, nB, nA, byItem, cost.why, qry.why, qry.loading, meta.price_basis, priceNote]);
 
+  // The lede from the same figures: "From 6 Sep, WH (3010) used 2.2× the credits a day: 184.8 against 83.6 before."
+  const crM = measures.find((m) => m.key === "credits"), usdM = measures.find((m) => m.key === "usd");
+  const ledeText = cost.loading ? "…" : sel && fix && crM && !crM.missing && crM.before != null && crM.after != null
+    ? `From ${fmtDayShort(fix)}, ${labelOf(sel)} used ${changeOf(crM).text === "no change" ? "about the same" : changeOf(crM).text} credits a day: ${fmtCr(crM.after)} against ${fmtCr(crM.before)} before${usdM && !usdM.missing && usdM.after != null && usdM.before != null ? `, or ${usdM.fmt(usdM.after)} a day against ${usdM.fmt(usdM.before)}` : ""}.`
+    : null;
+  React.useEffect(() => { if (p.setLede) p.setLede(ledeText); }, [ledeText]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const controls = (
-    <div className="row wrap" style={{ gap: 12, alignItems: "center", marginBottom: 8 }}>
-      <div className="ws-actions" role="group" aria-label="Level">
-        {LEVELS.map((l) => (
-          <button key={l.key} type="button" className={l.key === level ? "on" : ""} onClick={() => { setLevel(l.key); setPicked(null); }}>{l.label}</button>
-        ))}
+    <div className="cx-ba-controls">
+      <div className="cx-ba-field">
+        <span className="cx-eyebrow">Kind</span>
+        <div className="cx-seg" role="group" aria-label="Kind">
+          {LEVELS.map((l) => (
+            <button key={l.key} type="button" className={l.key === level ? "on" : ""} aria-pressed={l.key === level} onClick={() => { setLevel(l.key); setPicked(null); }}>{l.label}</button>
+          ))}
+        </div>
       </div>
-      <select aria-label={lv.label} value={sel ? sel.key : ""} disabled={!levelItems.length} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPicked(e.target.value)}>
-        {levelItems.length
-          ? levelItems.map((it) => <option key={it.key} value={it.key}>{labelOf(it)}</option>)
-          : <option value="">{cost.loading || qry.loading ? "…" : `No ${lv.plural}`}</option>}
-      </select>
+      <div className="cx-ba-field">
+        <span className="cx-eyebrow">{lv.label}</span>
+        <CxPicker label={lv.label} mono value={sel ? sel.key : null} onChange={setPicked}
+          options={levelItems.map((it) => ({ value: it.key, label: labelOf(it) }))} />
+      </div>
       {days.length > 1 && fix && (
-        <label className="row" style={{ gap: 6 }}>
-          <span className="muted">After starts on</span>
-          <input type="date" value={fix} min={days[1]} max={days[days.length - 1]} onChange={(e) => setFixDay(e.target.value || null)} />
-        </label>
+        <div className="cx-ba-field">
+          <span className="cx-eyebrow">After starts on</span>
+          <CxPicker label="After starts on" value={fix} onChange={(v) => setFixDay(v)}
+            options={days.slice(1).map((d) => ({ value: d, label: fmtDayShort(d) }))} />
+        </div>
       )}
     </div>
   );
@@ -277,23 +353,31 @@ export function ApCostBeforeAfter(p: ApPageProps) {
   const by = (k: string) => measures.find((m) => m.key === k) || null;
   const cr = by("credits"), usd = by("usd");
   const crChange = cr ? changeOf(cr) : null;
-  const cells: StatCell[] = [
-    { key: "b", label: "Credits a day, before", value: cr && !cr.missing ? fmtCr(cr.before) : null, base: `${beforeSpan} · ${fmtInt(nB)} days`, missing: cr && cr.missing },
-    { key: "a", label: "Credits a day, after", value: cr && !cr.missing ? fmtCr(cr.after) : null, base: `${afterSpan} · ${fmtInt(nA)} days`, missing: cr && cr.missing },
-    { key: "c", label: "Change", value: crChange && crChange.text !== "–" ? crChange.text : null, base: "credits a day, after vs before", missing: cr && cr.missing },
-    { key: "u", label: "$ a day, after", value: usd && !usd.missing && usd.after != null ? usd.fmt(usd.after) : null, base: usd && usd.before != null ? `${usd.fmt(usd.before)} before` : undefined, missing: usd && usd.missing },
-  ];
+  const crMissing = cr && cr.missing ? cr.missing : null;
+  const kpis = (
+    <KpiRow strip={usd ? [
+      <IssueTile key="u" label="$ a day, after" loading={usd.missing === "…"} headline={!usd.missing && usd.after != null ? usd.fmt(usd.after) : null} unit="a day"
+        missingReason={usd.missing || undefined} base={usd.before != null && !usd.missing ? `${usd.fmt(usd.before)} a day before.` : null} />,
+    ] : null}>
+      <IssueTile label="Credits a day, before" loading={crMissing === "…"} headline={cr && !crMissing ? fmtCr(cr.before).replace(/ credits?$/, "") : null} unit="credits"
+        missingReason={crMissing || undefined} base={`${beforeSpan} · ${fmtInt(nB)} days.`} />
+      <IssueTile label="Credits a day, after" loading={crMissing === "…"} headline={cr && !crMissing ? fmtCr(cr.after).replace(/ credits?$/, "") : null} unit="credits"
+        missingReason={crMissing || undefined} base={`${afterSpan} · ${fmtInt(nA)} days.`} />
+      <IssueTile label="Change" loading={crMissing === "…"} headline={crChange && crChange.text !== "–" ? crChange.text : null} unit="credits a day"
+        missingReason={crMissing || undefined} base="After against before." />
+    </KpiRow>
+  );
 
-  const series = (() => {
+  const vals = (() => {
     const m = byItem.get(sel.key) || new Map<string, DayVals>();
-    const val = (d: string) => (m.get(d) || zeroDay()).credits;
-    return [
-      { name: "Before", id: "before", values: days.map((d) => (d < fix ? val(d) : 0)) },
-      { name: "After", id: "after", values: days.map((d) => (d >= fix ? val(d) : 0)) },
-    ];
+    return days.map((d) => (m.get(d) || zeroDay()).credits);
   })();
 
-  const rows: DrillRow[] = measures.map((m) => ({
+  // Measures this export cannot fill are said once, not as rows of "–".
+  const shownMeasures = measures.filter((m) => !m.missing || m.missing === "…" || m.key === "credits" || m.key === "usd");
+  const missingMeasures = measures.filter((m) => !shownMeasures.includes(m));
+  const missWhy = [...new Set(missingMeasures.map((m) => String(m.missing)))];
+  const rows: DrillRow[] = shownMeasures.map((m) => ({
     key: m.key,
     title: m.missing || undefined,
     cells: m.missing === "…" ? [m.label, "…", "…", "…"]
@@ -318,27 +402,33 @@ export function ApCostBeforeAfter(p: ApPageProps) {
   ].filter(Boolean).join(" ");
 
   return (
-    <div>
-      {head(<StatStrip cells={cells} ariaLabel="Credits a day, before and after" />)}
+    <div className="cx-stack">
+      {head(null)}
+      {kpis}
       <ChartCard
-        title={<NameId name={sel.name} id={sel.id} />}
-        subtitle={`Credits a day: before ${beforeSpan}, after ${afterSpan}`}
+        title={<span>Credits a day, <NameId name={sel.name} id={sel.id} /></span>}
+        subtitle={`Before ${beforeSpan}, after ${afterSpan} · dashed lines are each period's average`}
         onOpenCheck={() => p.goTo({ tab: p.area, subtab: p.subtab, focusQueryId: COST_QID })}
         takeaway={notes || null}
       >
         {cost.why ? <div className="chart-note-oneline">{`– ${cost.why}`}</div> : (
-          <Columns days={days} series={series} markers={[{ day: fix, label: "After starts" }]} valueFmt={(v) => fmtCr(v)} unitLabel="credits" ariaLabel={`${sel.name}: credits by day`} />
+          <BeforeAfterBars days={days} values={vals} fix={fix} fmt={(v) => fmtCr(v).replace(/ credits?$/, "")} label={`${sel.name}: credits by day`} />
         )}
       </ChartCard>
       <Card title="What changed" right={<CsvButton fileName={`before-after-${level}-${fix}`} columns={csvCols} rows={measures} />}>
-        <div className="metric-note">{`A day with no use counts as zero. Avg query time and queue wait are per query; cache is weighted by bytes scanned.`}</div>
+        <div className="metric-note">{`A day with no use counts as zero.${sel.level === "warehouse" && !missingMeasures.length ? " Avg query time and queue wait are per query; cache is weighted by bytes scanned." : ""}`}</div>
         <DrillTable
           aria={`What changed for ${sel.name}`}
           cols={[{ label: "Measure" }, { label: `Before · ${fmtInt(nB)} days`, num: true }, { label: `After · ${fmtInt(nA)} days`, num: true }, { label: "Change", num: true }]}
           rows={rows}
           n={20}
         />
+        {missingMeasures.length > 0 && (
+          <NaStrip title={`${missingMeasures.length === 1 ? missingMeasures[0].label : "Query measures"} not in this export`}
+            reason={`${missingMeasures.map((m) => m.label).join(", ")}: ${missWhy.join("; ")}`} />
+        )}
       </Card>
     </div>
   );
 }
+(ApCostBeforeAfter as any).ownsLede = true;

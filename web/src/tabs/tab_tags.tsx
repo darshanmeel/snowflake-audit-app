@@ -5,11 +5,12 @@
 import React from "react";
 import { Api } from "../api";
 import { fmtInt, fmtMoney, fmtPct } from "../format";
-import { IssueTile, StatusBars, fmtShare } from "../components/blocks";
-import type { StatusBarItem } from "../components/blocks";
-import { PatternCard } from "../components/primitives";
-import { DrillTable, SplitBar } from "../components/drill_table";
-import { scrollToAnchor } from "../components/overview_tile";
+import { IssueTile, fmtShare } from "../components/blocks";
+import { PatternCard, StatusPill } from "../components/primitives";
+import { DrillTable, MiniBar, SplitBar } from "../components/drill_table";
+import { KpiRow, scrollToAnchor } from "../components/overview_tile";
+import { CxBars, NaStrip } from "../components/cx_a";
+import type { CxBarItem } from "../components/cx_a";
 import { CsvButton } from "../components/csv";
 import type { CsvColumn } from "../components/csv";
 import type { Filters, Row } from "../types";
@@ -50,7 +51,7 @@ export function useTagCompliance(filters: Filters, windowDays: number, version: 
 }
 
 // The required keys, edited as a comma list. PUT writes the local settings file; the page refetches.
-export function RequiredTagsEditor({ onSaved }: { onSaved?: (() => void) | null }) {
+export function RequiredTagsEditor({ onSaved, compact }: { onSaved?: (() => void) | null; compact?: boolean }) {
   const [cfg, setCfg] = React.useState<any>(null);
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -72,6 +73,23 @@ export function RequiredTagsEditor({ onSaved }: { onSaved?: (() => void) | null 
       .finally(() => setBusy(false));
   };
   const max = cfg ? cfg.max : 20;
+  if (compact) {
+    return (
+      <div className="cx-req" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <label className="cx-req-label" htmlFor="cx-req-input">Set required keys</label>
+        <div className="cx-req-row">
+          <input id="cx-req-input" className="cx-req-input" placeholder="cost_center, team" value={draft}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value)}
+            title={`Up to ${max} keys, comma separated. Empty means no required keys: the page shows the most used keys instead.`} />
+          <button type="button" className="cx-req-save" disabled={busy || !cfg} onClick={() => save(parse())}>Save</button>
+        </div>
+        {cfg && (cfg.default || []).join(",") !== parse().join(",") && (
+          <button type="button" className="ck-link" disabled={busy} onClick={() => save(cfg.default || [])}>Reset to default</button>
+        )}
+        {msg && <span className="cx-muted">{msg}</span>}
+      </div>
+    );
+  }
   return (
     <div className="filter-group" style={{ flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
       <span className="filter-label">Required tag keys</span>
@@ -155,22 +173,31 @@ export function TagKeySpendBars({ spend, required }: { spend: Row | null | undef
   if (!spend) return null;
   const why = spend.reason === "unpriced" ? "– Spend is not priced in this export."
     : spend.reason === "no_cost_data" ? "– No cost data in this window." : null;
-  const items: StatusBarItem[] = (spend.per_key || []).filter((k: Row) => k.untagged_usd != null).map((k: Row) => {
+  const rows = (spend.per_key || []).filter((k: Row) => k.untagged_usd != null).sort((a: Row, b: Row) => Number(b.untagged_usd) - Number(a.untagged_usd));
+  const items: CxBarItem[] = rows.slice(0, 12).map((k: Row) => {
     const pct = k.untagged_pct == null ? null : Number(k.untagged_pct);
-    return {
-      key: k.tag_key, name: k.display_key || k.tag_key, value: Number(k.untagged_usd) || 0,
-      valueText: `${fmtMoney(k.untagged_usd, 0)} · ${fmtShare(pct)}${k.covered_by === "account tag" ? " · account tag reaches all" : ""}`,
-      status: !required ? "OK" : pct == null ? null : pct >= 50 ? "CRITICAL" : pct >= 20 ? "WARN" : "OK",
-    };
+    // A required key over the warning line reads in amber; a key that is not required stays plain.
+    return { key: k.tag_key, label: k.display_key || k.tag_key, value: Number(k.untagged_usd) || 0, tone: "hatch" as const,
+      valueText: fmtMoney(k.untagged_usd, 0), share: fmtShare(pct), strong: required && pct != null && pct >= 20 };
   });
-  return why ? <div className="chart-note-oneline">{why}</div>
-    : <StatusBars items={items} n={12} unitLabel="reached by no value" ariaLabel="Untagged spend by tag key" emptyText="No tag key in this window." />;
+  const viaAccount = rows.filter((k: Row) => k.covered_by === "account tag").map((k: Row) => k.display_key || k.tag_key);
+  if (why) return <div className="chart-note-oneline">{why}</div>;
+  if (!items.length) return <div className="chart-note-oneline">No tag key in this window.</div>;
+  return (
+    <div>
+      <CxBars ariaLabel="Untagged spend by tag key" labelWidth={150} items={items} />
+      {viaAccount.length > 0 && <div className="cx-moved-note">{`${viaAccount.join(" and ")} reach${viaAccount.length === 1 ? "es" : ""} all spend because an account tag covers everything.`}</div>}
+      {rows.length > items.length && <div className="cx-moved-note">{`${fmtInt(rows.length - items.length)} more keys not shown.`}</div>}
+    </div>
+  );
 }
 
 // Key x object type: the share of each type that carries the key. Shaded by the share missing it,
 // red for a required key and grey for one that is not; "–" where only tagged objects are listed.
-export function TagKeyMatrix({ types, keys, required }: { types: Row[]; keys: Row[]; required: boolean }) {
+export function TagKeyMatrix({ types: allTypes, keys, required }: { types: Row[]; keys: Row[]; required: boolean }) {
+  let types = allTypes;
   if (!types.length || !keys.length) return null;
+  types = types.filter((t) => t.total != null);
   const tint = (missingPct: number) => `color-mix(in srgb, ${required ? "var(--st-crit)" : "var(--text-3)"} ${Math.round(8 + missingPct * 0.5)}%, transparent)`;
   return (
     <div className="table-wrap">
@@ -199,6 +226,7 @@ export function TagKeyMatrix({ types, keys, required }: { types: Row[]; keys: Ro
           ))}
         </tbody>
       </table>
+      <div className="cx-tm-legend"><span>All carry it</span><span className="cx-tm-ramp" style={{ background: `linear-gradient(90deg, ${tint(0)}, ${tint(100)})` }} /><span>None carry it</span></div>
     </div>
   );
 }
@@ -227,6 +255,32 @@ export function missingTagRows(types: Row[]): MissingTagRow[] {
 }
 
 type TileSev = "critical" | "warn" | "ok" | "not_assessed" | "neutral";
+
+// The object lists behind the matrix, behind a real Show / Hide button.
+function MissingByType({ types, missingRows, win }: { types: Row[]; missingRows: MissingTagRow[]; win: number }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="card pc-card">
+      <div className="pc-head">
+        <div className="pc-titles">
+          <div className="pc-title">Objects missing each key, by type</div>
+          <div className="pc-sub">The object lists behind the coverage matrix</div>
+        </div>
+        <button type="button" className="pc-link" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide ▴" : "Show ▾"}</button>
+      </div>
+      {open && (
+        <div>
+          {missingRows.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
+              <CsvButton fileName={`tags-missing-first${MISSING_EXAMPLES_CAP}-per-key-${win}d`} columns={MISSING_TAG_CSV} rows={missingRows} />
+            </div>
+          )}
+          {types.map((t: Row) => <TagTypeCard key={t.entity_type} t={t} />)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function TagsPage({ filters, windowDays, onVerdict }: { filters: Filters; windowDays?: number | null; onVerdict?: ((verdict: string) => void) | null; priceLabel?: string | null }) {
   const win = windowDays || filters.window;
@@ -267,7 +321,7 @@ export function TagsPage({ filters, windowDays, onVerdict }: { filters: Filters;
     : !ok ? "Tag compliance: –, not in this export."
     : [costSpend && costSpend.untagged_pct != null && totalUsd != null
         ? `${fmtShare(Number(costSpend.untagged_pct))} of billed spend (${fmtMoney(costSpend.untagged_usd, 0)} of ${fmtMoney(totalUsd, 0)}) reaches no ${costName}.` : null,
-      `${fmtInt(keysInUse)} tag keys are in use and ${fmtInt(required ? keys.length : 0)} are required${hole && hole.c && Number(hole.c.missing) > 0 ? `; the biggest hole is ${hole.t.noun}, ${fmtInt(hole.c.missing)} of ${fmtInt(hole.t.total)} without one.` : "."}`].filter(Boolean).join(" ");
+      `${fmtInt(keysInUse)} tag keys are in use and ${required && keys.length ? `${fmtInt(keys.length)} ${keys.length === 1 ? "is" : "are"} required` : "none is required"}${hole && hole.c && Number(hole.c.missing) > 0 ? `; the biggest hole is ${hole.t.noun}, ${fmtInt(hole.c.missing)} of ${fmtInt(hole.t.total)} without one.` : "."}`].filter(Boolean).join(" ");
   React.useEffect(() => { if (onVerdict) onVerdict(verdict); }, [verdict, onVerdict]);
 
   const typeNoun = (t: Row) => String(t.noun || t.entity_type);
@@ -275,7 +329,7 @@ export function TagsPage({ filters, windowDays, onVerdict }: { filters: Filters;
     const c = (t.per_key || []).find((x: Row) => x.tag_key === costKey.tag_key);
     return c ? `${typeNoun(t)} ${fmtInt(c.tagged)} of ${fmtInt(t.total)}` : null;
   }).filter(Boolean).slice(0, 3).join(" · ") : "";
-  const covRows = costKey ? types.map((t) => {
+  const covRows = costKey ? listed.map((t) => {
     const c = (t.per_key || []).find((x: Row) => x.tag_key === costKey.tag_key);
     return { t, c };
   }).filter((x) => x.c) : [];
@@ -297,34 +351,30 @@ export function TagsPage({ filters, windowDays, onVerdict }: { filters: Filters;
       {ok && (
         <React.Fragment>
           {unlisted.length > 0 && (
-            <div className="scope-note">{`– ${unlisted.map(typeNoun).join(" and ")}: the export lists only tagged ones, so what is missing there is not known. Listed: ${listed.map((t) => `${fmtInt(t.total)} ${typeNoun(t)}`).join(" · ")}.`}</div>
+            <NaStrip title={<>{(() => { const t = unlisted.map(typeNoun).join(" and "); return t.charAt(0).toUpperCase() + t.slice(1); })()} <StatusPill kind="not_assessed" /></>}
+              reason={`The export lists only tagged ones (${unlisted.map((t) => { const c = costKey ? (t.per_key || []).find((x: Row) => x.tag_key === costKey.tag_key) : null; return `${fmtInt(c ? c.tagged : 0)} ${typeNoun(t)}`; }).join(" and ")} carry ${costName || "a key"}), so what is missing there is not known. Counted: ${listed.map((t) => `${fmtInt(t.total)} ${typeNoun(t)}`).join(", ")}.`} />
           )}
-          <div className="summary-tile-row compact sx-tiles-4">
+          <KpiRow className="tg-kpi">
             <IssueTile label={costName ? `No ${costName}` : "Spend no tag reaches"} status={costSpend ? sev(costSpend.untagged_pct == null ? null : Number(costSpend.untagged_pct)) : "not_assessed"}
               headline={costSpend && costSpend.untagged_pct != null ? fmtShare(Number(costSpend.untagged_pct)) : null} unit="of billed spend"
               missingReason={!costKey ? "no tag key in use" : spend && spend.reason === "unpriced" ? "spend is not priced in this export" : "no cost data in this window"}
-              base={costSpend && totalUsd != null ? `${fmtMoney(costSpend.untagged_usd, 0)} of ${fmtMoney(totalUsd, 0)} · tag ${costName}` : null}
+              base={costSpend && totalUsd != null ? `${fmtMoney(costSpend.untagged_usd, 0)} of ${fmtMoney(totalUsd, 0)} reaches no ${costName} tag.` : null}
               cause={whCell && whCell.c.missing_usd != null ? `Warehouses without it spent ${fmtMoney(whCell.c.missing_usd, 0)} of their own.` : null}
               onOpen={() => scrollToAnchor("tg-spend")} openLabel="Spend no tag reaches ↓" />
             <IssueTile label="Required tag keys" status={required ? (requiredInUse < keys.length ? "warn" : "ok") : "warn"}
               headline={`${fmtInt(required ? requiredInUse : 0)} of ${fmtInt(required ? keys.length : keysInUse)}`}
               unit={required ? "required keys are in use" : "keys in use are required"}
-              base={seen.slice(0, 3).map((s) => `${s.display_key || s.tag_key} on ${fmtInt(s.objects)}`).join(" · ") || null}
-              cause={required ? "Coverage below is for the required keys." : "With no required key, coverage counts as missing; below are the keys most objects carry."}
+              base={seen.length ? `${seen.slice(0, 3).map((s) => `${s.display_key || s.tag_key} is on ${fmtInt(s.objects)} objects`).join(", ")}.` : null}
+              chart={<RequiredTagsEditor compact onSaved={() => setVersion((v) => v + 1)} />}
               onOpen={() => scrollToAnchor("tg-keys")} openLabel="Most used keys ↓" />
             <IssueTile label={costName ? `${costName} on warehouses` : "Tag on warehouses"}
               status={whCell && whCell.c.coverage_pct != null ? sev(100 - Number(whCell.c.coverage_pct)) : "not_assessed"}
               headline={whCell && whCell.c.coverage_pct != null ? fmtShare(Number(whCell.c.coverage_pct)) : null} unit="of warehouses carry it"
               missingReason={!costKey ? "no tag key in use" : "warehouses are not listed in this export"}
-              base={whCell && whCell.c.coverage_pct != null ? [`${fmtInt(whCell.c.tagged)} of ${fmtInt(whCell.t.total)}`, otherTypes].filter(Boolean).join(" · ") : null}
-              cause="Warehouses are where the $ is; tasks, users and roles have none of their own here."
+              base={whCell && whCell.c.coverage_pct != null ? `${fmtInt(whCell.c.tagged)} of ${fmtInt(whCell.t.total)} carry it. Warehouses are where the $ is.` : null}
+              cause={otherTypes ? `Elsewhere: ${otherTypes}.` : null}
               onOpen={() => scrollToAnchor("tg-matrix")} openLabel="Coverage matrix ↓" />
-            {unlisted.length > 0 && (
-              <IssueTile label={unlisted.map(typeNoun).join(" & ")} status="not_assessed" headline={null}
-                missingReason={`not judged · ${unlisted.map((t) => { const c = costKey ? (t.per_key || []).find((x: Row) => x.tag_key === costKey.tag_key) : null; return `${fmtInt(c ? c.tagged : 0)} ${typeNoun(t)}`; }).join(" and ")} carry ${costName || "a key"}; the untagged ones are not listed`}
-                onOpen={() => scrollToAnchor("tg-matrix")} openLabel="Coverage matrix ↓" />
-            )}
-          </div>
+          </KpiRow>
 
           <div className="cj-charts-2">
             <div id="tg-spend">
@@ -333,7 +383,7 @@ export function TagsPage({ filters, windowDays, onVerdict }: { filters: Filters;
                 {spend && spend.note && <div className="sx-foot">{spend.note}</div>}
               </PatternCard>
             </div>
-            <PatternCard title={costName ? `${costName}: tagged vs not, by object type` : "Tagged vs not, by object type"} sub="Of each type's own count · untagged hatched · not listed reads –">
+            <PatternCard title={costName ? `${costName}, tagged and not, by object type` : "Tagged and not, by object type"} sub="Share of each type's own count · untagged hatched">
               {!covRows.length ? <div className="chart-note-oneline">No tag key in use.</div> : (
                 <DrillTable aria="Tagged vs not, by object type" n={10}
                   cols={[{ label: "Object type" }, { label: "Tagged · not", width: "minmax(70px, 1.4fr)" }, { label: "Carry it", num: true, width: "auto" }, { label: "Missing $", num: true, width: "auto" }]}
@@ -349,7 +399,7 @@ export function TagsPage({ filters, windowDays, onVerdict }: { filters: Filters;
           </div>
 
           <div id="tg-matrix">
-            <PatternCard title="Coverage by key and object type" sub="% of each type that carries the key · darker = more missing · hatched = only tagged ones are listed">
+            <PatternCard title="Coverage by key and object type" sub={`% of each type that carries the key · darker = more missing${unlisted.length ? ` · ${unlisted.map(typeNoun).join(" and ")} are left out (only tagged ones are listed)` : ""}`}>
               <TagKeyMatrix types={types} keys={keys} required={!!required} />
             </PatternCard>
           </div>
@@ -357,21 +407,13 @@ export function TagsPage({ filters, windowDays, onVerdict }: { filters: Filters;
           <div id="tg-keys">
             <PatternCard title="Most used tag keys" sub={`${fmtInt(seen.length)} keys on objects${(d.query_tag_keys || []).length ? ` · ${fmtInt(d.query_tag_keys.length)} more seen in QUERY_TAG` : ""}`}>
               <DrillTable aria="Most used tag keys" n={10} empty="No tag key on any object."
-                cols={[{ label: "Tag key", width: "minmax(110px, 1fr)" }, { label: "By object type", width: "minmax(0, 3fr)" }, { label: "Objects", num: true, width: "auto" }]}
-                rows={seen.map((k) => ({ key: String(k.tag_key), cells: [k.display_key || k.tag_key, tagPlain(k.by_type), fmtInt(k.objects)] }))} />
+                cols={[{ label: "Tag key", width: "minmax(110px, 1fr)" }, { label: "By object type", width: "minmax(0, 3fr)" }, { label: "", width: "minmax(60px, 1fr)" }, { label: "Objects", num: true, width: "auto" }]}
+                rows={seen.map((k) => ({ key: String(k.tag_key), cells: [k.display_key || k.tag_key, tagPlain(k.by_type),
+                  <MiniBar key="b" value={Number(k.objects) || 0} max={Math.max(1, ...seen.map((x) => Number(x.objects) || 0))} />, fmtInt(k.objects)] }))} />
             </PatternCard>
           </div>
 
-          <details className="card ws-method-list">
-            <summary>Objects missing each key, by type</summary>
-            {missingRows.length > 0 && (
-              <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
-                <CsvButton fileName={`tags-missing-first${MISSING_EXAMPLES_CAP}-per-key-${win}d`} columns={MISSING_TAG_CSV} rows={missingRows} />
-              </div>
-            )}
-            {types.map((t: Row) => <TagTypeCard key={t.entity_type} t={t} />)}
-          </details>
-          <RequiredTagsEditor onSaved={() => setVersion((v) => v + 1)} />
+          <MissingByType types={types} missingRows={missingRows} win={win} />
           {filters.tag && filters.tag.groups && filters.tag.groups.length ? <div className="scope-note">The Tag filter does not narrow this page.</div> : null}
         </React.Fragment>
       )}
