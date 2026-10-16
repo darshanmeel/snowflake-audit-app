@@ -12,7 +12,7 @@ import { DrawerBus } from "./drawer";
 import { withoutTotalRows } from "../tabs/tab_area";
 import { ApPanel, ApRow } from "./area_pages";
 import type { ApPageProps } from "./area_pages";
-import { Columns, Dumbbell, Meter, RankedBars } from "./charts_more";
+import { Columns, Dumbbell, RankedBars } from "./charts_more";
 import {
   DayKindTimeline, IssueTile, ShareBar, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf,
 } from "./blocks";
@@ -25,6 +25,8 @@ import {
   CheckTile, MoneyTile, Row2, Slot, dtChip, fmtSize, isFlagged, nameId, useCheck, useLede,
 } from "./area_ai_storage";
 import type { Chk } from "./area_ai_storage";
+import { CxChip, CxMissing, CxRanked, CxStat, CxTable, CxTwoBar } from "./cx_e";
+import type { CxRankItem } from "./cx_e";
 import type { FetchState, Finding, Row } from "../types";
 
 // ═══════════════════════ shared helpers ═══════════════════════
@@ -216,32 +218,32 @@ export function ApAccessRoles(p: ApPageProps) {
   }));
 
   return (
-    <div>
+    <div className="cx-e">
       <div className="summary-tile-row compact gov-role-tiles">
         <IssueTile label="PUBLIC can reach" loading={pub.loading} status={tileStatus(pub.f)}
           headline={pubAff ? fmtInt(pubAff.flagged) : null} unit={pubAff ? `of ${fmtInt(pubAff.total)} ${pubAff.noun}` : undefined}
           missingReason={why(pub) || "no count for this check"}
-          base={pub.rows ? `${plural(pubRows.length, "grant")} to PUBLIC · ${fmtInt(pubWrite)} can write or own` : null}
+          base={pub.rows ? `${plural(pubRows.length, "grant")} to PUBLIC; ${fmtInt(pubWrite)} of them can write or own.` : null}
           onOpen={open("sf_gov_public_role_grants")} openLabel="By object type ↓" />
         <IssueTile label="Broad grants" loading={broad.loading} status={tileStatus(broad.f)}
-          headline={broadAff ? fmtInt(broadAff.flagged) : null} unit={broadAff ? `of ${fmtInt(broadAff.total)} ${broadAff.noun} on roles many hold` : undefined}
+          headline={broadAff ? fmtInt(broadAff.flagged) : null} unit={broadAff ? `of ${fmtInt(broadAff.total)} ${broadAff.noun}` : undefined}
           missingReason={why(broad) || "no count for this check"}
-          base={broad.rows ? `${plural(broadRoles, "role")}${reach ? ` · held by ${fmtInt(reach.users_holding_broad)} of ${fmtInt(reach.active_users)} users` : ""} · ${fmtInt(broadWrite)} write or own · ${fmtInt(broadManage)} manage grants` : null}
+          base={broad.rows ? `On ${broadRoles === 1 ? "one role" : plural(broadRoles, "role")} that many users hold${reach ? `, ${fmtInt(reach.users_holding_broad)} of ${fmtInt(reach.active_users)} users` : ""}. ${fmtInt(broadWrite)} write or own; ${fmtInt(broadManage)} manage grants.` : null}
           onOpen={open("access_broad_grants")} openLabel="By role ↓" />
-        <IssueTile label="Privileges held by people, not roles" loading={false} status={tileStatus(direct)}
+        <IssueTile label="Direct grants" loading={false} status={tileStatus(direct)}
           headline={directAff ? fmtInt(directAff.flagged) : null} unit={directAff ? `of ${fmtInt(directAff.total)} ${directAff.noun}` : undefined}
           missingReason={!direct ? "not in this export" : notAssessedText(direct)}
-          base={directAff ? "direct role grants or a personal role with privileges" : null}
+          base={directAff ? "Privileges held by people, not roles: direct role grants or a personal role." : null}
           onOpen={open("sf_secx_direct_user_grants")} openLabel="Open →" />
         <IssueTile label="Managed access" loading={schemas.loading} status={tileStatus(findingOf(p, "sf_govx_schema_grant_control"))}
           headline={managedPct != null ? fmtShare(managedPct) : null} unit="of schemas"
           missingReason={why(schemas) || "no schemas the role can see"}
-          base={sRows.length ? `${fmtInt(managed)} of ${plural(sRows.length, "schema")}` : null}
+          base={sRows.length ? `${fmtInt(managed)} of ${plural(sRows.length, "schema")} use managed access.` : null}
           cause={sRows.length ? "Elsewhere, object owners hand out access instead of the schema owner." : null}
           onOpen={open("sf_govx_schema_grant_control")} openLabel="By database ↓" />
       </div>
       <ApRow>
-        <ApPanel {...p} id="sf_gov_public_role_grants" title="What PUBLIC can reach, by object type" subtitle="grants to PUBLIC · the dark part can write or own"
+        <ApPanel {...p} id="sf_gov_public_role_grants" title="What PUBLIC can reach, by object type" subtitle="Grants to PUBLIC · dark part = can write or own"
           build={(rows) => {
             const by = new Map<string, { value: number; whole: number }>();
             rows.forEach((r) => {
@@ -251,37 +253,55 @@ export function ApAccessRoles(p: ApPageProps) {
               if (WRITE_PRIV.test(String(r.privilege || ""))) cur.value += 1;
               by.set(k, cur);
             });
-            const items = [...by.entries()].map(([name, v]) => ({ name, value: v.value, whole: v.whole }));
+            const items = [...by.entries()].map(([name, v]) => ({ name, value: v.value, whole: v.whole })).sort((x, y) => y.whole - x.whole || y.value - x.value);
             if (!items.length) return null;
-            return <RankedBars items={items} n={8} valueFmt={(v) => fmtInt(v)} unitLabel="grants" ariaLabel="Grants to PUBLIC by object type" />;
-          }} />
-        <ApPanel {...p} id="sf_govx_schema_grant_control" title="Managed-access schemas" subtitle="only the schema owner can grant on its objects · by database, fewest first"
-          build={(rows) => {
-            if (!rows.length) return null;
-            const m = rows.filter((r) => isTrue(r.is_managed_access)).length;
-            const by = new Map<string, { value: number; total: number }>();
-            rows.forEach((r) => {
-              const k = String(r.database_name || "(no database)");
-              const cur = by.get(k) || { value: 0, total: 0 };
-              cur.total += 1;
-              if (isTrue(r.is_managed_access)) cur.value += 1;
-              by.set(k, cur);
-            });
-            const items: ShareItem[] = [...by.entries()].map(([name, v]) => ({ name, value: v.value, total: v.total }));
+            const max = Math.max(...items.map((x) => x.whole));
+            const writeOn = items.filter((x) => x.value > 0).map((x) => `${fmtInt(x.value)} ${x.name}`);
             return (
-              <div>
-                <Headline><b>{`${fmtInt(m)} of ${plural(rows.length, "schema")}`}</b>{" use managed access"}</Headline>
-                <ShareBar value={m} total={rows.length} noun="schemas" />
-                {items.length > 1 && <div className="gov-sub"><ShareBarList items={items} n={6} sort="asc" noun="schemas" /></div>}
-              </div>
+              <CxTable ariaLabel="Grants to PUBLIC by object type"
+                cols={[{ label: "Object type" }, { label: "", width: "45%" }, { label: "Grants", num: true }, { label: "Write or own", num: true }]}
+                foot={`${plural(items.length, "object type")}${writeOn.length ? ` · the ${plural(pubWrite, "grant")} that can write or own ${pubWrite === 1 ? "is" : "are"} on ${writeOn.join(" and ")}` : ""}.`}
+                rows={items.map((x) => ({ key: x.name, cells: [x.name, <CxTwoBar part={x.value} whole={x.whole} max={max} />, fmtInt(x.whole), x.value ? <b>{fmtInt(x.value)}</b> : "–"] }))} />
             );
           }} />
+        <div>
+          <ApPanel {...p} id="sf_govx_schema_grant_control" title="Managed-access schemas" subtitle="Only the schema owner can grant on its objects"
+            build={(rows) => {
+              if (!rows.length) return null;
+              const by = new Map<string, { value: number; total: number }>();
+              rows.forEach((r) => {
+                const k = String(r.database_name || "(no database)");
+                const cur = by.get(k) || { value: 0, total: 0 };
+                cur.total += 1;
+                if (isTrue(r.is_managed_access)) cur.value += 1;
+                by.set(k, cur);
+              });
+              // Databases with no managed schema read as one sentence; the rest as shares.
+              const none = [...by.entries()].filter(([, v]) => v.value === 0).map(([k]) => k).sort();
+              const some: CxRankItem[] = [...by.entries()].filter(([, v]) => v.value > 0)
+                .map(([k, v]) => ({ key: k, label: k, value: pctOf(v.value, v.total) ?? 0, strong: fmtShare(pctOf(v.value, v.total)), rest: `${fmtInt(v.value)} of ${plural(v.total, "schema")}` }))
+                .sort((x, y) => x.value - y.value);
+              const named = none.slice(0, 6);
+              return (
+                <div>
+                  <CxStat>{<span><b>{`${fmtInt(managed)} of ${plural(rows.length, "schema")}`}</b>{" use managed access."}</span>}</CxStat>
+                  {none.length > 0 && <CxStat>{`None of the schemas in ${named.join(", ")}${none.length > named.length ? ` or ${plural(none.length - named.length, "more database")}` : ""} use${none.length === 1 ? "s" : ""} managed access.`}</CxStat>}
+                  {some.length > 0 && <div className="cx-block"><CxRanked items={some} max={100} layout="above" ariaLabel="Managed-access share by database" /></div>}
+                </div>
+              );
+            }} />
+          <ApPanel {...p} id="access_broad_grants" title="Broad grants, by role" subtitle="Write, ownership, an admin role or MANAGE GRANTS on a role many users hold"
+            build={() => {
+              if (!roleItems.length) return null;
+              if (roleItems.length === 1) {
+                const r = roleItems[0], v = byRole.get(String(r.key))!;
+                return <CxStat>{<span>{`One role holds all ${plural(v.n, "broad grant")}: `}<b>{String(r.name)}</b>{`, held by ${plural(v.holders, "user")}.`}</span>}</CxStat>;
+              }
+              return <StatusBars items={roleItems} n={8} unitLabel="users hold it" ariaLabel="Broad grants by role"
+                onBarClick={(it) => DrawerBus.open({ id: "access_broad_grants", col: "grantee", val: String(it.key), label: String(it.name) })} />;
+            }} />
+        </div>
       </ApRow>
-      <ApPanel {...p} id="access_broad_grants" title="Broad grants, by role" subtitle="roles holding write, ownership, an admin role or MANAGE GRANTS · bar = users who hold the role"
-        build={() => (roleItems.length
-          ? <StatusBars items={roleItems} n={8} unitLabel="users hold it" ariaLabel="Broad grants by role"
-              onBarClick={(it) => DrawerBus.open({ id: "access_broad_grants", col: "grantee", val: String(it.key), label: String(it.name) })} />
-          : null)} />
       <GovGrantsByPrivilege p={p} />
       <GovUnusedGrantsFit p={p} />
     </div>
@@ -300,36 +320,48 @@ const ALL_USERS_ID = "sf_secx_user_auth_state";
 const AGE_BANDS: [string, number, number][] = [
   ["under 90 days", 0, 90], ["90-180 days", 90, 180], ["180 days-1 year", 180, 365], ["1-2 years", 365, 730], ["over 2 years", 730, Infinity],
 ];
-const AGE_COLORS = ["var(--seq-1)", "var(--seq-2)", "var(--seq-3)", "var(--seq-4)", "var(--seq-5)"];
 
-/** Credentials held, as one bar, then password age: both from the key-and-password check. */
+/** Credentials held, ranked, label above each bar: from the key-and-password check. */
 function SignInMix({ rows, population }: { rows: Row[]; population: number | null }) {
   const n = (pred: (r: Row) => boolean) => rows.filter(pred).length;
   const pw = (r: Row) => isTrue(r.has_password), key = (r: Row) => isTrue(r.has_rsa_key), mfa = (r: Row) => isTrue(r.has_mfa);
-  const segs: ShareSegment[] = [
-    { label: "Password only, no MFA", value: n((r) => pw(r) && !mfa(r) && !key(r)), color: "var(--c1)" },
-    { label: "Password and MFA", value: n((r) => pw(r) && mfa(r) && !key(r)), color: "var(--c2)" },
-    { label: "Password and key pair", value: n((r) => pw(r) && key(r)), color: "var(--c3)" },
-    { label: "Key pair only", value: n((r) => !pw(r) && key(r)), color: "var(--c4)" },
+  const parts: [string, number][] = [
+    ["Password only, no MFA", n((r) => pw(r) && !mfa(r) && !key(r))],
+    ["Password and MFA", n((r) => pw(r) && mfa(r) && !key(r))],
+    ["Password and key pair", n((r) => pw(r) && key(r))],
+    ["Key pair only", n((r) => !pw(r) && key(r))],
   ];
-  // Users with neither (SSO, OAuth or nothing) are the rest of the base, drawn hatched.
+  // Users with neither (SSO, OAuth or nothing) are the rest of the base.
   const rest = population ? Math.max(0, population - rows.length) : 0;
-  if (rest > 0) segs.push({ label: "No password or key (SSO, OAuth or none)", value: rest, unknown: true });
   const base = population || rows.length;
-  const ages = rows.filter((r) => pw(r) && r.password_age_days != null).map((r) => numOrZero(r.password_age_days));
-  const ageSegs = AGE_BANDS.map(([label, lo, hi], i) => ({ label, value: ages.filter((a) => a >= lo && a < hi).length, color: AGE_COLORS[i] }));
-  const old = ages.filter((a) => a >= 365).length;
-  if (segs.filter((s) => s.value > 0).length < 2) return null;
+  const items: CxRankItem[] = parts.map(([label, v]) => ({ key: label, label, value: v, strong: plural(v, "user"), rest: fmtShare(pctOf(v, base)) }));
+  if (rest > 0) items.push({ key: "rest", label: "No password or key (SSO, OAuth or none)", value: rest, other: true, strong: plural(rest, "user"), rest: fmtShare(pctOf(rest, base)) });
+  if (items.filter((x) => x.value > 0).length < 2) return null;
   return (
-    <div className="ais-stack-pair">
-      <StackedShareBar segments={segs} valueFmt={(v) => plural(v, "user")} ariaLabel="Users by sign-in credential"
-        totalLabel={<span><b>{`${fmtInt(segs[0].value)} of ${plural(base, "user")}`}</b>{" have a password and no MFA"}</span>} />
-      {ageSegs.filter((s) => s.value > 0).length >= 2 && (
-        <div>
-          <Headline>{"Password age · "}<b>{`${fmtInt(old)} of ${plural(ages.length, "password")}`}</b>{" over a year old"}</Headline>
-          <Meter segments={ageSegs} valueFmt={(v: number) => plural(v, "user")} ariaLabel="Password age" />
-        </div>
-      )}
+    <div>
+      <CxStat>{<span><b>{`${fmtInt(parts[0][1])} of ${plural(base, "user")}`}</b>{" have a password and no MFA."}</span>}</CxStat>
+      <div className="cx-block"><CxRanked items={items.filter((x) => x.value > 0).sort((x, y) => y.value - x.value)} layout="above" max={base} ariaLabel="Users by sign-in credential" /></div>
+    </div>
+  );
+}
+
+// Password age, oldest last; a darker shade is an older band.
+const AGE_SHADES = ["var(--seq-1)", "var(--seq-2)", "var(--seq-3)", "var(--seq-4)", "var(--seq-5)"];
+
+/** Password age bands in time order, each its own row, labelled directly. */
+function PasswordAge({ rows }: { rows: Row[] }) {
+  const ages = rows.filter((r) => isTrue(r.has_password) && r.password_age_days != null).map((r) => numOrZero(r.password_age_days));
+  if (ages.length < 2) return null;
+  const items: CxRankItem[] = AGE_BANDS.map(([label, lo, hi], i) => {
+    const v = ages.filter((x) => x >= lo && x < hi).length;
+    return { key: label, label: label.charAt(0).toUpperCase() + label.slice(1), value: v, color: AGE_SHADES[i], strong: fmtInt(v), rest: fmtShare(pctOf(v, ages.length)) };
+  });
+  const old = ages.filter((x) => x >= 365).length;
+  return (
+    <div>
+      <CxStat>{<span><b>{`${fmtInt(old)} of ${plural(ages.length, "password")}`}</b>{" are over a year old."}</span>}</CxStat>
+      <div className="cx-block"><CxRanked items={items} ariaLabel="Password age" /></div>
+      <div className="cx-foot">{"Darker = older. The last two rows are the passwords over a year old."}</div>
     </div>
   );
 }
@@ -352,44 +384,52 @@ export function ApAccessUsers(p: ApPageProps) {
     aV ? `${ofText(aV)} use a password instead of a key pair.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <AffTile c={mfa} label="People without MFA" noun="users" openLabel="The fix →" onOpen={() => DrawerBus.open({ id: "sf_sec_users_without_mfa" })}
           cause={(rows) => `${fmtInt(admins)} of the ${fmtInt(rows.filter(isFlagged).length)} hold ACCOUNTADMIN, SECURITYADMIN or ORGADMIN.`} />
         <AffTile c={stale} label="Users who never sign in" noun="users"
           cause={(rows) => {
             const fl = rows.filter(isFlagged);
-            return `${fmtInt(fl.filter((r) => isTrue(r.never_logged_in)).length)} never signed in · ${fmtInt(fl.filter((r) => r.admin_roles).length)} can use an admin role`;
+            return `Still enabled. ${fmtInt(fl.filter((r) => isTrue(r.never_logged_in)).length)} never signed in; ${fmtInt(fl.filter((r) => r.admin_roles).length)} can use an admin role.`;
           }} />
         <AffTile c={svc} label="Service users with a password" as="count" noun="service users"
-          cause={(rows) => `${fmtInt(rows.filter((r) => isFlagged(r) && numOrZero(r.password_logins) > 0).length)} signed in with a password in the window; a key pair is the safe credential.`} />
-        <FindingTile p={p} id="sf_secx_direct_user_grants" label="Privileges held by people, not roles" tab="access" subtab="roles" openLabel="Roles & grants →"
+          cause={(rows) => `${fmtInt(rows.filter((r) => isFlagged(r) && numOrZero(r.password_logins) > 0).length)} signed in with a password, not a key pair, in the window.`} />
+        <FindingTile p={p} id="sf_secx_direct_user_grants" label="Direct grants" tab="access" subtab="roles" openLabel="Roles & grants →"
           cause="Direct grants or a personal role with privileges: access that leaves with the person." />
       </SummaryTileRow>
       <Row2>
-        <Slot c={cred} title="How users can sign in" subtitle={population ? `credentials held, of all ${fmtInt(population)} users` : "credentials held, users with a password or key"}>
+        <Slot c={cred} title="How users can sign in" subtitle={population ? `Credentials held, of all ${fmtInt(population)} users` : "Credentials held, users with a password or key"}>
           {(rows) => <SignInMix rows={rows} population={population} />}
         </Slot>
-        <Slot c={mfa} title="Who signs in without MFA, by role" subtitle="people with a password and no MFA, by default role · bar = users · dot = status">
-          {(rows) => {
-            const items: StatusBarItem[] = tally(rows.filter(isFlagged), (r) => String(r.default_role || "(no default role)"), (r) => numOrZero(r.password_only_logins))
-              .map((g) => ({ key: g.name, name: g.name, value: g.n, status: g.status, valueText: `${plural(g.n, "user")} · ${fmtInt(g.value)} password sign-ins` }));
-            return items.length ? <StatusBars items={items} n={8} ariaLabel="People without MFA by default role"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_sec_users_without_mfa", col: "default_role", val: String(it.key), label: it.name })} /> : null;
-          }}
+        <Slot c={cred} title="Password age" subtitle="Passwords, by time since the last change">
+          {(rows) => <PasswordAge rows={rows} />}
         </Slot>
       </Row2>
+      <Slot c={mfa} title="Who signs in without MFA, by role" subtitle="People with a password and no MFA, by default role · bar = users · dot = status">
+        {(rows) => {
+          const groups = tally(rows.filter(isFlagged), (r) => String(r.default_role || "(no default role)"), (r) => numOrZero(r.password_only_logins))
+            .sort((x, y) => y.n - x.n || y.value - x.value);
+          if (!groups.length) return null;
+          const max = Math.max(...groups.map((g) => g.n));
+          return <CxTable ariaLabel="People without MFA by default role" n={8}
+            cols={[{ label: "Role" }, { label: "", width: "45%" }, { label: "Users", num: true }, { label: "Password sign-ins", num: true }]}
+            rows={groups.map((g) => ({ key: g.name, status: g.status,
+              onClick: () => DrawerBus.open({ id: "sf_sec_users_without_mfa", col: "default_role", val: g.name, label: g.name }),
+              cells: [g.name, <CxTwoBar part={g.n} whole={g.n} max={max} />, <b>{fmtInt(g.n)}</b>, fmtInt(g.value)] }))} />;
+        }}
+      </Slot>
       <GovFailedByCause p={p} />
-      <Slot c={mfa} title="Person users signing in with a password and no MFA" subtitle="admins first · click a row for its sign-ins and the fix">
+      <Slot c={mfa} title="People signing in with a password and no MFA" subtitle="Admins first · select a row for its sign-ins and the fix">
         {(rows) => (
-          <DrillTable aria="People without MFA" n={10}
-            cols={[{ label: "User" }, { label: "Admin roles", width: "minmax(80px, 1.4fr)" }, { label: "Password sign-ins", num: true, width: "auto" }, { label: "Last sign-in", num: true, width: "auto" }]}
+          <CxTable ariaLabel="People without MFA" n={10}
+            cols={[{ label: "User" }, { label: "Admin role" }, { label: "Password sign-ins", num: true }, { label: "Last sign-in", num: true }]}
             rows={rows.filter(isFlagged)
               .sort((a, b) => Number(ADMIN_RE.test(String(b.admin_roles || ""))) - Number(ADMIN_RE.test(String(a.admin_roles || ""))) || numOrZero(b.password_only_logins) - numOrZero(a.password_only_logins))
               .map((r) => ({
                 key: `${r.account_id}|${r.user_id ?? r.user_name}`, status: r.status,
-                onOpen: drawerBy("sf_sec_users_without_mfa", "user_name", r.user_name, nameId(r.user_name, r.user_id)),
-                cells: [nameId(r.user_name, r.user_id, "(no user)"), r.admin_roles ? dtChip(String(r.admin_roles).split(",")[0].trim(), ADMIN_RE.test(String(r.admin_roles)) ? "CRITICAL" : "WARN") : "–",
+                onClick: drawerBy("sf_sec_users_without_mfa", "user_name", r.user_name, nameId(r.user_name, r.user_id)),
+                cells: [nameId(r.user_name, r.user_id, "(no user)"), r.admin_roles ? <CxChip status={ADMIN_RE.test(String(r.admin_roles)) ? "CRITICAL" : "WARN"}>{String(r.admin_roles).split(",")[0].trim()}</CxChip> : <span className="cx-muted">None</span>,
                   fmtInt(numOrZero(r.password_only_logins)), lastDay(r.last_success_login)],
               }))} />
         )}
@@ -412,7 +452,7 @@ const PERIMETER_CONTROLS: [string, string][] = [
   ["sf_secx_secrets_hygiene", "Secrets"],
 ];
 
-/** One row per control: the flagged share of what it judged; a control that did not run is hatched. */
+/** One row per control: the flagged share of what it judged; a control that did not run says why. */
 function ControlRows({ p }: { p: ApPageProps }) {
   const rows = PERIMETER_CONTROLS.map(([id, label]) => {
     const f = findingOf(p, id);
@@ -420,21 +460,21 @@ function ControlRows({ p }: { p: ApPageProps }) {
     const ran = !!f && b !== "NOT_ASSESSED" && b !== "ERROR";
     const a = f && f.affected;
     const why = !f ? "not in this export" : notAssessedText(f).replace(/^Not assessed: /, "");
+    const share = ran && a && Number(a.total) > 0 ? pctOf(Number(a.flagged), Number(a.total)) : null;
     return {
       key: id, status: ran ? (b === "CRITICAL" || b === "WARN" ? b : "OK") : "NOT_ASSESSED",
-      onOpen: f ? () => DrawerBus.open({ id }) : null,
+      onClick: f ? () => DrawerBus.open({ id }) : null,
       cells: [label,
-        ran && a ? <MiniBar key="b" value={Number(a.flagged)} max={Number(a.total)} /> : <MiniBar key="b" value={1} max={1} hatched />,
-        ran && a ? ofText({ flagged: Number(a.flagged), total: Number(a.total), noun: String(a.noun) }) : ran ? "nothing to judge" : `– ${why}`],
+        share != null ? <span className="cx-bars-track" aria-hidden="true"><span className="cx-bars-fill" style={{ width: `${share}%` }} /></span> : <span className="cx-muted">{`– ${why}`}</span>,
+        share != null ? <b>{fmtShare(share)}</b> : "–",
+        ran && a ? ofText({ flagged: Number(a.flagged), total: Number(a.total), noun: String(a.noun) }) : ran ? "nothing to judge" : "–"],
     };
   });
   const judged = rows.filter((r) => r.status !== "NOT_ASSESSED");
   const flagged = judged.filter((r) => r.status !== "OK").length;
   return (
-    <ChartCard title="Account perimeter, control by control" subtitle="share of each control's objects that are flagged · hatched = could not be judged" takeaway={null}>
-      <Headline><b>{`${fmtInt(flagged)} of ${plural(judged.length, "control")}`}</b>{` flagged${rows.length > judged.length ? ` · ${fmtInt(rows.length - judged.length)} not judged` : ""}`}</Headline>
-      <DrillTable aria="Perimeter controls" n={PERIMETER_CONTROLS.length}
-        cols={[{ label: "Control" }, { label: "Flagged share", width: "minmax(70px, 1.2fr)" }, { label: "Flagged", num: true, width: "auto" }]} rows={rows} />
+    <ChartCard title="Account perimeter, control by control" subtitle={`Share of each control's objects that are flagged · ${fmtInt(flagged)} of ${plural(judged.length, "control")} flagged${rows.length > judged.length ? ` · ${fmtInt(rows.length - judged.length)} not judged` : ""}`} takeaway={null}>
+      <CxTable ariaLabel="Perimeter controls" cols={[{ label: "Control" }, { label: "Flagged share", width: "45%" }, { label: "Share", num: true }, { label: "Flagged", num: true }]} rows={rows} />
     </ChartCard>
   );
 }
@@ -457,37 +497,38 @@ export function ApAccessPerimeter(p: ApPageProps) {
   const other = (id: string) => { const f = findingOf(p, id); const a = f && f.affected; return a && bandOf(f!) !== "NOT_ASSESSED" ? `${fmtInt(a.flagged)} of ${fmtInt(a.total)} ${a.noun}` : null; };
   const userRows = (rows: Row[]) => rows.filter((r) => String(r.scope || "").toUpperCase() !== "ACCOUNT");
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <AffTile c={np} label="Network policy" as="count" noun="users" openLabel="The fix →" onOpen={() => DrawerBus.open({ id: "sf_sec_network_policy_coverage" })}
           extra={(rows) => (rows.some((r) => String(r.scope || "").toUpperCase() === "ACCOUNT" && r.effective_policy) ? "account has a policy" : "none on the account")}
-          cause={(rows) => `${fmtInt(userRows(rows).filter((r) => isFlagged(r) && r.admin_roles).length)} of them are admins; ${fmtInt(rows.filter((r) => isTrue(r.allows_any_ip)).length)} policies allow any IP.`} />
+          cause={(rows) => `No policy of their own limits where they sign in from. ${fmtInt(userRows(rows).filter((r) => isFlagged(r) && r.admin_roles).length)} of them are admins; ${fmtInt(rows.filter((r) => isTrue(r.allows_any_ip)).length)} policies allow any IP.`} />
         <AffTile c={set} label="Account parameters" as="count" noun="settings" openLabel="Settings ↓"
-          cause={(rows) => { const fl = rows.filter(isFlagged).map((r) => String(r.setting || "")); return fl.length ? `${fl.slice(0, 2).join(", ")}${fl.length > 2 ? ` +${fmtInt(fl.length - 2)}` : ""} not as recommended` : "Every setting as recommended"; }} />
+          cause={(rows) => { const n = rows.filter(isFlagged).length; return n ? `${plural(n, "setting")} not as recommended; the list is below.` : "Every setting as recommended."; }} />
         <AffTile c={sess} label="Session policy coverage" noun="users" />
         <AffTile c={integ} label="Paths in and out" as="count" noun="integrations" openLabel="Checks ↓"
           extra={() => [other("sf_govx_external_stage_credentials"), other("sf_secx_secrets_hygiene")].filter(Boolean).join(" · ") || null}
-          cause={(rows) => `${fmtInt(rows.filter((r) => isFlagged(r) && isTrue(r.public_usage)).length)} open to PUBLIC · ${fmtInt(rows.filter((r) => isFlagged(r) && isTrue(r.egress_path)).length)} a path out`} />
+          cause={(rows) => `${fmtInt(rows.filter((r) => isFlagged(r) && isTrue(r.public_usage)).length)} open to PUBLIC; ${fmtInt(rows.filter((r) => isFlagged(r) && isTrue(r.egress_path)).length)} a path out.`} />
       </SummaryTileRow>
+      <ControlRows p={p} />
+      <Slot c={set} title="Account-level settings" subtitle="What the account itself enforces, for every user and session · snapshot at export">
+        {(rows) => (
+          <CxTable ariaLabel="Account security settings"
+            cols={[{ label: "Setting" }, { label: "Why it matters" }, { label: "State" }]}
+            rows={[...rows].sort((a, b) => (STATUS_RANK[String(b.status)] ?? 0) - (STATUS_RANK[String(a.status)] ?? 0)).map((r) => ({
+              key: String(r.setting), status: r.status, onClick: drawerBy("sf_sec_account_security_settings", "setting", r.setting, String(r.setting)),
+              cells: [<code className="cx-code">{String(r.setting || "(unnamed setting)")}</code>, <span className="cx-why">{String(r.why || "–")}</span>,
+                <span className="cx-nowrap">{isFlagged(r) ? "Not as recommended" : "As recommended"}</span>],
+            }))} />
+        )}
+      </Slot>
       <Row2>
-        <ControlRows p={p} />
-        <Slot c={set} title="Account-level settings" subtitle="what the account itself enforces, for every user and session · snapshot at export">
-          {(rows) => (
-            <DrillTable aria="Account security settings" n={10}
-              cols={[{ label: "Setting" }, { label: "Why it matters", width: "minmax(80px, 1.6fr)" }, { label: "State", width: "auto" }]}
-              rows={[...rows].sort((a, b) => (STATUS_RANK[String(b.status)] ?? 0) - (STATUS_RANK[String(a.status)] ?? 0)).map((r) => ({
-                key: String(r.setting), status: r.status, onOpen: drawerBy("sf_sec_account_security_settings", "setting", r.setting, String(r.setting)),
-                cells: [String(r.setting || "(unnamed setting)"), String(r.why || "–"), dtChip(isFlagged(r) ? "not as recommended" : "as recommended", r.status)],
-              }))} />
-          )}
-        </Slot>
-      </Row2>
-      <Row2>
-        <Slot c={np} title="Who has a network policy" subtitle="users by the policy that applies to them · bar = users · dot = status">
+        <Slot c={np} title="Who has a network policy" subtitle="Users by the policy that applies to them · dot = status">
           {(rows) => {
-            const items: StatusBarItem[] = tally(userRows(rows), (r) => (r.effective_policy ? String(r.effective_policy) : "No policy"))
-              .map((g) => ({ key: g.name, name: g.name, value: g.n, status: g.status, valueText: plural(g.n, "user") }));
-            return items.length ? <StatusBars items={items} n={8} ariaLabel="Users by network policy" onBarClick={() => np.open()} /> : null;
+            const groups = tally(userRows(rows), (r) => (r.effective_policy ? String(r.effective_policy) : "No policy")).sort((x, y) => y.n - x.n);
+            if (!groups.length) return null;
+            const max = Math.max(...groups.map((g) => g.n));
+            return <CxTable ariaLabel="Users by network policy" n={8} cols={[{ label: "Policy" }, { label: "", width: "45%" }, { label: "Users", num: true }]}
+              rows={groups.map((g) => ({ key: g.name, status: g.status, onClick: () => np.open(), cells: [<code className="cx-code">{g.name}</code>, <CxTwoBar part={g.n} whole={g.n} max={max} />, plural(g.n, "user")] }))} />;
           }}
         </Slot>
         <Slot c={tc} title="Trust Center findings by severity" subtitle="open findings with at least one entity at risk">
@@ -1701,8 +1742,14 @@ function GovFailedByCause({ p }: { p: ApPageProps }) {
   const fl = emptyAs(useAggChk(p, "sf_sec_failed_logins", [], "sum", first, rest), "no sign-in failed.");
   const users = aggOne(useAggChk(p, "sf_sec_failed_logins", [], "count_distinct", "user_name"));
   const ips = aggOne(useAggChk(p, "sf_sec_failed_logins", [], "count_distinct", "client_ip"));
+  // A raw server error is logged, never shown; a not-assessed reason reads as it is.
+  if (!fl.loading && fl.why && !fl.empty) {
+    const raw = /^\d{3}\b|column|exception|error/i.test(fl.why);
+    if (raw) console.warn(`sf_sec_failed_logins: ${fl.why}`);
+    return <CxMissing title="Failed sign-ins by cause" reason={raw ? "Couldn't read failed sign-ins from this export." : fl.why} onOpen={fl.open} />;
+  }
   return (
-    <Slot c={fl} title="Failed sign-ins by cause" subtitle="every failed sign-in in the window · read from Snowflake's error code and message">
+    <Slot c={fl} title="Failed sign-ins by cause" subtitle="Every failed sign-in in the window · read from Snowflake's error code and message">
       {(rows) => {
         const g = rows[0] || {};
         const sumOf = (col: string) => numOrZero(col === first ? g.value : (g.also || {})[col]);

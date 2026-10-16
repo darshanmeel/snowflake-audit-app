@@ -304,6 +304,16 @@ export function CxCellBar({ value, max, text }: { value: number; max: number; te
   );
 }
 
+/** A bar for a table cell in two tones: the whole light, the `part` of it dark, scaled to `max`. */
+export function CxTwoBar({ part, whole, max }: { part: number; whole: number; max: number }) {
+  const w = (v: number) => `${Math.max(0, Math.min(100, (100 * v) / (max || 1)))}%`;
+  return (
+    <span className="cx-twobar" aria-hidden="true">
+      <span className="cx-twobar-whole" style={{ width: w(whole) }}><span className="cx-twobar-part" style={{ width: whole ? `${(100 * part) / whole}%` : 0 }} /></span>
+    </span>
+  );
+}
+
 /** A status word chip: Critical / Warning tinted, anything else neutral. */
 export function CxChip({ status, children }: { status?: string | null; children?: React.ReactNode }) {
   const k = String(status || "").toUpperCase();
