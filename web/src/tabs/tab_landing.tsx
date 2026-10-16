@@ -9,8 +9,10 @@ import { AREA_REGISTRY, COST_MONEY_COL } from "../components/tab_registry";
 import { KindChip, PatternCard, bandOf, noDataText } from "../components/primitives";
 import { useNames } from "../components/names";
 import { reconciliationLine, useCostCenterAllocation } from "../components/tag_rollup";
-import { DayKindTimeline, IssueTile, StackedShareBar, StatusBars, fmtShare, pctOf, statusBarColor } from "../components/blocks";
+import { DayKindTimeline, IssueTile, StackedShareBar, fmtShare, pctOf, statusBarColor } from "../components/blocks";
 import { NameId } from "../components/blocks_2";
+import { CxAreaCounts, CxChip, CxDot, CxRanked, CxStrip, CxTable } from "../components/cx_e";
+import type { CxAreaRow, CxRankItem } from "../components/cx_e";
 import { whNameId } from "../components/de_blocks";
 import { ChartNote } from "../components/charts";
 import { ChecksList } from "../components/checks_list";
@@ -21,7 +23,7 @@ import { buildWasteWorklist, overlapNote, wasteTotal } from "../components/waste
 import { getCheckLabel } from "../components/labels";
 import { SpendMoversCard, buildSpendMovers } from "./tab_money";
 import { withoutTotalRows } from "./tab_area";
-import { ChecksRanStrip, DAY_KINDS, OV_TOTAL_CREDITS, SecurityScorecard, dayKindOf, fillGaps, sumPick } from "./tab_overview";
+import { ChecksRanStrip, DAY_KINDS, OV_TOTAL_CREDITS, dayKindOf, fillGaps, sumPick } from "./tab_overview";
 import type { ScoreRow, OverviewProps } from "./tab_overview";
 import type { FetchState, Finding, Row } from "../types";
 
@@ -258,6 +260,26 @@ function daysBetween(from: unknown, to: unknown): number | null {
   return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, Math.round((b - a) / 86400000)) : null;
 }
 
+// The Governance lede reads these two counts as sentences, in this order.
+const GOV_LEDE = [
+  { id: "sf_sec_users_without_mfa", says: "sign in with a password and no MFA" },
+  { id: "sf_gov_sensitive_columns_unprotected", says: "with sensitive columns have no masking policy" },
+];
+// Three primary KPIs; the rest go in the strip under them.
+const GOV_PRIMARY = ["sf_sec_users_without_mfa", "sf_gov_sensitive_columns_unprotected", "sf_sec_privileged_grant_changes"];
+
+/** Databases by unmasked share, the first 8, then a link to the rest on PII › Sensitive data. */
+function GovDbList({ items, goPii }: { items: CxRankItem[]; goPii: () => void }) {
+  const shown = items.slice(0, 8);
+  return (
+    <div>
+      <CxRanked items={shown} max={100} labelWidth={200} ariaLabel="Unmasked sensitive columns by database" />
+      <div className="cx-foot cx-foot-left"><span>{"Same measure and order as PII › Sensitive data."}</span>
+        {items.length > shown.length && <button type="button" className="cx-linkbtn" onClick={goPii}>{`${fmtInt(items.length - shown.length)} more ${items.length - shown.length === 1 ? "database" : "databases"} →`}</button>}</div>
+    </div>
+  );
+}
+
 export function GovOverviewContent({ filters, meta, goTo, setVerdict, allFindingsIndex }: OverviewProps) {
   const byId: Record<string, Finding> = allFindingsIndex || {};
   const findingsReady = Object.keys(byId).length > 0;
@@ -273,12 +295,15 @@ export function GovOverviewContent({ filters, meta, goTo, setVerdict, allFinding
   const notRunList = govFindings.filter((f) => ["NOT_ASSESSED", "ERROR"].includes(bandOf(f)));
   const ran = govFindings.length - notRunList.length;
 
-  const pctFor = (f: Finding | undefined) => { const a = affOf(f); return a ? pctOf(a.flagged, a.total) : null; };
+  // The lede: the first two headline counts as plain sentences, then the critical count.
+  const said = GOV_LEDE.map((x) => ({ x, a: affOf(byId[x.id]) })).filter((y) => y.a && y.a.flagged > 0)
+    .map((y) => `${fmtInt(y.a!.flagged)} of ${fmtInt(y.a!.total)} ${y.a!.noun} ${y.x.says}`).slice(0, 2);
   const lede = !findingsReady ? "…" : [
-    GOV_CARDS.map((c) => ({ c, p: pctFor(byId[c.id]) })).filter((x) => x.p != null && x.p > 0).map((x) => `${fmtShare(x.p)} ${x.c.phrase}`).join(", "),
+    said.length ? `${said.join(", and ")}.`.replace(/^./, (x) => x.toUpperCase()) : null,
     `${fmtInt(crit)} of ${fmtInt(ran)} governance checks that ran are critical.`,
-  ].filter(Boolean).join(". ");
-  React.useEffect(() => { if (setVerdict) setVerdict(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
+  ].filter(Boolean).join(" ");
+  // Deferred one tick: the page frame clears its sentence after the first render's effects.
+  React.useEffect(() => { const t = window.setTimeout(() => { if (setVerdict) setVerdict(lede); }, 0); return () => window.clearTimeout(t); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Who holds the risk: broad grants by the role that holds them.
   const grantRows: Row[] | null = okRows(grantState) ? grantState.data!.rows : null;
@@ -312,95 +337,108 @@ export function GovOverviewContent({ filters, meta, goTo, setVerdict, allFinding
   const mfaShown = mfaSorted.slice(0, 8);
   const mfaAff = affOf(byId.sf_sec_users_without_mfa);
 
+  const tile = (c: typeof GOV_CARDS[number]) => {
+    const f = byId[c.id];
+    const a = affOf(f);
+    const sev = sevOf(f);
+    const open = () => goTo({ tab: c.tab, subtab: c.subtab, focusQueryId: c.id });
+    if (!f || sev === "not_assessed") {
+      return <IssueTile key={c.id} label={c.label} loading={!findingsReady} headline={null} status={findingsReady ? "not_assessed" : "neutral"}
+        missingReason={f && f.not_assessed && f.not_assessed.label ? f.not_assessed.label : "not in this export"} onOpen={open} openLabel={c.link} />;
+    }
+    const counts = f.status_counts || {};
+    const flaggedRows = numOrZero(counts.CRITICAL) + numOrZero(counts.WARN);
+    const when = f.windowed === false ? "Snapshot at export." : `Last ${filters.window} days.`;
+    const extra = c.id === "sf_gov_sensitive_columns_unprotected" && a && !/column/i.test(a.noun) ? `, ${fmtInt(flaggedRows)} columns in all` : "";
+    // Broad grants: say who holds them, in place of a one-bar chart.
+    const holder = c.id === "access_broad_grants" && grantRows && grantRows.length ? (() => {
+      const top = [...byGrantee.entries()].sort((x, y) => y[1].n - x[1].n)[0];
+      return byGrantee.size === 1 ? `All ${fmtInt(top[1].n)} sit on one role, ${top[0]}.` : `Most sit on ${top[0]}: ${fmtInt(top[1].n)} of ${fmtInt(grantRows.length)}.`;
+    })() : null;
+    return (
+      <IssueTile key={c.id} label={c.label} status={a && a.flagged === 0 ? "ok" : sev}
+        headline={a ? fmtShare(pctOf(a.flagged, a.total)) : fmtInt(flaggedRows)} unit={a ? `of ${a.noun}` : "flagged rows"}
+        base={a ? `${fmtInt(a.flagged)} of ${fmtInt(a.total)} ${a.noun}${extra}. ${holder || c.why}` : c.why}
+        cause={when} onOpen={open} openLabel={c.link} />
+    );
+  };
+  const primary = GOV_CARDS.filter((c) => GOV_PRIMARY.includes(c.id)).sort((x, y) => GOV_PRIMARY.indexOf(x.id) - GOV_PRIMARY.indexOf(y.id));
+  const secondary = GOV_CARDS.filter((c) => !GOV_PRIMARY.includes(c.id));
+
+  // Checks by area: the same bands the scorecard counts, in fixed columns.
+  const areaRows: CxAreaRow[] = GOV_AREAS.map((r) => {
+    const subs = ((AREA_REGISTRY[r.tab] || { subtabs: [] }).subtabs || []) as { ids?: string[]; refIds?: string[] }[];
+    const ids = subs.flatMap((x) => x.ids || []), refIds = subs.flatMap((x) => x.refIds || []);
+    const c = { crit: 0, warn: 0, ok: 0, ref: 0, na: 0 };
+    [...ids, ...refIds].forEach((id) => {
+      const f = byId[id];
+      if (!f) return;
+      const b = bandOf(f);
+      if (b === "CRITICAL") c.crit += 1;
+      else if (b === "WARN") c.warn += 1;
+      else if (b === "NOT_ASSESSED" || b === "ERROR") c.na += 1;
+      else if (refIds.includes(id) || b === "RANKED" || b === "INVENTORY") c.ref += 1;
+      else c.ok += 1;
+    });
+    return { key: r.tab, label: r.label, ...c, onClick: () => goTo({ tab: r.tab, subtab: r.subtab || null }) };
+  }).filter((r) => r.crit + r.warn + r.ok + r.ref > 0);
+  const tot = areaRows.reduce((x, r) => ({ ok: x.ok + r.ok, ref: x.ref + r.ref }), { ok: 0, ref: 0 });
+
+  // Unmasked share by database, the highest share first, the same measure as PII › Sensitive data.
+  const dbItems: CxRankItem[] = [...byDb.entries()].map(([k, v]) => ({
+    key: k, label: k, value: pctOf(v.open, v.total) ?? 0, strong: `${fmtInt(v.open)} of ${fmtInt(v.total)}`, rest: fmtShare(pctOf(v.open, v.total)),
+    onClick: () => DrawerBus.open({ id: "sf_gov_sensitive_columns_unprotected", col: "database_name", val: k, label: k }),
+  })).sort((x, y) => y.value - x.value || Number(String(y.strong).split(" ")[0].replace(/,/g, "")) - Number(String(x.strong).split(" ")[0].replace(/,/g, "")));
+
   return (
-    <div>
-      <div className="summary-tile-row cto-tiles ln-tiles-5">
-        {GOV_CARDS.map((c) => {
-          const f = byId[c.id];
-          const a = affOf(f);
-          const sev = sevOf(f);
-          const open = () => goTo({ tab: c.tab, subtab: c.subtab, focusQueryId: c.id });
-          if (!f || sev === "not_assessed") {
-            return <IssueTile key={c.id} label={c.label} loading={!findingsReady} headline={null} status={findingsReady ? "not_assessed" : "neutral"}
-              missingReason={f && f.not_assessed && f.not_assessed.label ? f.not_assessed.label : "not in this export"} onOpen={open} openLabel={c.link} />;
-          }
-          const counts = f.status_counts || {};
-          const flaggedRows = numOrZero(counts.CRITICAL) + numOrZero(counts.WARN);
-          const when = f.windowed === false ? "snapshot" : `${filters.window} d`;
-          const extra = c.id === "sf_gov_sensitive_columns_unprotected" && a && !/column/i.test(a.noun) ? ` · ${fmtInt(flaggedRows)} columns` : "";
-          return (
-            <IssueTile key={c.id} label={c.label} status={a && a.flagged === 0 ? "ok" : sev}
-              headline={a ? fmtShare(pctOf(a.flagged, a.total)) : fmtInt(flaggedRows)} unit={a ? `of ${a.noun}` : "flagged rows"}
-              base={a ? `${fmtInt(a.flagged)} of ${fmtInt(a.total)} ${a.noun}${extra} · ${when}` : when}
-              cause={c.why} onOpen={open} openLabel={c.link} />
-          );
-        })}
-      </div>
+    <div className="cx-e">
+      <div className="summary-tile-row cto-tiles ln-tiles-3">{primary.map(tile)}</div>
+      <CxStrip>{secondary.map(tile)}</CxStrip>
 
-      <div className="cj-charts-2">
-        <PatternCard title="Governance checks by area" sub={findingsReady ? `${fmtInt(ran)} checks that ran, by outcome · ${fmtInt(notRunList.length)} not run` : "By outcome"}
-          link="All findings →" onLink={() => goTo({ tab: "findings" })}>
-          {findingsReady ? <SecurityScorecard byId={byId} goTo={goTo} areas={GOV_AREAS} /> : <div className="chart-note-oneline">…</div>}
-        </PatternCard>
-        <PatternCard title="Who holds the risk" sub={grantRows ? `${fmtInt(grantRows.length)} broad grants, by the role that holds them` : "Broad grants, by the role that holds them"}
-          link="Roles & grants →" onLink={() => goTo({ tab: "access", subtab: "roles" })}>
-          {grantRows ? (
-            <StatusBars n={6} unitLabel="broad grants" ariaLabel="Broad grants by role" emptyText="No broad grant in this snapshot."
-              items={[...byGrantee.entries()].map(([k, v]) => ({ key: k, name: k, value: v.n, status: v.crit ? "CRITICAL" : "WARN",
-                valueText: `${fmtInt(v.n)} · ${fmtShare(pctOf(v.n, grantRows.length))}` }))}
-              onBarClick={(it) => DrawerBus.open({ id: "access_broad_grants", col: "grantee", val: String(it.key), label: String(it.key) })} />
-          ) : <ChartNote state={grantState} label="access_broad_grants" />}
-        </PatternCard>
-      </div>
+      <PatternCard title="Governance checks by area" sub={findingsReady ? `${fmtInt(ran)} checks that ran · bar length = checks in the area, split by outcome` : "By outcome"}
+        link="All findings →" onLink={() => goTo({ tab: "findings" })}>
+        {findingsReady ? (
+          <div>
+            <CxAreaCounts rows={areaRows} ariaLabel="Governance checks by area" />
+            <div className="cx-foot cx-foot-left">
+              <span>{`${fmtInt(ran)} governance checks ran · ${notRunList.length ? `${fmtInt(notRunList.length)} not run` : "none not run"}`}</span>
+              <span><CxDot status="CRITICAL" />{` ${fmtInt(crit)} critical`}</span><span><CxDot status="WARN" />{` ${fmtInt(warn)} warning`}</span>
+              <span><span className="cx-dot" />{` ${fmtInt(tot.ref)} reference`}</span><span><CxDot status="OK" />{` ${fmtInt(tot.ok)} ok`}</span>
+            </div>
+            {notRunList.length > 0 && <div className="cx-foot cx-foot-left">{notRunList.slice(0, 3).map((f) => (
+              <span key={f.query_id} className="nj-pill">{`– ${getCheckLabel(f.query_id, f.title).title}: ${(f.not_assessed && f.not_assessed.label) || "did not run"}`}</span>
+            ))}{notRunList.length > 3 && <span className="nj-pill">{`– ${fmtInt(notRunList.length - 3)} more not run`}</span>}</div>}
+          </div>
+        ) : <div className="chart-note-oneline">…</div>}
+      </PatternCard>
 
-      <div className="cj-charts-2">
-        <PatternCard title="Sensitive columns by database" sub={piiRows ? `${fmtInt(piiTotal)} classified columns · ${fmtInt(piiOpen)} unmasked (${fmtShare(pctOf(piiOpen, piiTotal))})` : "Classified columns, by database"}
+      <div className="cj-charts-2 cx-top">
+        <PatternCard title="Unmasked sensitive columns, by database"
+          sub={piiRows ? `${fmtInt(piiOpen)} of ${fmtInt(piiTotal)} sensitive columns unmasked (${fmtShare(pctOf(piiOpen, piiTotal))}) · bar = unmasked share of the database's sensitive columns` : "Classified columns, by database"}
           link="PII & policies →" onLink={() => goTo({ tab: "pii", subtab: "sensitive" })}>
-          {piiRows ? (
-            <StatusBars n={6} unitLabel="unmasked columns" ariaLabel="Unmasked sensitive columns by database" emptyText="No classified column in this export."
-              items={[...byDb.entries()].map(([k, v]) => ({ key: k, name: k, value: v.open, status: v.open ? (v.crit ? "CRITICAL" : "WARN") : "OK",
-                valueText: `${fmtInt(v.open)} of ${fmtInt(v.total)} unmasked` }))}
-              onBarClick={(it) => DrawerBus.open({ id: "sf_gov_sensitive_columns_unprotected", col: "database_name", val: String(it.key), label: String(it.key) })} />
-          ) : <ChartNote state={piiState} label="sf_gov_sensitive_columns_unprotected" />}
+          {piiRows ? (dbItems.length ? <GovDbList items={dbItems} goPii={() => goTo({ tab: "pii", subtab: "sensitive" })} />
+            : <div className="chart-note-oneline">No classified column in this export.</div>) : <ChartNote state={piiState} label="sf_gov_sensitive_columns_unprotected" />}
         </PatternCard>
         <PatternCard title="People signing in without MFA"
           sub={mfaAff ? `Worst ${fmtInt(mfaShown.length)} of ${fmtInt(mfaAff.flagged)} · admins first, then password-only sign-ins` : "Admins first, then password-only sign-ins"}
           link={mfaRows && mfaRows.length ? `All ${fmtInt(mfaAff ? mfaAff.flagged : mfaRows.length)} →` : null} onLink={() => DrawerBus.open({ id: "sf_sec_users_without_mfa" })}>
           {mfaRows ? (mfaShown.length ? (
-            <div className="ln-table ln-mfa" role="table" aria-label="People signing in without MFA">
-              <div className="ln-tr ln-th" role="row">
-                <span role="columnheader">User</span><span role="columnheader">Role</span>
-                <span role="columnheader">Sign-ins</span><span role="columnheader">Password age</span><span role="columnheader">Last sign-in</span>
-              </div>
-              {mfaShown.map((r) => {
+            <CxTable ariaLabel="People signing in without MFA"
+              cols={[{ label: "User" }, { label: "Role" }, { label: "Sign-ins", num: true }, { label: "Password age", num: true }]}
+              foot={<span className="cx-foot-left"><span><CxDot status="CRITICAL" />{" holds an admin role"}</span><span><CxDot status="WARN" />{" no admin role"}</span></span>}
+              rows={mfaShown.map((r) => {
                 const role = r.admin_roles ? String(r.admin_roles).split(",")[0].trim() : (r.default_role || null);
                 const pwAge = r.password_last_set_time ? daysBetween(r.password_last_set_time, asOf) : null;
-                const last = r.last_success_login ? daysBetween(r.last_success_login, asOf) : null;
-                return (
-                  <button type="button" role="row" key={String(r.user_id || r.user_name)} className="ln-tr"
-                    onClick={() => DrawerBus.open({ id: "sf_sec_users_without_mfa", col: "user_name", val: String(r.user_name), label: String(r.user_name) })}>
-                    <span className="ln-name" role="cell"><span className="blk-dot" style={{ background: statusBarColor(r.status) }} aria-hidden="true" /><NameId name={String(r.user_name)} id={r.user_id} /></span>
-                    <span role="cell">{role ? <span className={`ln-role${r.admin_roles ? " is-admin" : ""}`}>{role}</span> : "–"}</span>
-                    <span className="ln-num" role="cell">{fmtInt(r.successful_logins)}</span>
-                    <span className="ln-num" role="cell">{pwAge != null ? `${fmtInt(pwAge)} d` : "–"}</span>
-                    <span className="ln-num muted" role="cell">{last == null ? "–" : last === 0 ? "today" : `${fmtInt(last)} d ago`}</span>
-                  </button>
-                );
-              })}
-            </div>
+                return {
+                  key: String(r.user_id || r.user_name), status: r.status,
+                  onClick: () => DrawerBus.open({ id: "sf_sec_users_without_mfa", col: "user_name", val: String(r.user_name), label: String(r.user_name) }),
+                  cells: [<NameId name={String(r.user_name)} id={r.user_id} />, role ? <CxChip status={r.admin_roles ? "CRITICAL" : null}>{role}</CxChip> : "–",
+                    fmtInt(r.successful_logins), pwAge != null ? `${fmtInt(pwAge)} d` : "–"],
+                };
+              })} />
           ) : <div className="chart-note-oneline">{noDataText(meta, filters.window)}</div>)
             : <ChartNote state={mfaState} label="sf_sec_users_without_mfa" />}
         </PatternCard>
-      </div>
-
-      <div className="nj-strip">
-        <span className="nj-count">{findingsReady ? `${fmtInt(govFindings.length)} governance checks · ${fmtInt(crit)} critical · ${fmtInt(warn)} warning` : "…"}</span>
-        {notRunList.slice(0, 2).map((f) => (
-          <span key={f.query_id} className="nj-pill">{`– ${getCheckLabel(f.query_id, f.title).title}: ${(f.not_assessed && f.not_assessed.label) || "did not run"}`}</span>
-        ))}
-        {notRunList.length > 2 && <span className="nj-pill">{`– ${fmtInt(notRunList.length - 2)} more not run`}</span>}
-        <span className="nj-spacer" />
-        <button type="button" className="ck-link" onClick={() => goTo({ tab: "findings" })}>{"All findings →"}</button>
       </div>
     </div>
   );

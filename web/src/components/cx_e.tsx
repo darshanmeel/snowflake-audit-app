@@ -368,6 +368,44 @@ export function CxTrackRows({ rows, line, ticks, n = 10, ariaLabel, legend }: {
   );
 }
 
+export interface CxAreaRow { key: string; label: string; crit: number; warn: number; ok: number; ref: number; na: number; onClick?: (() => void) | null }
+const AREA_PARTS: { key: "crit" | "warn" | "ok" | "ref"; head: string; color: string }[] = [
+  { key: "crit", head: "Crit", color: "var(--st-crit)" }, { key: "warn", head: "Warn", color: "var(--st-warn)" },
+  { key: "ok", head: "OK", color: "var(--st-ok)" }, { key: "ref", head: "Ref", color: "var(--c-other)" },
+];
+
+/** Checks by area: a bar split by outcome (length = checks in the area), then the counts in fixed columns. */
+export function CxAreaCounts({ rows, ariaLabel }: { rows: CxAreaRow[]; ariaLabel?: string }) {
+  if (!rows.length) return null;
+  const parts = AREA_PARTS.filter((p) => rows.some((r) => r[p.key] > 0) || p.key === "crit" || p.key === "warn");
+  const all = (r: CxAreaRow) => r.crit + r.warn + r.ok + r.ref;
+  const max = Math.max(1, ...rows.map(all));
+  const cols = { gridTemplateColumns: `minmax(110px, 160px) minmax(80px, 1fr) repeat(${parts.length + 1}, 52px)` };
+  return (
+    <div className="cx-table-box">
+      <div className="cx-areas" role="table" aria-label={ariaLabel}>
+        <div className="cx-areas-row cx-areas-head" style={cols} role="row">
+          <span role="columnheader">Area</span><span role="columnheader" />
+          {parts.map((p) => <span key={p.key} role="columnheader" className={`cx-num${p.key === "crit" ? " cx-crit" : ""}`}>{p.head}</span>)}
+          <span role="columnheader" className="cx-num">All</span>
+        </div>
+        {rows.map((r) => (
+          <button type="button" key={r.key} className="cx-areas-row" style={cols} role="row" onClick={r.onClick || undefined}>
+            <span role="cell" className="cx-areas-label">{r.label}</span>
+            <span role="cell" className="cx-areas-bar" aria-hidden="true">
+              <span className="cx-areas-fill" style={{ width: `${(100 * all(r)) / max}%` }}>
+                {parts.map((p) => (r[p.key] > 0 ? <span key={p.key} style={{ flexGrow: r[p.key], background: p.color }} /> : null))}
+              </span>
+            </span>
+            {parts.map((p) => <span key={p.key} role="cell" className={`cx-num${p.key === "crit" && r.crit ? " cx-crit" : ""}`}>{r[p.key] ? fmtInt(r[p.key]) : "–"}</span>)}
+            <span role="cell" className="cx-num" title={r.na ? `${fmtInt(r.na)} more did not run` : undefined}>{fmtInt(all(r))}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** A legend of coloured squares with words. */
 export function CxSwatches({ items }: { items: [string, string][] }) {
   return <div className="cx-legend" aria-hidden="true">{items.map(([c, w]) => <span key={w}><span className="cx-legend-sq" style={{ background: c }} />{w}</span>)}</div>;

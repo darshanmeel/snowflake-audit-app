@@ -20,6 +20,10 @@
 .cx-linkbtn { background: none; border: 0; padding: 0; font: inherit; font-size: 14px; color: var(--link); cursor: pointer; }
 .cx-linkbtn:hover { text-decoration: underline; }
 .cx-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 13px; color: var(--text-3); }
+.cx-foot-left { justify-content: flex-start; align-items: center; gap: 6px 16px; display: flex; flex-wrap: wrap; }
+.cx-foot-left .cx-dot { margin-right: 2px; }
+.cx-e .cj-charts-2 { align-items: start; }
+.cx-e > .pattern-card { margin-bottom: 16px; }
 .cx-block + .cx-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .cx-lead { font-size: 14px; color: var(--text-2); margin-bottom: 12px; }
 
@@ -118,6 +122,18 @@
 .cx-track-axis { position: relative; display: block; height: 14px; font-size: 11.5px; color: var(--text-3); }
 .cx-track-axis > span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 .cx-track-linelabel { font-weight: 600; color: var(--text) !important; }
+
+/* Checks by area: bar, then fixed numeric columns */
+.cx-areas { min-width: 520px; }
+.cx-areas-row { display: grid; gap: 12px; align-items: center; width: 100%; padding: 12px 0; border: 0; border-bottom: 1px solid var(--border); background: none; font: inherit; font-size: 14px; color: var(--text); text-align: left; cursor: pointer; }
+.cx-areas-row:hover .cx-areas-label { color: var(--link); text-decoration: underline; }
+.cx-areas-head { cursor: default; padding: 0 0 8px; font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.cx-areas-bar { display: block; height: 14px; }
+.cx-areas-fill { display: flex; height: 100%; gap: 1px; min-width: 3px; }
+.cx-areas-fill > span { display: block; height: 100%; flex-basis: 0; }
+.cx-areas .cx-num { white-space: nowrap; }
+.cx-crit { color: var(--st-crit); font-weight: 600; }
+.cx-areas-head .cx-crit { font-weight: 500; }
 
 /* Standard table */
 .cx-table-box { max-width: 100%; overflow-x: auto; }
