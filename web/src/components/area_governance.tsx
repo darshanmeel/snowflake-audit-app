@@ -6,13 +6,13 @@
 // area_pages.tsx does not already load first: the two import each other.
 import React from "react";
 import "../styles/css/p_area_governance.css";
-import { fmtDayShort, fmtInt, fmtMoney, fmtMoneyOf } from "../format";
+import { fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { numOrZero, useFindingAgg, useFindingData } from "./hooks";
 import { DrawerBus } from "./drawer";
 import { withoutTotalRows } from "../tabs/tab_area";
 import { ApPanel, ApRow } from "./area_pages";
 import type { ApPageProps } from "./area_pages";
-import { Columns, Dumbbell, Meter, RankedBars } from "./charts_more";
+import { Columns, Meter, RankedBars } from "./charts_more";
 import {
   DayKindTimeline, IssueTile, ShareBar, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf,
 } from "./blocks";
@@ -22,8 +22,9 @@ import { DrillTable, MiniBar } from "./drill_table";
 import { notAssessedText } from "./scope";
 import { SummaryTileRow, windowShortLabel, windowSpan } from "./overview_tile";
 import {
-  CheckTile, MoneyTile, Row2, Slot, dtChip, fmtSize, isFlagged, nameId, useCheck, useLede,
+  CheckTile, MoneyTile, Row2, Slot, dtChip, fmtSize, isFlagged, nameId, sumCol, useCheck, useLede,
 } from "./area_ai_storage";
+import { CxBars, CxGridBars, CxRow2, CxSlot, CxTable, cxCurrency, cxMoney } from "./cx_c";
 import type { Chk } from "./area_ai_storage";
 import type { FetchState, Finding, Row } from "../types";
 
@@ -59,13 +60,6 @@ function acct(r: Row): string {
   return String(name || loc || "(no account)");
 }
 
-/** One currency for a set of invoice rows, or null when they mix currencies (never added). */
-function oneCurrency(rows: Row[]): { ok: boolean; fmt: (v: number) => string } {
-  const cur = [...new Set(rows.map((r) => r.currency).filter((c) => c !== null && c !== undefined && c !== ""))];
-  if (cur.length > 1) return { ok: false, fmt: (v) => fmtInt(v) };
-  const m = { unit: "currency", currency: cur[0] || null };
-  return { ok: true, fmt: (v) => fmtMoneyOf(m, v, 0) };
-}
 const MIXED_CURRENCY = "These amounts are in more than one currency, so they are not added; the rows are below.";
 
 /** A short headline line above a chart: the issue in one figure. */
@@ -1243,67 +1237,100 @@ export function ApSharingShares(p: ApPageProps) {
     aI ? `Inbound, ${ofText(aI)} went unread.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
         <CheckTile c={sl} label="Data shared out" badge build={() => ({
-          headline: fmtInt(out.length), unit: ` outbound ${out.length === 1 ? "share" : "shares"}`,
-          base: `${plural(distinct(out, "database_name"), "database")} · ${plural(consumers, "consumer account")}`,
-          cause: `${fmtInt(out.filter((r) => !r.last_listing_access).length)} of ${fmtInt(out.length)} have no read seen.`, openLabel: "By share ↓",
+          headline: fmtInt(out.length), unit: `outbound ${out.length === 1 ? "share" : "shares"}`,
+          base: `${plural(distinct(out, "database_name"), "database")} to ${plural(consumers, "consumer account")}.`,
+          cause: `${fmtInt(out.filter((r) => !r.last_listing_access).length)} of ${fmtInt(out.length)} shares have no read seen.`, openLabel: "By share ↓",
         })} />
-        <AffTile c={ib} label="Inbound databases not read" as="count" noun="databases" openLabel="By database ↓"
+        <AffTile c={ib} label="Inbound, not read" as="count" noun="databases" openLabel="By database ↓"
           cause={() => "From shares, listings and installed apps."} />
         <CheckTile c={ra} label="Reader accounts" badge build={(rows, c) => {
           const priced = rows.some((r) => r.price_basis === "priced");
           const usd = rows.reduce((s, r) => s + numOrZero(r.est_reader_usd_list), 0) * (1 - c.disc);
           return {
-            headline: priced ? fmtMoney(usd, 0) : `${fmtInt(rows.reduce((s, r) => s + numOrZero(r.credits_used), 0))} credits`, unit: " spend", pill: <KindChip>Context</KindChip>,
-            base: `${fmtInt(rows.filter(isFlagged).length)} of ${plural(rows.length, "reader account")} flagged`,
+            headline: priced ? fmtMoney(usd, 0) : `${fmtInt(rows.reduce((s, r) => s + numOrZero(r.credits_used), 0))} credits`, unit: "spend",
+            base: `${fmtInt(rows.filter(isFlagged).length)} of ${plural(rows.length, "reader account")} flagged.`,
             cause: `${fmtInt(rows.filter((r) => numOrZero(r.resource_monitors) === 0).length)} run on your credits with no resource monitor.`,
           };
         }} />
-        <MoneyTile c={pl} label="Paid listings" cause={(rows) => {
+        {/* Listings bill in their own currency: labelled once, never added to $. */}
+        <CheckTile c={pl} label="Paid listings" badge build={(rows) => {
+          const cur = cxCurrency(rows);
           const unread = rows.filter((r) => numOrZero(r.read_queries) === 0 && numOrZero(r.charge_amount) > 0).length;
-          return `${fmtInt(unread)} of ${plural(rows.length, "paid listing")} nobody queried · billed in its own currency, kept apart`;
+          if (!cur.ok) return { headline: null, missingReason: "Charges in more than one currency: not added." };
+          return {
+            headline: cur.fmt(sumCol(rows, "charge_amount")), unit: cur.tag ? cur.tag.trim() : "charges",
+            base: `${cur.tag ? "Charges; " : ""}${fmtInt(unread)} of ${plural(rows.length, "paid listing")} nobody queried.`,
+            cause: cur.tag ? `Billed in ${cur.code}, so not added to dollar figures.` : undefined,
+          };
         }} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={sl} title="Outbound shares → consumers → last read" subtitle="shares this account gives out · bar = consumer accounts · dot = status">
+      <CxRow2>
+        <CxSlot c={sl} title="Outbound shares and who reads them" subtitle="Shares this account gives out · bar = consumer accounts">
           {(rows) => {
-            const o = rows.filter((r) => String(r.share_kind || "").toUpperCase() === "OUTBOUND");
+            const o = rows.filter((r) => String(r.share_kind || "").toUpperCase() === "OUTBOUND")
+              .sort((a, b) => numOrZero(b.consumer_count) - numOrZero(a.consumer_count));
             if (!o.length) return <div className="chart-note-oneline">No outbound share in this account.</div>;
-            const items: StatusBarItem[] = o.map((r) => ({
-              key: String(r.share_name), name: String(r.share_name || "(unnamed share)"), value: numOrZero(r.consumer_count), status: r.status,
-              valueText: `${plural(numOrZero(r.consumer_count), "consumer")} · ${r.last_listing_access ? `last read ${lastDay(r.last_listing_access)}` : "no read seen"}`,
-            }));
-            return <StatusBars items={items} n={8} unitLabel="consumers" ariaLabel="Outbound shares by consumers"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_gov_shares_and_listings", col: "share_name", val: String(it.key), label: it.name })} />;
+            return <CxGridBars aria="Outbound shares by consumers" n={8} nameWidth="minmax(150px, 1.3fr)"
+              cols={[{ label: "Consumers" }, { label: "Last read" }]}
+              rows={o.map((r) => ({
+                key: String(r.share_name), name: String(r.share_name || "(unnamed share)"), value: numOrZero(r.consumer_count), status: r.status,
+                onOpen: () => DrawerBus.open({ id: "sf_gov_shares_and_listings", col: "share_name", val: String(r.share_name), label: String(r.share_name) }),
+                cells: [fmtInt(numOrZero(r.consumer_count)), r.last_listing_access ? lastDay(r.last_listing_access) : "No read seen"],
+              }))} />;
           }}
-        </Slot>
-        <Slot c={ib} title="Inbound databases, by reads" subtitle="databases from shares, listings and installed apps · read queries in the window">
+        </CxSlot>
+        <CxSlot c={ib} title="Inbound databases, by reads" subtitle="From shares, listings and installed apps · read queries in the window">
           {(rows) => {
-            const items: StatusBarItem[] = rows.map((r) => ({
-              key: String(r.database_name), name: String(r.database_name || "(no database)"), value: numOrZero(r.read_queries), status: r.status,
-              valueText: numOrZero(r.read_queries) ? `${fmtInt(numOrZero(r.read_queries))} · last ${lastDay(r.last_read_at)}` : "never read",
-            }));
-            return items.length ? <StatusBars items={items} n={8} unitLabel="read queries" ariaLabel="Inbound databases by read queries"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_share_inbound_databases", col: "database_name", val: String(it.key), label: it.name })} /> : null;
+            if (!rows.length) return null;
+            return <CxBars aria="Inbound databases by read queries" n={8}
+              rows={[...rows].sort((a, b) => numOrZero(b.read_queries) - numOrZero(a.read_queries)).map((r) => ({
+                key: String(r.database_name), name: String(r.database_name || "(no database)"), value: numOrZero(r.read_queries), status: r.status,
+                onOpen: () => DrawerBus.open({ id: "sf_share_inbound_databases", col: "database_name", val: String(r.database_name), label: String(r.database_name) }),
+                cells: numOrZero(r.read_queries) ? [plural(numOrZero(r.read_queries), "query", "queries"), `last read ${lastDay(r.last_read_at)}`] : ["Never read"],
+              }))} />;
           }}
-        </Slot>
-      </Row2>
-      <Slot c={{ ...ss, open: () => p.goTo({ tab: "pii", subtab: "reads", focusQueryId: null }) }} title="Sensitive columns inside shares" subtitle="shared tables that hold a column tagged sensitive · bar = sensitive columns · snapshot">
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={{ ...ss, open: () => p.goTo({ tab: "pii", subtab: "reads", focusQueryId: null }) }} title="Sensitive columns inside shares"
+        subtitle="Shared tables holding a column tagged sensitive · bar = share of those columns left unmasked · snapshot">
         {(rows) => {
-          const items: StatusBarItem[] = rows.filter((r) => numOrZero(r.sensitive_columns) > 0).map((r) => ({
-            key: String(r.share_name), name: String(r.share_name || "(unnamed share)"), value: numOrZero(r.sensitive_columns), status: r.status,
-            valueText: `${fmtInt(numOrZero(r.unmasked_sensitive_columns))} of ${fmtInt(numOrZero(r.sensitive_columns))} unmasked`,
-          }));
-          return items.length ? <StatusBars items={items} n={8} ariaLabel="Sensitive columns in shares" /> : <div className="chart-note-oneline">No share carries a sensitive column.</div>;
+          const list = rows.filter((r) => numOrZero(r.sensitive_columns) > 0)
+            .sort((a, b) => numOrZero(b.unmasked_sensitive_columns) / numOrZero(b.sensitive_columns) - numOrZero(a.unmasked_sensitive_columns) / numOrZero(a.sensitive_columns));
+          if (!list.length) return <div className="chart-note-oneline">No share carries a sensitive column.</div>;
+          const open = list.filter((r) => numOrZero(r.unmasked_sensitive_columns) > 0);
+          const masked = list.filter((r) => numOrZero(r.unmasked_sensitive_columns) === 0);
+          const said = [
+            open.length ? `${plural(open.length, "share")} ${open.length === 1 ? "exposes" : "expose"} sensitive columns unmasked: ${open.map((r) => r.share_name).join(", ")}.` : "No share exposes a sensitive column unmasked.",
+            masked.length && open.length ? `The other ${fmtInt(masked.length)} mask all ${fmtInt(sumCol(masked, "sensitive_columns"))} of theirs.` : null,
+          ].filter(Boolean).join(" ");
+          return (
+            <>
+              <div className="metric-note">{said}</div>
+              <CxGridBars aria="Unmasked share of sensitive columns, per share" n={8} max={1}
+                cols={[{ label: "Sensitive columns" }, { label: "Unmasked" }]}
+                rows={list.map((r) => {
+                  const n = numOrZero(r.sensitive_columns), u = numOrZero(r.unmasked_sensitive_columns);
+                  return { key: String(r.share_name), name: String(r.share_name || "(unnamed share)"), value: n > 0 ? u / n : 0, status: r.status, cells: [fmtInt(n), `${fmtInt(u)} of ${fmtInt(n)}`] };
+                })} />
+            </>
+          );
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
 
 // ═══════════════════════ Sharing › Accounts ═══════════════════════
+
+/** A check's own spend in scope, in its own currency ("$122,007"), or null when it has none. */
+function scopeSpend(f: Finding | null): string | null {
+  const m = f && f.money;
+  if (!m || m.usd == null) return null;
+  return m.unit === "currency" ? cxMoney(m.currency, numOrZero(m.usd)) : fmtMoney(numOrZero(m.usd), 0);
+}
 
 export function ApSharingAccounts(p: ApPageProps) {
   const inv = useCheck(p, "sf_org_account_inventory");
@@ -1316,76 +1343,102 @@ export function ApSharingAccounts(p: ApPageProps) {
   const pw = (la.rows || []).reduce((s, r) => s + numOrZero(r.password_only_logins), 0);
   const logins = (la.rows || []).reduce((s, r) => s + numOrZero(r.logins), 0);
   useLede(p, inv.loading || la.loading, [
-    inv.rows ? `${plural(live.length, "account")}: ${fmtInt(noOwner.length)} have no owner recorded.` : null,
-    la.rows && logins ? `${fmtShare(pctOf(pw, logins))} of sign-ins used a password only.` : null,
+    inv.rows ? `Of ${plural(live.length, "account")}, ${fmtInt(noOwner.length)} have no owner recorded.` : null,
+    la.rows && logins ? `${fmtShare(pctOf(pw, logins))} of sign-ins used only a password.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
         <CheckTile c={inv} label="No owner recorded" badge build={(rows) => {
-          const cur = oneCurrency(rows);
+          const cur = cxCurrency(rows);
           return {
-            headline: fmtInt(noOwner.length), unit: ` of ${plural(live.length, "account")}`,
-            base: `${fmtShare(pctOf(noOwner.length, live.length))} · ${cur.ok ? `${cur.fmt(rows.reduce((s, r) => s + numOrZero(r.amount), 0))} spend across ${fmtInt(rows.length)} · context` : "more than one currency"}`,
+            headline: `${fmtInt(noOwner.length)} of ${fmtInt(live.length)}`, unit: "accounts",
+            base: `${fmtShare(pctOf(noOwner.length, live.length))} · ${cur.ok ? `${cur.fmt(sumCol(rows, "amount"))} spend across all ${plural(rows.length, "account")} listed.` : "spend is in more than one currency."}`,
             cause: "Edition, region and bill are known; who answers for them is not.", openLabel: "All accounts ↓",
           };
         }} />
         <CheckTile c={la} label="Password only" badge build={(rows) => {
           const withLogins = rows.filter((r) => numOrZero(r.logins) > 0);
+          const worst = [...withLogins].sort((a, b) => numOrZero(b.password_only_pct) - numOrZero(a.password_only_pct))[0];
           return {
-            headline: fmtShare(pctOf(pw, logins)), unit: " of sign-ins",
-            base: `${fmtInt(pw)} of ${fmtInt(logins)} sign-ins · ${fmtInt(withLogins.filter((r) => numOrZero(r.password_only_logins) > 0).length)} of ${plural(withLogins.length, "account")}`,
-            cause: [...withLogins].sort((a, b) => numOrZero(b.password_only_pct) - numOrZero(a.password_only_pct)).slice(0, 2).map((r) => `${acct(r)} ${fmtShare(numOrZero(r.password_only_pct))}`).join(", ") || undefined,
+            headline: fmtShare(pctOf(pw, logins)), unit: "of sign-ins",
+            base: `${fmtInt(pw)} of ${fmtInt(logins)} sign-ins, in ${fmtInt(withLogins.filter((r) => numOrZero(r.password_only_logins) > 0).length)} of ${plural(withLogins.length, "account")}.`,
+            cause: worst && numOrZero(worst.password_only_pct) > 0 ? `Worst: ${acct(worst)}, at ${fmtShare(numOrZero(worst.password_only_pct))}.` : undefined,
             openLabel: "By account ↓",
           };
         }} />
-        <MoneyTile c={ef} label="Edition not used" cause={(rows) => {
-          const judged = rows.filter((r) => r.status !== "NOT_ASSESSED");
-          return `${plural(judged.filter((r) => /downgrade/i.test(String(r.fit || ""))).length, "account")} use no feature of their edition · ${fmtInt(judged.length)} of ${fmtInt(rows.length)} judged`;
-        }} />
-        <MoneyTile c={dorm} label="Dormant accounts" cause={(rows) => `${fmtInt(rows.filter(isFlagged).length)} of ${plural(rows.length, "account")} · storage, no compute`} />
+        <AffTile c={ef} label="Edition not used" as="count" noun="accounts"
+          extra={() => { const s = scopeSpend(ef.f); return s ? `${s} spend in scope` : null; }}
+          cause={(rows) => {
+            const judged = rows.filter((r) => r.status !== "NOT_ASSESSED");
+            return `${plural(judged.filter((r) => /downgrade/i.test(String(r.fit || ""))).length, "account")} use no feature of their edition; ${fmtInt(judged.length)} of ${fmtInt(rows.length)} judged.`;
+          }} />
+        <AffTile c={dorm} label="Dormant accounts" as="count" noun="accounts"
+          extra={() => { const s = scopeSpend(dorm.f); return s ? `${s} spend in scope` : null; }}
+          cause={() => "Still billing for storage, with no compute."} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={la} title="Password-only sign-ins, by account" subtitle="share of each account's sign-ins">
+      <CxRow2>
+        <CxSlot c={la} title="Password-only sign-ins, by account" subtitle="Share of each account's sign-ins made with a password only">
           {(rows) => {
-            const items: ShareItem[] = rows.map((r) => ({
-              key: acct(r), name: acct(r),
-              value: r.password_only_logins == null ? null : numOrZero(r.password_only_logins),
-              total: numOrZero(r.logins) > 0 ? numOrZero(r.logins) : null,
-              onClick: drawerBy("sf_org_login_activity_by_account", "account_locator", r.account_locator, acct(r)),
-            }));
-            return items.length ? <ShareBarList items={items} n={10} noun="sign-ins" /> : null;
+            const withBase = rows.filter((r) => numOrZero(r.logins) > 0 && r.password_only_logins != null);
+            const some = withBase.filter((r) => numOrZero(r.password_only_logins) > 0).sort((a, b) => numOrZero(b.password_only_pct) - numOrZero(a.password_only_pct));
+            const none = withBase.filter((r) => numOrZero(r.password_only_logins) === 0);
+            const noBase = rows.filter((r) => !(numOrZero(r.logins) > 0) || r.password_only_logins == null);
+            if (!rows.length) return null;
+            // Rows that all read the same (0%, nothing to compare) are named in a sentence, not drawn.
+            const names = (list: Row[]) => `${list.slice(0, 5).map(acct).join(", ")}${list.length > 5 ? ` and ${fmtInt(list.length - 5)} more` : ""}`;
+            return (
+              <>
+                {some.length > 0 && <CxGridBars aria="Password-only share of sign-ins by account" n={10} max={100} legend={false}
+                  cols={[{ label: "" }]}
+                  rows={some.map((r) => ({
+                    key: acct(r), name: acct(r), value: pctOf(numOrZero(r.password_only_logins), numOrZero(r.logins)) ?? 0,
+                    onOpen: drawerBy("sf_org_login_activity_by_account", "account_locator", r.account_locator, acct(r)),
+                    cells: [fmtShare(pctOf(numOrZero(r.password_only_logins), numOrZero(r.logins)))],
+                  }))} />}
+                {none.length > 0 && <div className="metric-note">{`0% in ${plural(none.length, "account")}: ${names(none)}.`}</div>}
+                {noBase.length > 0 && <div className="metric-note">{`No sign-ins to compare in ${fmtInt(noBase.length)}: ${names(noBase)}.`}</div>}
+              </>
+            );
           }}
-        </Slot>
-        <Slot c={rs} title="Spend and transfer per cloud region" subtitle="invoice spend by region · dot = status">
+        </CxSlot>
+        <CxSlot c={rs} title="Spend and transfer per cloud region" subtitle="Invoice spend by region">
           {(rows) => {
-            const cur = oneCurrency(rows);
+            const cur = cxCurrency(rows);
             if (!cur.ok) return <div className="chart-note-oneline">{MIXED_CURRENCY}</div>;
-            const items: StatusBarItem[] = rows.map((r) => ({
-              key: `${r.cloud}|${r.region}`, name: `${r.region || r.cloud || "(no region)"} · ${plural(numOrZero(r.live_accounts), "account")}`, value: numOrZero(r.amount), status: r.status,
-              valueText: `${cur.fmt(numOrZero(r.amount))}${numOrZero(r.transfer_amount) > 0 ? ` · ${cur.fmt(numOrZero(r.transfer_amount))} transfer` : ""}`,
-            }));
-            return items.length ? <StatusBars items={items} n={8} ariaLabel="Spend per cloud region" onBarClick={() => rs.open()} /> : null;
+            if (!rows.length) return null;
+            const total = sumCol(rows, "amount");
+            return <CxBars aria="Spend per cloud region" n={8}
+              foot={<span className="cx-sub">{`${cur.fmt(total)}${cur.tag} across ${plural(rows.length, "region")} · ${fmtInt(rows.filter(isFlagged).length)} flagged.`}</span>}
+              rows={[...rows].sort((a, b) => numOrZero(b.amount) - numOrZero(a.amount)).map((r) => ({
+                key: `${r.cloud}|${r.region}`, value: numOrZero(r.amount), status: r.status, onOpen: () => rs.open(),
+                name: <span>{r.region || r.cloud || "(no region)"} <span className="cx-sub">{plural(numOrZero(r.live_accounts), "account")}</span></span>,
+                cells: [cur.fmt(numOrZero(r.amount)), numOrZero(r.transfer_amount) > 0 ? `${cur.fmt(numOrZero(r.transfer_amount))} transfer` : null].filter((v): v is string => !!v),
+              }))} />;
           }}
-        </Slot>
-      </Row2>
-      <Slot c={inv} title="Accounts: edition, region and spend" subtitle="ranked by spend · click a row">
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={inv} title="Accounts: edition, region and spend" subtitle="Ranked by spend · open a row for details">
         {(rows) => {
-          const cur = oneCurrency(rows);
+          const cur = cxCurrency(rows);
           return (
-            <DrillTable aria="Accounts" n={12}
-              cols={[{ label: "Account" }, { label: "Edition", width: "auto" }, { label: "Region", width: "minmax(70px, 1fr)" }, { label: "Spend", num: true, width: "auto" }, { label: "Owner", width: "auto" }]}
+            <CxTable aria="Accounts" n={12} minWidth={640}
+              cols={[{ label: "Account" }, { label: "Edition", width: "minmax(120px, 1fr)" }, { label: "Region", width: "minmax(130px, 1fr)" },
+                { label: `Spend${cur.tag}`, num: true, width: "auto" }, { label: "Owner", width: "minmax(90px, auto)" }]}
               rows={[...rows].sort((a, b) => numOrZero(b.amount) - numOrZero(a.amount)).map((r) => ({
                 key: String(r.account_locator), status: r.status, onOpen: drawerBy("sf_org_account_inventory", "account_locator", r.account_locator, acct(r)),
-                cells: [acct(r), words(r.edition) || "–", String(r.snowflake_region || "–"), cur.ok ? cur.fmt(numOrZero(r.amount)) : fmtInt(numOrZero(r.amount)),
-                  r.deleted_on ? dtChip("deleted", "CRITICAL") : String(r.account_comment || "").trim() ? "recorded" : dtChip("no owner", "WARN")],
+                cells: [acct(r), titleWords(r.edition) || "–", String(r.snowflake_region || "–"), r.amount == null ? "–" : cur.ok ? cur.fmt(numOrZero(r.amount)) : fmtInt(numOrZero(r.amount)),
+                  r.deleted_on ? dtChip("deleted", "CRITICAL") : String(r.account_comment || "").trim() ? "Recorded" : dtChip("no owner", "WARN")],
               }))} />
           );
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
+
+// "BUSINESS_CRITICAL" reads "Business Critical".
+const titleWords = (v: any) => words(v).replace(/\b\w/g, (c) => c.toUpperCase());
 
 // ═══════════════════════ Sharing › Spend across accounts ═══════════════════════
 
@@ -1396,75 +1449,97 @@ export function ApSharingSpend(p: ApPageProps) {
   const cs = useCheck(p, "sf_org_cloud_services_billed_by_account");
   const sv = useCheck(p, "sf_org_serverless_by_account");
   const spRows = sp.rows || [];
-  const cur0 = oneCurrency(spRows);
+  const cur0 = cxCurrency(spRows);
   const now = spRows.reduce((s, r) => s + numOrZero(r.amount), 0);
   const prev = spRows.reduce((s, r) => s + numOrZero(r.prev_amount), 0);
-  const change = prev > 0 ? `${now >= prev ? "+" : "−"}${fmtShare(Math.abs(((now - prev) / prev) * 100))}` : null;
+  const change = prev > 0 ? `${now >= prev ? "up" : "down"} ${fmtShare(Math.abs(((now - prev) / prev) * 100))}` : null;
+  const top = [...spRows].sort((a, b) => numOrZero(b.amount) - numOrZero(a.amount))[0];
   useLede(p, sp.loading, sp.rows && cur0.ok
-    ? `${cur0.fmt(now)} across ${plural(spRows.length, "account")}${change ? `, ${change} on the period before` : ""}.`
+    ? `Spend across ${plural(spRows.length, "account")} was ${cur0.fmt(now)}${cur0.tag}${change ? `, ${change} on the period before` : ""}.${top && now > 0 ? ` One account, ${acct(top)}, is ${fmtShare(pctOf(numOrZero(top.amount), now))} of it.` : ""}`
     : null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
         <CheckTile c={sp} label="Organization spend" build={() => ({
-          headline: cur0.ok ? cur0.fmt(now) : null, missingReason: cur0.ok ? undefined : "more than one currency: not added", unit: " spend", pill: <KindChip>Context</KindChip>,
-          base: `${plural(spRows.length, "account")}${change && cur0.ok ? ` · ${change} vs ${cur0.fmt(prev)} before` : ""}`,
-          cause: (() => { const t = [...spRows].sort((a, b) => numOrZero(b.amount) - numOrZero(a.amount))[0]; return t && now > 0 ? `${acct(t)} is ${fmtShare(pctOf(numOrZero(t.amount), now))} of it.` : undefined; })(),
+          headline: cur0.ok ? cur0.fmt(now) : null, missingReason: cur0.ok ? undefined : "more than one currency: not added", unit: cur0.tag ? cur0.tag.trim() : undefined,
+          base: `${plural(spRows.length, "account")}${change && cur0.ok ? `, ${change.replace(/^up /, "+").replace(/^down /, "−")} vs ${cur0.fmt(prev)} the period before` : ""}.`,
+          cause: top && now > 0 ? `${acct(top)} is ${fmtShare(pctOf(numOrZero(top.amount), now))} of it.` : undefined,
           openLabel: "By account ↓",
         })} />
-        <MoneyTile c={ov} label="On-demand overage" cause={(rows) => `${fmtInt(distinct(rows.filter(isFlagged), "account_locator"))} of ${plural(distinct(rows, "account_locator"), "account")} · billed above the contract rate`} />
-        <MoneyTile c={cs} label="Cloud services over 10%" cause={(rows) => `${fmtInt(rows.filter(isFlagged).length)} of ${plural(rows.length, "account")} · priced after the 10% adjustment`} />
+        <MoneyTile c={ov} label="On-demand overage" cur cause={(rows) => `${fmtInt(distinct(rows.filter(isFlagged), "account_locator"))} of ${plural(distinct(rows, "account_locator"), "account")} billed above their contract.`} />
+        <MoneyTile c={cs} label="Cloud services over 10%" cur cause={(rows) => `${fmtInt(rows.filter(isFlagged).length)} of ${plural(rows.length, "account")}, priced after the 10% allowance.`} />
         <FindingTile p={p} id="cost_chargeback_by_account" label="Chargeback" tab="cost" subtab="chargeback" openLabel="Chargeback →" />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={sp} title="Spend by account, now vs the period before" subtitle="invoice amounts, same-length periods · change shown apart, never added">
+      <CxRow2>
+        <CxSlot c={sp} title="Spend by account" subtitle="This period, with the change vs the same-length period before · never added">
           {(rows) => {
-            const cur = oneCurrency(rows);
+            const cur = cxCurrency(rows);
             if (!cur.ok) return <div className="chart-note-oneline">{MIXED_CURRENCY}</div>;
-            const items = rows.filter((r) => r.amount != null && r.prev_amount != null).map((r) => {
-              const pv = numOrZero(r.prev_amount), nw = numOrZero(r.amount);
-              const ch = pv > 0 ? `${nw >= pv ? "+" : "−"}${fmtShare(Math.abs(((nw - pv) / pv) * 100))}` : "new";
-              return { name: `${acct(r)} ${ch}`, before: pv, after: nw };
-            });
-            return items.length ? <Dumbbell items={items} n={8} only="all" valueFmt={cur.fmt} unitLabel="" ariaLabel="Spend by account, previous vs now" /> : null;
-          }}
-        </Slot>
-        <Slot c={ss} title="Spend by service type" subtitle="all accounts, this period">
-          {(rows) => {
-            const cur = oneCurrency(rows);
-            if (!cur.ok) return <div className="chart-note-oneline">{MIXED_CURRENCY}</div>;
-            const by = tally(rows, (r) => words(r.service_type || r.usage_type || "(no service type)"), (r) => numOrZero(r.amount));
-            const segs = by.map((g) => ({ key: g.name, label: g.name, value: g.value }));
-            if (!segs.some((s) => s.value > 0)) return null;
-            const grew = by.map((g) => ({ k: g.name, d: g.value - g.rows.reduce((s, r) => s + numOrZero(r.prev_amount), 0) })).sort((a, b) => b.d - a.d)[0];
+            const list = rows.filter((r) => r.amount != null).sort((a, b) => numOrZero(b.amount) - numOrZero(a.amount));
+            if (!list.length) return null;
+            const all = list.reduce((s, r) => s + numOrZero(r.amount), 0);
+            const ch = (r: Row) => { const pv = numOrZero(r.prev_amount), nw = numOrZero(r.amount); return r.prev_amount == null ? "–" : pv > 0 ? `${nw >= pv ? "+" : "−"}${fmtShare(Math.abs(((nw - pv) / pv) * 100))}` : "New"; };
+            const row = (r: Row) => ({ key: String(r.account_locator), name: acct(r), value: numOrZero(r.amount), cells: [cur.fmt(numOrZero(r.amount)), ch(r)],
+              onOpen: drawerBy("sf_org_spend_by_account", "account_locator", r.account_locator, acct(r)) });
+            // One account over half the spend flattens the rest: it gets its own line, the others their own scale.
+            const lead = all > 0 && numOrZero(list[0].amount) / all > 0.5 && list.length > 2 ? list[0] : null;
+            const rest = lead ? list.slice(1) : list;
             return (
-              <div>
-                <StackedShareBar segments={segs} pareto valueFmt={cur.fmt} ariaLabel="Spend by service type" />
-                {grew && grew.d > 0 && <div className="chart-note-oneline">{`Grew most: ${grew.k}, +${cur.fmt(grew.d)} vs the period before.`}</div>}
-              </div>
+              <>
+                {lead && (
+                  <CxGridBars aria="The largest account" n={1} max={all} legend={false} cols={[{ label: `Spend${cur.tag}` }, { label: "Change" }]}
+                    rows={[{ ...row(lead), cells: [`${fmtShare(pctOf(numOrZero(lead.amount), all))} of all · ${cur.fmt(numOrZero(lead.amount))}`, ch(lead)] }]} />
+                )}
+                {lead && <div className="cx-group-head">{`The other ${plural(rest.length, "account")} · on their own scale`}</div>}
+                <CxGridBars aria="Spend by account" n={8} legend={false} cols={lead ? [{ label: "" }, { label: "" }] : [{ label: `Spend${cur.tag}` }, { label: "Change" }]} rows={rest.map(row)} />
+                <div className="metric-note">Change: higher or lower than the period before; New: no spend before.</div>
+              </>
             );
           }}
-        </Slot>
-      </Row2>
-      <Slot c={sv} title="Serverless feature credits by account" subtitle="serverless spend per account the role can read · dot = status">
+        </CxSlot>
+        <CxSlot c={ss} title="Spend by service type" subtitle="All accounts, this period">
+          {(rows) => {
+            const cur = cxCurrency(rows);
+            if (!cur.ok) return <div className="chart-note-oneline">{MIXED_CURRENCY}</div>;
+            const by = tally(rows, (r) => words(r.service_type || r.usage_type || "(no service type)"), (r) => numOrZero(r.amount)).sort((a, b) => b.value - a.value);
+            const total = by.reduce((s, g) => s + g.value, 0);
+            if (!(total > 0)) return null;
+            const shown = by.slice(0, 6), other = by.slice(6);
+            const otherV = other.reduce((s, g) => s + g.value, 0);
+            const grew = by.map((g) => ({ k: g.name, d: g.value - g.rows.reduce((s, r) => s + numOrZero(r.prev_amount), 0) })).sort((a, b) => b.d - a.d)[0];
+            // "ai services" reads "AI services".
+            const cap = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/(ai|vps|spcs|sql|ml)/gi, (x) => x.toUpperCase());
+            return <CxBars aria="Spend by service type" n={8} legend={false}
+              foot={grew && grew.d > 0 ? <span className="cx-sub">{`Grew most: ${grew.k}, +${cur.fmt(grew.d)} vs the period before.`}</span> : undefined}
+              rows={[
+                ...shown.map((g) => ({ key: g.name, name: cap(g.name), value: g.value, cells: [cur.fmt(g.value), fmtShare(pctOf(g.value, total))] })),
+                ...(other.length ? [{ key: "__other", name: `Other (${plural(other.length, "service")})`, value: otherV, color: "var(--c-other)", cells: [cur.fmt(otherV), fmtShare(pctOf(otherV, total))] }] : []),
+              ]} />;
+          }}
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={sv} title="Serverless feature credits by account" subtitle="Serverless spend per account the role can read">
         {(rows) => {
-          const cur = oneCurrency(rows);
+          const cur = cxCurrency(rows);
           if (!cur.ok) return <div className="chart-note-oneline">{MIXED_CURRENCY}</div>;
-          const items: StatusBarItem[] = tally(rows, acct, (r) => numOrZero(r.est_cost)).map((g) => ({
-            key: String(g.rows[0].account_locator), name: g.name, value: g.value, status: g.status,
-            valueText: `${cur.fmt(g.value)} · ${plural(distinct(g.rows, "service_type"), "service")}`,
-          }));
-          return items.length ? <StatusBars items={items} n={8} ariaLabel="Serverless spend by account"
-            onBarClick={(it) => DrawerBus.open({ id: "sf_org_serverless_by_account", col: "account_locator", val: String(it.key), label: it.name })} /> : null;
+          const g = tally(rows, acct, (r) => numOrZero(r.est_cost)).sort((a, b) => b.value - a.value);
+          if (!g.length) return null;
+          return <CxGridBars aria="Serverless spend by account" n={8} cols={[{ label: `Spend${cur.tag}` }, { label: "Services" }]}
+            foot={<span className="cx-sub">{`${cur.fmt(g.reduce((s, x) => s + x.value, 0))} across ${plural(g.length, "account")}.`}</span>}
+            rows={g.map((x) => ({
+              key: String(x.rows[0].account_locator), name: x.name, value: x.value, status: x.status,
+              onOpen: () => DrawerBus.open({ id: "sf_org_serverless_by_account", col: "account_locator", val: String(x.rows[0].account_locator), label: x.name }),
+              cells: [cur.fmt(x.value), plural(distinct(x.rows, "service_type"), "service")],
+            }))} />;
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
 
 // ═══════════════════════ Sharing › Replication & transfer ═══════════════════════
 
-const tb = (v: number) => `${v >= 10 ? fmtInt(Math.round(v)) : v.toFixed(1)} TB`;
+const tb = (v: number) => (v > 0 && v < 0.05 ? "< 0.1 TB" : `${v >= 10 ? fmtInt(Math.round(v)) : v.toFixed(1)} TB`);
 
 export function ApSharingReplication(p: ApPageProps) {
   const rg = useCheck(p, "sf_repl_group_health");
@@ -1478,83 +1553,93 @@ export function ApSharingReplication(p: ApPageProps) {
     dt.rows ? `${tb(crossTb)} left its region or cloud.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
-        <AffTile c={rg} label="Replication groups behind" as="count" noun="replication groups" openLabel="By group ↓"
-          extra={(rows) => {
-            if (!rows.some((r) => r.price_basis === "priced")) return null;
-            const all = rows.reduce((s, r) => s + numOrZero(r.est_replication_usd_list), 0) * (1 - rg.disc);
-            const fl = rows.filter(isFlagged).reduce((s, r) => s + numOrZero(r.est_replication_usd_list), 0) * (1 - rg.disc);
-            return `${fmtMoney(fl, 0)} of ${fmtMoney(all, 0)} replication spend · context`;
-          }}
-          cause={(rows) => { const t = [...rows].filter((r) => r.lag_hours != null).sort((a, b) => numOrZero(b.lag_hours) - numOrZero(a.lag_hours))[0]; return t ? `${nameId(t.group_name, t.group_id)} is ${fmtInt(Math.round(numOrZero(t.lag_hours)))} h behind.` : undefined; }} />
-        <CheckTile c={dt} label="Transfer out of region or cloud" badge build={(rows) => {
-          const cur = oneCurrency(rows);
+        <CheckTile c={rg} label="Groups behind" badge build={(rows) => {
+          const a = affOf(rg.f, rows, "replication groups");
+          const priced = rows.some((r) => r.price_basis === "priced");
+          const all = rows.reduce((s, r) => s + numOrZero(r.est_replication_usd_list), 0) * (1 - rg.disc);
+          const fl = rows.filter(isFlagged).reduce((s, r) => s + numOrZero(r.est_replication_usd_list), 0) * (1 - rg.disc);
+          const t = [...rows].filter((r) => r.lag_hours != null).sort((x, y) => numOrZero(y.lag_hours) - numOrZero(x.lag_hours))[0];
           return {
-            headline: tb(crossTb), unit: " sent",
-            base: `${cur.ok ? `${cur.fmt(rows.reduce((s, r) => s + numOrZero(r.amount), 0))} transfer spend · ` : ""}${fmtInt(rows.filter(isFlagged).length)} of ${plural(rows.length, "account")}`,
-            cause: crossTb > 0 ? `${fmtShare(pctOf(rows.reduce((s, r) => s + numOrZero(r.tb_cross_cloud), 0), crossTb))} of it crosses clouds.` : undefined, openLabel: "By account ↓",
+            headline: `${fmtInt(a.flagged)} of ${fmtInt(a.total)}`, unit: "groups",
+            base: `${a.noun.charAt(0).toUpperCase()}${a.noun.slice(1)}${priced ? `; ${fmtMoney(fl, 0)} of ${fmtMoney(all, 0)} replication spend (${fmtShare(pctOf(fl, all))})` : ""}.`,
+            cause: t ? `${nameId(t.group_name, t.group_id)} is ${fmtInt(Math.round(numOrZero(t.lag_hours)))} h behind.` : undefined, openLabel: "By group ↓",
           };
         }} />
-        <MoneyTile c={af} label="Listing auto-fulfillment" cause={(rows) => `${fmtInt(distinct(rows.filter(isFlagged), "provider_account_locator"))} of ${plural(distinct(rows, "provider_account_locator"), "provider account")} · replication + storage`} />
-        <MoneyTile c={rc} label="Replication cost by database" cause={(rows) => {
+        <CheckTile c={dt} label="Sent out of region" badge build={(rows) => {
+          const cur = cxCurrency(rows);
+          return {
+            headline: tb(crossTb), unit: "sent",
+            base: `${cur.ok ? `${cur.fmt(sumCol(rows, "amount"))} transfer spend · ` : ""}${fmtInt(rows.filter(isFlagged).length)} of ${plural(rows.length, "account")}.`,
+            cause: crossTb > 0 ? `${fmtShare(pctOf(sumCol(rows, "tb_cross_cloud"), crossTb))} of it crosses clouds.` : undefined, openLabel: "By account ↓",
+          };
+        }} />
+        <MoneyTile c={af} label="Auto-fulfillment" cur cause={(rows) => `${fmtInt(distinct(rows.filter(isFlagged), "provider_account_locator"))} of ${plural(distinct(rows, "provider_account_locator"), "provider account")} flagged; replication and storage to fulfil listings.`} />
+        <MoneyTile c={rc} label="Replication by database" cur cause={(rows) => {
           const t = [...rows].sort((a, b) => numOrZero(b.est_cost) - numOrZero(a.est_cost))[0];
-          const all = rows.reduce((s, r) => s + numOrZero(r.est_cost), 0);
-          return t ? `${t.database_name} is ${fmtShare(pctOf(numOrZero(t.est_cost), all))} of it` : "No replication billed";
+          const all = sumCol(rows, "est_cost");
+          return t ? `${t.database_name} is ${fmtShare(pctOf(numOrZero(t.est_cost), all))} of it.` : "No replication billed.";
         }} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={rg} title="Replication lag, by group" subtitle="hours since the secondary's last good refresh · dot = status">
+      <CxRow2>
+        <CxSlot c={rg} title="Replication lag, by group" subtitle="Hours since the secondary's last good refresh">
           {(rows) => {
-            const withLag = rows.filter((r) => r.lag_hours != null && Number.isFinite(Number(r.lag_hours)));
+            const withLag = rows.filter((r) => r.lag_hours != null && Number.isFinite(Number(r.lag_hours))).sort((a, b) => numOrZero(b.lag_hours) - numOrZero(a.lag_hours));
             const priced = rows.some((r) => r.price_basis !== "unpriced" && r.est_replication_usd_list != null);
-            const items: StatusBarItem[] = withLag.map((r) => ({
-              key: String(r.group_name), name: nameId(r.group_name, r.group_id, "(unnamed group)"), value: numOrZero(r.lag_hours), status: r.status,
-              valueText: `${fmtInt(Math.round(numOrZero(r.lag_hours)))} h${priced ? ` · ${fmtMoney(numOrZero(r.est_replication_usd_list) * (1 - rg.disc), 0)}` : ""}`,
-            }));
-            if (!items.length) return null;
+            if (!withLag.length) return null;
             const noLag = rows.length - withLag.length;
-            return (
-              <div>
-                <StatusBars items={items} n={8} unitLabel="hours" ariaLabel="Replication lag by group"
-                  onBarClick={(it) => DrawerBus.open({ id: "sf_repl_group_health", col: "group_name", val: String(it.key), label: it.name })} />
-                {noLag > 0 && <div className="chart-note-oneline">{`– ${plural(noLag, "group")} with no lag reading: no secondary refresh seen.`}</div>}
-              </div>
-            );
+            return <CxGridBars aria="Replication lag by group" n={8} cols={[{ label: "Lag" }, ...(priced ? [{ label: "Cost" }] : [])]}
+              foot={noLag > 0 ? <span className="cx-sub">{`${plural(noLag, "more group")} ${noLag === 1 ? "has" : "have"} no lag reading: no secondary refresh was seen.`}</span> : undefined}
+              rows={withLag.map((r) => ({
+                key: String(r.group_name), name: nameId(r.group_name, r.group_id, "(unnamed group)"), value: numOrZero(r.lag_hours), status: r.status,
+                onOpen: () => DrawerBus.open({ id: "sf_repl_group_health", col: "group_name", val: String(r.group_name), label: nameId(r.group_name, r.group_id) }),
+                cells: [`${fmtInt(Math.round(numOrZero(r.lag_hours)))} h`, ...(priced ? [fmtMoney(numOrZero(r.est_replication_usd_list) * (1 - rg.disc), 0)] : [])],
+              }))} />;
           }}
-        </Slot>
-        <Slot c={dt} title="Cross-region and cross-cloud transfer" subtitle="TB sent in the window · dark bar = cross-region or cross-cloud">
+        </CxSlot>
+        <CxSlot c={dt} title="Cross-region and cross-cloud transfer" subtitle="TB sent in the window">
           {(rows) => {
-            const sum = (col: string) => rows.reduce((s, r) => s + numOrZero(r[col]), 0);
-            const total = sum("tb_total"), region = sum("tb_cross_region"), cloud = sum("tb_cross_cloud");
+            const total = sumCol(rows, "tb_total"), region = sumCol(rows, "tb_cross_region"), cloud = sumCol(rows, "tb_cross_cloud");
             if (!(total > 0)) return null;
-            const items = rows.filter((r) => numOrZero(r.tb_total) > 0).map((r) => ({ name: acct(r), value: numOrZero(r.tb_cross_region) + numOrZero(r.tb_cross_cloud), whole: numOrZero(r.tb_total) }));
+            const list = rows.filter((r) => numOrZero(r.tb_total) > 0).sort((a, b) => numOrZero(b.tb_total) - numOrZero(a.tb_total));
+            const allCross = list.every((r) => Math.abs(numOrZero(r.tb_cross_region) + numOrZero(r.tb_cross_cloud) - numOrZero(r.tb_total)) < 0.005);
             return (
-              <div className="ais-stack-pair">
+              <>
                 <StackedShareBar ariaLabel="Transfer by route" valueFmt={tb}
                   segments={[
-                    { label: "cross-cloud", value: cloud, color: "var(--c1)" },
-                    { label: "cross-region", value: region, color: "var(--c2)" },
-                    { label: "same region", value: Math.max(0, total - region - cloud), color: "var(--c-other)" },
+                    { label: "Cross-cloud", value: cloud, color: "var(--c1)" },
+                    { label: "Cross-region", value: region, color: "var(--c2)" },
+                    { label: "Same region", value: Math.max(0, total - region - cloud), color: "var(--c-other)" },
                   ]} />
-                {items.length >= 2 && <RankedBars items={items} n={8} valueFmt={tb} unitLabel="TB" ariaLabel="Cross-region and cross-cloud TB by account"
-                  note="Dark bar: cross-region or cross-cloud. Light track: all TB sent." />}
-              </div>
+                {list.length >= 2 && (
+                  <CxGridBars aria="TB sent by account" n={8} legend={false} cols={[{ label: allCross ? "Sent" : "Out of region" }, ...(allCross ? [] : [{ label: "Of all sent" }])]}
+                    rows={list.map((r) => {
+                      const x = numOrZero(r.tb_cross_region) + numOrZero(r.tb_cross_cloud);
+                      return { key: acct(r), name: acct(r), value: x, cells: [tb(x), ...(allCross ? [] : [tb(numOrZero(r.tb_total))])] };
+                    })} />
+                )}
+                {list.length >= 2 && allCross && <div className="metric-note">{`For all ${plural(list.length, "account")}, every TB sent left its region or cloud.`}</div>}
+              </>
             );
           }}
-        </Slot>
-      </Row2>
-      <Slot c={rc} title="Replication $ by database and region" subtitle="replication spend in the window · dot = status">
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={rc} title="Replication cost by database" subtitle="Replication spend in the window · the database, then its target region and account">
         {(rows) => {
-          const cur = oneCurrency(rows);
+          const cur = cxCurrency(rows);
           if (!cur.ok) return <div className="chart-note-oneline">{MIXED_CURRENCY}</div>;
-          const items: StatusBarItem[] = rows.filter((r) => numOrZero(r.est_cost) > 0).map((r) => ({
-            key: `${r.account_locator}|${r.database_name}`, name: `${r.database_name || "(no database)"} → ${r.region || "–"} · ${acct(r)}`, value: numOrZero(r.est_cost), status: r.status,
-            valueText: `${cur.fmt(numOrZero(r.est_cost))} · ${tb(numOrZero(r.tb_transferred))}`,
-          }));
-          return items.length ? <StatusBars items={items} n={8} ariaLabel="Replication spend by database" onBarClick={() => rc.open()} /> : null;
+          const list = rows.filter((r) => numOrZero(r.est_cost) > 0).sort((a, b) => numOrZero(b.est_cost) - numOrZero(a.est_cost));
+          if (!list.length) return null;
+          return <CxGridBars aria="Replication spend by database" n={8} nameWidth="minmax(200px, 1.2fr)" cols={[{ label: `Cost${cur.tag}` }, { label: "Size" }]}
+            foot={<span className="cx-sub">{`${cur.fmt(sumCol(list, "est_cost"))} across ${plural(list.length, "database")}.`}</span>}
+            rows={list.map((r) => ({
+              key: `${r.account_locator}|${r.database_name}|${r.region}`, value: numOrZero(r.est_cost), status: r.status, onOpen: () => rc.open(),
+              name: <span className="cx-two"><span>{r.database_name || "(no database)"}</span><span className="cx-sub">{`→ ${r.region || "–"} · ${acct(r)}`}</span></span>,
+              cells: [cur.fmt(numOrZero(r.est_cost)), tb(numOrZero(r.tb_transferred))],
+            }))} />;
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }

@@ -5,24 +5,26 @@ import React from "react";
 import "../styles/css/p_area_ai_storage.css";
 import { fmtChange, fmtDayShort, fmtInt, fmtMoney, fmtMoneyOf } from "../format";
 import { numOrZero, useFindingAgg, useFindingData } from "./hooks";
-import { ChartCard, KindChip, bandOf } from "./primitives";
-import { DrillTable, MiniBar, SplitBar } from "./drill_table";
+import { ChartCard, bandOf } from "./primitives";
+import { MiniBar } from "./drill_table";
 import { DrawerBus } from "./drawer";
 import { notAssessedText } from "./scope";
 import { SummaryTileRow, SummaryTileSpark, partialBarKeys, windowShortLabel } from "./overview_tile";
-import { MultiLine, truncateLeft, useChartWidth } from "./charts";
-import { Columns, rowLabelWidth } from "./charts_more";
+import { MultiLine } from "./charts";
+import { Columns } from "./charts_more";
 import { windowDayList } from "./run_blocks";
 import { DAY_ROWS_MAX, GrainSwitch, fmtMonth, partialMonths, rollUpMonths } from "./grain";
 import type { Grain } from "./grain";
 import { CsvButton } from "./csv";
 import {
-  CauseSplitBar, DayKindTimeline, IssueTile, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf,
+  IssueTile, StackedShareBar, fmtShare, pctOf,
 } from "./blocks";
-import type { IssueTileProps, ShareSegment, StatusBarItem } from "./blocks";
+import type { IssueTileProps, ShareSegment } from "./blocks";
 import { MONEY_KIND_WORD, findingForId, moneyPeriodWord, upToWord, withoutTotalRows } from "../tabs/tab_area";
 import { moneyKindOf } from "./waste_total";
-import { CortexAgentsPanel } from "./ai_cortex_agents";
+import { CortexAgentsPanel, cortexProductCells, useCortexProducts } from "./ai_cortex_agents";
+import { CxBars, CxDayStack, CxGridBars, cxMoney, CxKindsNote, CxName, CxRow2, CxSlot, CxStrip, CxTable } from "./cx_c";
+import type { CxBarRow, CxStripCell } from "./cx_c";
 import type { ApPageProps } from "./area_pages";
 import type { FetchState, Finding, Row } from "../types";
 
@@ -98,6 +100,7 @@ export function fmtSize(gb: number): string {
 }
 // Small AI and serving spend reads "0.0021 credits", never "0 credits".
 const fmtCreditsShort = (v: number) => fmtCreditsFine(v);
+const plural = (n: number, one: string, many?: string) => `${fmtInt(n)} ${n === 1 ? one : (many || `${one}s`)}`;
 const signedShare = (pct: number | null) => (pct == null ? "–" : `${pct >= 0 ? "+" : "−"}${fmtShare(Math.abs(pct))}`);
 /** "name (id)" when the row carries an id. */
 export const nameId = (name: any, id: any, empty = "(unnamed)") => {
@@ -147,7 +150,11 @@ export function tileMoney(f: Finding | null): string | null {
 }
 
 /** The check's own money figure (the same $ every other page shows), with "N of M" and a cause. */
-export function MoneyTile({ c, label, badge = true, cause }: { c: Chk; label: string; badge?: boolean; cause?: (rows: Row[]) => React.ReactNode }) {
+export function MoneyTile({ c, label, badge = true, cause, cur = false }: {
+  c: Chk; label: string; badge?: boolean; cause?: (rows: Row[]) => React.ReactNode;
+  /** Invoice money in its own currency, "$" for USD ("$1,363", "€1,826"), not "USD 1,363". */
+  cur?: boolean;
+}) {
   return (
     <CheckTile c={c} label={label} badge={badge} build={(rows) => {
       const f = c.f!;
@@ -162,9 +169,9 @@ export function MoneyTile({ c, label, badge = true, cause }: { c: Chk; label: st
       const kindWord = MONEY_KIND_WORD[moneyKindOf(f) as string] || "";
       return {
         ...pop,
-        headline: tileMoney(f),
+        headline: cur && m.unit === "currency" ? `${upToWord(f)}${cxMoney(m.currency, numOrZero(part ? m.usd_flagged : m.usd))}` : tileMoney(f),
         unit: period === "per month" ? "/mo" : undefined,
-        cause: cause ? cause(rows) : (part ? `of ${fmtMoneyOf(m, m.usd, 0)} ${kindWord}` : kindWord),
+        cause: cause ? cause(rows) : (part ? `of ${cur && m.unit === "currency" ? cxMoney(m.currency, numOrZero(m.usd)) : fmtMoneyOf(m, m.usd, 0)} ${kindWord}` : kindWord),
       };
     }} />
   );
@@ -330,95 +337,6 @@ export function useWindowLabel(p: ApPageProps) {
   return windowShortLabel(p.meta && p.meta.as_of_date, p.filters.window, p.meta && p.meta.snapshot_days);
 }
 
-// ═══════════════════════ small charts this page needs ═══════════════════════
-
-/** Ranked bars with a colour per item and a legend of the kinds (policy state, invocation type). */
-function ColorBars({ items, kinds, n = 10, onBarClick, ariaLabel }: {
-  items: { key?: string; name: string; value: number; kind: string; valueText: string }[];
-  kinds: { key: string; label: string; color: string }[];
-  n?: number; onBarClick?: (() => void) | null; ariaLabel?: string;
-}) {
-  const [ref, W] = useChartWidth(560);
-  const sorted = [...items].filter((it) => it.value > 0).sort((a, b) => b.value - a.value);
-  if (!sorted.length) return <div ref={ref} className="chart-note-oneline">Every value is zero in this window.</div>;
-  const shown = sorted.slice(0, n);
-  const max = shown[0].value || 1;
-  const labelW = rowLabelWidth(W);
-  const colorOf = (k: string) => (kinds.find((x) => x.key === k) || { color: "var(--c-other)" }).color;
-  const present = kinds.filter((k) => shown.some((it) => it.kind === k.key));
-  return (
-    <div ref={ref} className="blk-sbars" role="list" aria-label={ariaLabel}>
-      {present.length >= 2 && (
-        <div className="blk-legend">
-          {present.map((k) => <span key={k.key} className="blk-legend-item"><span className="blk-sw" style={{ background: k.color }} />{k.label}</span>)}
-        </div>
-      )}
-      {shown.map((it, i) => {
-        const inner = (
-          <>
-            <span className="blk-row-label" style={{ width: labelW }} title={it.name}>{truncateLeft(it.name, labelW - 8)}</span>
-            <span className="blk-sbar-track"><span className="blk-sbar-fill" style={{ width: `${Math.max(0, (it.value / max) * 100)}%`, background: colorOf(it.kind) }} /></span>
-            <span className="blk-sbar-value ais-value">{it.valueText}</span>
-          </>
-        );
-        const tip = `${it.name}: ${it.valueText}`;
-        return onBarClick
-          ? <button type="button" role="listitem" key={it.key || `${it.name}-${i}`} className="blk-sbar blk-row-btn" title={tip} onClick={onBarClick}>{inner}</button>
-          : <div role="listitem" key={it.key || `${it.name}-${i}`} className="blk-sbar" title={tip}>{inner}</div>;
-      })}
-      {sorted.length > shown.length && <div className="blk-more">{`+${fmtInt(sorted.length - shown.length)} more not shown`}</div>}
-    </div>
-  );
-}
-
-// Time Travel bands of sf_storage_retention_policy: [column, label, lowest days in the band].
-const RETENTION_BANDS: [string, string, number][] = [
-  ["tables_0d", "0 d", 0], ["tables_1d", "1 d", 1], ["tables_2_7d", "2–7 d", 2], ["tables_8_30d", "8–30 d", 8], ["tables_31_90d", "31–90 d", 31],
-];
-const BAND_COLORS = ["var(--seq-1)", "var(--seq-2)", "var(--seq-3)", "var(--seq-4)", "var(--seq-5)"];
-
-/** Tables per database by Time Travel band; bands wholly above the account policy are red. */
-function RetentionBands({ rows, n = 8, onOpen }: { rows: Row[]; n?: number; onOpen: () => void }) {
-  const [ref, W] = useChartWidth(560);
-  const list = rows.filter((r) => numOrZero(r.tables_total) > 0)
-    .sort((a, b) => numOrZero(b.over_policy_tables) - numOrZero(a.over_policy_tables) || numOrZero(b.tables_total) - numOrZero(a.tables_total));
-  if (!list.length) return <div ref={ref} className="chart-note-oneline">No tables to show.</div>;
-  const shown = list.slice(0, n);
-  const labelW = rowLabelWidth(W);
-  const policy = (r: Row) => (r.max_retention_days === null || r.max_retention_days === undefined ? null : Number(r.max_retention_days));
-  return (
-    <div ref={ref} className="ais-bands" role="list" aria-label="Tables by Time Travel days, per database">
-      <div className="blk-legend">
-        {RETENTION_BANDS.map(([, label], i) => <span key={label} className="blk-legend-item"><span className="blk-sw" style={{ background: BAND_COLORS[i] }} />{label}</span>)}
-        <span className="blk-legend-item"><span className="blk-sw" style={{ background: "var(--st-crit)" }} />above the account policy</span>
-      </div>
-      {shown.map((r) => {
-        const total = numOrZero(r.tables_total);
-        const pol = policy(r);
-        const name = nameId(r.database_name, r.database_id, "(unnamed database)");
-        const over = numOrZero(r.over_policy_tables);
-        const text = pol === null ? `${fmtInt(total)} tables` : `${fmtInt(over)} of ${fmtInt(total)} over ${fmtInt(pol)} d`;
-        return (
-          <button type="button" role="listitem" key={name} className="blk-sbar blk-row-btn" onClick={onOpen} title={`${name}: ${text}`}>
-            <span className="blk-row-label" style={{ width: labelW }}>{truncateLeft(name, labelW - 8)}</span>
-            <span className="ais-band-bar">
-              {RETENTION_BANDS.map(([col, label, low], i) => {
-                const v = numOrZero(r[col]);
-                if (v <= 0) return null;
-                const above = pol !== null && low > pol;
-                return <span key={col} className="ais-band-seg" title={`${label}: ${fmtInt(v)} table${v === 1 ? "" : "s"}${above ? " (above policy)" : ""}`}
-                  style={{ width: `${(v / total) * 100}%`, background: above ? "var(--st-crit)" : BAND_COLORS[i] }} />;
-              })}
-            </span>
-            <span className="blk-sbar-value ais-value">{text}</span>
-          </button>
-        );
-      })}
-      {list.length > shown.length && <div className="blk-more">{`+${fmtInt(list.length - shown.length)} more not shown`}</div>}
-    </div>
-  );
-}
-
 // ═══════════════════════ AI & apps > Cortex ═══════════════════════
 
 export function ApAiCortex(p: ApPageProps) {
@@ -430,6 +348,7 @@ export function ApAiCortex(p: ApPageProps) {
   const stale = useCheck(p, "sf_ai_cortex_search_stale_index_serving");
   const access = useCheck(p, "sf_ai_access_open_to_all");
   const search = useCheck(p, "sf_ai_cortex_search_spend");
+  const products = useCortexProducts(p);
   // The same two bill names sf_ai_services_spend_trend reads as AI services.
   const aiDays = useServiceDays(p, /^(AI_SERVICES|AI_INFERENCE)$/i, "max");
   const spark = aiDays.spark;
@@ -443,13 +362,25 @@ export function ApAiCortex(p: ApPageProps) {
   useLede(p, trend.loading || pt.loading, trend.rows && aiCur > 0
     ? `Cortex used ${fmtCreditsShort(aiCur)} in ${wAi || "the window"}${aiPrev > 0 ? `, ${fmtChange(aiCur, aiPrev, false)} vs the period before` : ""}.${ptIdle.length ? ` ${fmtInt(ptIdle.length)} provisioned throughput${ptIdle.length === 1 ? " sat" : "s sat"} idle on paid days.` : ""}`
     : null);
+  const featTotal = (feat.allRows || []).find((r) => r.is_total_row) || null;
+  const unexplainedCell: CxStripCell = (() => {
+    const base = { key: "unexplained", label: "No feature explains", onOpen: feat.open };
+    if (feat.loading) return { ...base, value: null, loading: true };
+    if (feat.why || !feat.rows) return { ...base, value: null, missing: feat.why, status: feat.empty ? null : "not_assessed" };
+    const t = featTotal;
+    if (!t || t.unexplained_pct === null || t.unexplained_pct === undefined) return { ...base, value: null, missing: "No billed AI total to compare with." };
+    return {
+      ...base, value: fmtShare(numOrZero(t.unexplained_pct)), unit: "of AI bill",
+      lines: [`${fmtCreditsShort(numOrZero(t.unexplained_credits))} of ${fmtCreditsShort(numOrZero(t.billed_credits))} billed.`, "Ties the feature split to the bill."],
+    };
+  })();
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
-        <CheckTile c={trend} label="AI spend" build={(rows, c) => ({ ...serviceShare(rows, c, "AI_SERVICES", "AI services", spark, wAi), pill: <KindChip>Context</KindChip> })} />
+        <CheckTile c={trend} label="AI spend" build={(rows, c) => serviceShare(rows, c, "AI_SERVICES", "AI services", spark, wAi)} />
         <MoneyTile c={pt} label="Idle provisioned throughput" cause={(rows) => {
           const top = [...rows].filter(isFlagged).sort((a, b) => numOrZero(b.est_idle_usd_list) - numOrZero(a.est_idle_usd_list))[0];
-          return top ? `${top.throughput_name} idle ${fmtInt(top.idle_days)} of ${fmtInt(top.paid_days)} paid days` : "No paid day went unused";
+          return top ? `${top.throughput_name} sat idle on ${fmtInt(top.idle_days)} of its ${fmtInt(top.paid_days)} paid days.` : "No paid day went unused.";
         }} />
         <CheckTile c={users} label="Top AI functions user" build={(rows, c) => {
           const s = spendOf(rows, c.disc, "est_current_usd_list", "current_credits");
@@ -459,160 +390,159 @@ export function ApAiCortex(p: ApPageProps) {
           const top = [...g].sort((a, b) => b.value - a.value)[0];
           if (!top || total <= 0) return { headline: null, missingReason: "No AI functions spend in this window" };
           return {
-            headline: fmtShare(pctOf(top.value, total)), unit: " of AI functions",
+            headline: fmtShare(pctOf(top.value, total)), unit: "of AI functions",
             flagged: g.filter((x) => x.status === "CRITICAL").length, population: g.length, noun: "users spiking",
             trend: changeChip(top.value, top.prev, top.status === "CRITICAL"),
-            cause: `${top.name} · ${s.fmt(top.value)}`,
-          };
-        }} />
-        <CheckTile c={feat} label="AI bill no feature explains" build={(_rows, c) => {
-          const t = (c.allRows || []).find((r) => r.is_total_row);
-          if (!t || t.unexplained_pct === null || t.unexplained_pct === undefined) return { headline: null, missingReason: "No billed AI total to compare with" };
-          return {
-            headline: fmtShare(numOrZero(t.unexplained_pct)), unit: " of AI bill",
-            cause: `${fmtCreditsShort(numOrZero(t.unexplained_credits))} of ${fmtCreditsShort(numOrZero(t.billed_credits))} billed`,
+            cause: `${top.name}: ${s.fmt(top.value)}.`,
           };
         }} />
       </SummaryTileRow>
-      <Slot c={{ ...aiDays.c, rows: aiDays.c.rows ? [] : null }} title={`AI spend per ${grain}`}
-        subtitle={`${aiDays.priced ? "$" : "credits"} · AI functions, search, analyst (not Cortex Code) · ${grain === "day" ? "today is partial (faded)" : "partial months are marked"}`}>
+      <CxStrip aria="AI bill and spend per Cortex product" cells={[unexplainedCell, ...cortexProductCells(p, products)]} />
+      <CxKindsNote>Spend is context. Idle throughput and failed-statement credits are possible waste, counted on their own; products are never added together.</CxKindsNote>
+      <CxSlot c={{ ...aiDays.c, rows: aiDays.c.rows ? [] : null }} title={`AI spend per ${grain}`}
+        subtitle={`${aiDays.priced ? "$ / day" : "credits / day"} · AI functions, search and analyst (not Cortex Code) · ${grain === "day" ? "today is partial, shown faded" : "partial months are marked"}`}>
         {() => <ServiceDaysChart s={aiDays} what="AI" w={wAi} grain={grain} setGrain={setGrain} />}
-      </Slot>
-      <Row2>
-        <Slot c={feat} title="AI spend by feature" subtitle="credits · this period vs the one before">
-          {(rows, c) => <FeatureSplit rows={rows} total={(c.allRows || []).find((r) => r.is_total_row) || null} />}
-        </Slot>
-        <Slot c={users} title="AI functions spend by user" subtitle="red: grew sharply vs the period before">
+      </CxSlot>
+      <CxRow2>
+        <CxSlot c={feat} title="AI spend by feature" subtitle="Share of the billed AI credits · $ and credits · vs the period before">
+          {(rows, c) => <FeatureSplit rows={rows} total={(c.allRows || []).find((r) => r.is_total_row) || null} disc={c.disc} />}
+        </CxSlot>
+        <CxSlot c={users} title="AI functions spend by user" subtitle="Change vs the period before · warning: grew sharply">
           {(rows, c) => {
             const s = spendOf(rows, c.disc, "est_current_usd_list", "current_credits");
             const prevOf = (r: Row) => (s.priced ? numOrZero(r.est_previous_usd_list) * (1 - c.disc) : numOrZero(r.previous_credits));
-            const items: StatusBarItem[] = groupBy(rows, (r) => String(r.user_name || "(no user)"), s.val, prevOf)
-              .filter((x) => x.value > 0)
-              .map((x) => {
+            const list = groupBy(rows, (r) => String(r.user_name || "(no user)"), s.val, prevOf).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
+            if (list.length < 2) return null;
+            return <CxBars aria="AI functions spend by user" n={8}
+              rows={list.map((x) => {
                 const ch = fmtChange(x.value, x.prev, false);
-                return { name: x.name, value: x.value, status: x.status, valueText: `${s.fmt(x.value)}${ch !== "-" ? ` · ${ch}` : ""}` };
-              });
-            return items.length >= 2 ? <StatusBars items={items} n={8} onBarClick={c.open} unitLabel={s.priced ? "$" : "credits"} ariaLabel="AI functions spend by user" /> : null;
+                return { key: x.name, name: x.name, value: x.value, status: x.status, onOpen: c.open, cells: [s.fmt(x.value), ch !== "-" ? ch : null].filter((v): v is string => !!v) };
+              })} />;
           }}
-        </Slot>
-      </Row2>
-      <Slot c={pt} title="Provisioned throughputs" subtitle="paid days and the days nothing called the model · spend is context, idle $ is possible waste · click a row">
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={pt} title="Provisioned throughputs" subtitle="Paid days and the days nothing called the model · spend is context, idle $ is possible waste · open a row">
         {(rows, c) => {
           const s = spendOf(rows, c.disc, "est_current_usd_list", "current_credits");
           const list = [...rows].sort((a, b) => numOrZero(b.idle_day_pct) - numOrZero(a.idle_day_pct) || s.val(b) - s.val(a));
           return (
-            <DrillTable aria="Provisioned throughputs" n={10}
-              cols={[{ label: "Throughput" }, { label: "Paid days", num: true, width: "auto" }, { label: "Idle", width: "minmax(80px, auto)" }, { label: s.priced ? "Spend" : "Credits", num: true, width: "auto" }, { label: "Idle $", num: true, width: "auto" }]}
+            <CxTable aria="Provisioned throughputs" n={10}
+              cols={[{ label: "Throughput" }, { label: "Paid days", num: true, width: "auto" }, { label: "Idle days", num: true, width: "auto" }, { label: s.priced ? "Spend" : "Credits", num: true, width: "auto" }, { label: "Idle $", num: true, width: "auto" }]}
               rows={list.map((r) => ({
-                key: `${r.account_id}|${r.throughput_name}`, status: r.status,
+                key: `${r.account_id}|${r.throughput_name}`, status: numOrZero(r.idle_days) > 0 ? r.status : "OK",
                 onOpen: () => DrawerBus.open({ id: "sf_ai_provisioned_throughput_use", col: "throughput_name", val: String(r.throughput_name), label: String(r.throughput_name) }),
-                cells: [String(r.throughput_name || "(unnamed)"), fmtInt(r.paid_days), dtChip(`${fmtInt(r.idle_days)} of ${fmtInt(r.paid_days)} d idle`, numOrZero(r.idle_days) > 0 ? r.status : "OK"),
+                cells: [String(r.throughput_name || "(unnamed)"), fmtInt(r.paid_days), `${fmtInt(r.idle_days)} of ${fmtInt(r.paid_days)}`,
                   s.fmt(s.val(r)), s.priced && r.est_idle_usd_list != null && isFlagged(r) ? fmtMoney(numOrZero(r.est_idle_usd_list) * (1 - c.disc), 0) : "–"],
               }))} />
           );
         }}
-      </Slot>
-      <Row2>
-        <Slot c={search} title="Cortex Search spend by service" subtitle="serving and other credits · change vs the period before · spend, not waste">
+      </CxSlot>
+      <CxRow2>
+        <CxSlot c={search} title="Cortex Search spend by service" subtitle="Serving and other credits · change vs the period before · spend, not waste">
           {(rows, c) => {
             const s = spendOf(rows, c.disc, "est_current_usd_list", "current_credits");
-            const items: StatusBarItem[] = rows.filter((r) => s.val(r) > 0).map((r) => {
-              const ch = r.change_pct === null || r.change_pct === undefined ? null : `${numOrZero(r.change_pct) >= 0 ? "+" : "−"}${fmtShare(Math.abs(numOrZero(r.change_pct)))}`;
-              const serving = pctOf(numOrZero(r.serving_credits), numOrZero(r.current_credits));
-              return {
-                key: `${r.account_id}|${r.service_id ?? r.service_name}`, name: nameId(r.service_name, r.service_id, "(unnamed service)"), value: s.val(r), status: r.status,
-                valueText: [s.priced ? fmtMoney(s.val(r), 0) : fmtCreditsFine(numOrZero(r.current_credits)), serving === null ? null : `${fmtShare(serving)} serving`, ch].filter(Boolean).join(" · "),
-              };
-            });
-            return <StatusBars items={items} n={8} onBarClick={c.open} unitLabel={s.priced ? "$" : "credits"} ariaLabel="Cortex Search spend by service"
-              emptyText={`No Cortex Search spend in ${w || "this window"}.`} />;
+            const list = rows.filter((r) => s.val(r) > 0).sort((a, b) => s.val(b) - s.val(a));
+            if (!list.length) return null;
+            return <CxBars aria="Cortex Search spend by service" n={8}
+              rows={list.map((r) => {
+                const ch = r.change_pct === null || r.change_pct === undefined ? null : `${numOrZero(r.change_pct) >= 0 ? "+" : "−"}${fmtShare(Math.abs(numOrZero(r.change_pct)))}`;
+                const serving = pctOf(numOrZero(r.serving_credits), numOrZero(r.current_credits));
+                return {
+                  key: `${r.account_id}|${r.service_id ?? r.service_name}`, name: nameId(r.service_name, r.service_id, "(unnamed service)"), value: s.val(r), status: r.status, onOpen: c.open,
+                  cells: [s.priced ? fmtMoney(s.val(r), 0) : fmtCreditsFine(numOrZero(r.current_credits)), serving === null ? null : `${fmtShare(serving)} serving`, ch].filter((v): v is string => !!v),
+                };
+              })} />;
           }}
-        </Slot>
-        <Slot c={stale} title="Search indexes that stopped taking rows" subtitle="days since the index last embedded new rows · serving bills meanwhile · $ is spend">
+        </CxSlot>
+        <CxSlot c={stale} title="Search indexes that stopped taking rows" subtitle="Days since the index last embedded new rows · serving bills meanwhile · $ is spend">
           {(rows, c) => {
             const priced = isPriced(rows);
-            const items: StatusBarItem[] = rows.map((r) => ({
-              key: `${r.account_id}|${r.service_id}`, name: nameId(r.service_full_name, r.service_id), value: numOrZero(r.days_without_new_rows), status: r.status,
-              valueText: `${fmtInt(r.days_without_new_rows)} d · ${priced ? fmtMoney(numOrZero(r.est_serving_usd_list) * (1 - c.disc), 0) : fmtCreditsShort(numOrZero(r.serving_credits))} serving`,
-            }));
-            return items.length ? <StatusBars items={items} n={6} unitLabel="days" onBarClick={c.open} ariaLabel="Days since each search index took new rows" /> : null;
+            if (!rows.length) return null;
+            return <CxBars aria="Days since each search index took new rows" n={6}
+              rows={[...rows].sort((a, b) => numOrZero(b.days_without_new_rows) - numOrZero(a.days_without_new_rows)).map((r) => ({
+                key: `${r.account_id}|${r.service_id}`, name: nameId(r.service_full_name, r.service_id), value: numOrZero(r.days_without_new_rows), status: r.status, onOpen: c.open,
+                cells: [`${fmtInt(r.days_without_new_rows)} d`, `${priced ? fmtMoney(numOrZero(r.est_serving_usd_list) * (1 - c.disc), 0) : fmtCreditsShort(numOrZero(r.serving_credits))} serving`],
+              }))} />;
           }}
-        </Slot>
-      </Row2>
-      <Slot c={fail} title="AI credits on failed statements" subtitle="tokens bill even when the statement fails or is cancelled · $ is possible waste · click a row">
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={fail} title="AI credits on failed statements" subtitle="Tokens bill even when the statement fails or is cancelled · $ is possible waste · open a row">
         {(rows, c) => {
           const priced = isPriced(rows);
-          const items: StatusBarItem[] = rows.filter((r) => numOrZero(r.failed_credits) > 0).map((r) => {
-            const cause = [["cancelled", "cancelled_credits"], ["timed out", "timed_out_credits"], ["error", "error_credits"]]
-              .sort((a, b) => numOrZero(r[b[1]]) - numOrZero(r[a[1]]))[0][0];
-            const usd = numOrZero(r.est_wasted_usd_list) * (1 - c.disc);
-            return {
-              key: `${r.account_id}|${r.user_name}|${r.warehouse_id}|${r.function_name}|${r.model_name}`,
-              name: `${r.function_name} ${r.model_name && r.model_name !== "(none)" ? r.model_name : ""} · ${r.user_name}`.replace(/\s+·/, " ·"),
-              value: numOrZero(r.failed_credits), status: r.status, user: r.user_name,
-              valueText: [priced && isFlagged(r) ? fmtMoney(usd, 0) : fmtCreditsShort(numOrZero(r.failed_credits)), cause,
-                `${fmtInt(r.failed_queries)} of ${fmtInt(r.ai_queries)} statements`].join(" · "),
-            };
-          });
-          return items.length ? <StatusBars items={items} n={8} unitLabel="credits" ariaLabel="AI credits on failed statements"
-            onBarClick={(it) => DrawerBus.open({ id: "sf_ai_credits_on_failed_queries", col: "user_name", val: String(it.user), label: it.name })} /> : null;
+          const list = rows.filter((r) => numOrZero(r.failed_credits) > 0).sort((a, b) => numOrZero(b.failed_credits) - numOrZero(a.failed_credits));
+          if (!list.length) return null;
+          return <CxGridBars aria="AI credits on failed statements" n={8} nameWidth="minmax(180px, 1.6fr)"
+            cols={[{ label: priced ? "$ · 30 d" : "Credits", width: "minmax(72px, auto)" }, { label: "How it ended", width: "minmax(150px, auto)" }]}
+            rows={list.map((r) => {
+              const cause = [["Cancelled", "cancelled_credits"], ["Timed out", "timed_out_credits"], ["Error", "error_credits"]]
+                .sort((a, b) => numOrZero(r[b[1]]) - numOrZero(r[a[1]]))[0][0];
+              const usd = numOrZero(r.est_wasted_usd_list) * (1 - c.disc);
+              const name = `${r.function_name} ${r.model_name && r.model_name !== "(none)" ? r.model_name : ""} · ${r.user_name}`.replace(/\s+·/, " ·");
+              return {
+                key: `${r.account_id}|${r.user_name}|${r.warehouse_id}|${r.function_name}|${r.model_name}`, name, value: numOrZero(r.failed_credits), status: r.status,
+                onOpen: () => DrawerBus.open({ id: "sf_ai_credits_on_failed_queries", col: "user_name", val: String(r.user_name), label: name }),
+                cells: [priced && isFlagged(r) ? (usd < 1 ? "under $1" : fmtMoney(usd, 0)) : fmtCreditsShort(numOrZero(r.failed_credits)),
+                  `${cause}: ${fmtInt(r.failed_queries)} of ${fmtInt(r.ai_queries)} statements`],
+              };
+            })} />;
         }}
-      </Slot>
-      <CortexAgentsPanel {...p} />
-      <Slot c={access} title="Who can call Cortex" subtitle="Snowflake grants AI to PUBLIC by default · red or amber: every user can call it">
+      </CxSlot>
+      <CortexAgentsPanel p={p} k={products} />
+      <CxSlot c={access} title="Who can call Cortex" subtitle="Snowflake grants AI to PUBLIC by default · critical or warning: every user can call it">
         {(rows) => (
-          <DrillTable aria="Ways into Cortex AI functions" n={3}
-            cols={[{ label: "Way in" }, { label: "PUBLIC", width: "minmax(80px, auto)" }, { label: "Other roles", num: true, width: "auto" }]}
+          <CxTable aria="Ways into Cortex AI functions" n={3}
+            cols={[{ label: "Way in" }, { label: "Public", width: "minmax(140px, 1fr)" }, { label: "Other roles", num: true, width: "auto" }]}
             rows={rows.map((r) => ({
               key: `${r.account_id}|${r.access_path}`, status: r.status,
               cells: [String(r.access_label || r.access_path),
                 r.status === "NOT_ASSESSED" ? "– not listed"
-                  : r.access_path === "models_allowlist" ? dtChip(`models: ${r.setting_value}`, r.status)
-                  : dtChip(r.open_to_public ? `holds it${r.public_granted_on ? ` since ${fmtDayShort(r.public_granted_on)}` : ""}` : "revoked", r.status),
+                  : r.access_path === "models_allowlist" ? `Models allowed: ${r.setting_value}`
+                  : r.open_to_public ? `Holds it${r.public_granted_on ? ` since ${fmtDayShort(r.public_granted_on)}` : ""}` : "Revoked",
                 r.other_roles == null ? "–" : fmtInt(r.other_roles)],
             }))} />
         )}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
 
-/** Two 100% bars of credits by feature: now (with the hatched part no feature explains) and before. */
-function FeatureSplit({ rows, total }: { rows: Row[]; total: Row | null }) {
+/** Credits by feature on fixed columns: share of the billed AI total, $ and credits now, before and the change. */
+function FeatureSplit({ rows, total, disc }: { rows: Row[]; total: Row | null; disc: number }) {
   const feats = rows.filter((r) => r.row_kind === "feature");
   const prov = rows.find((r) => r.row_kind === "provisioned");
   if (!feats.length) return null;
-  const palette = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--seq-3)"];
   const order = [...feats].sort((a, b) => numOrZero(b.current_credits) - numOrZero(a.current_credits));
-  const colorOf = new Map(order.map((r, i) => [String(r.feature), palette[i % palette.length]]));
-  const seg = (r: Row, col: string, withChange: boolean): ShareSegment => {
-    const ch = withChange ? fmtChange(numOrZero(r.current_credits), numOrZero(r.previous_credits), false) : "-";
-    return { key: String(r.feature), label: `${r.feature}${ch !== "-" ? ` ${ch}` : ""}`, value: numOrZero(r[col]), color: colorOf.get(String(r.feature)) };
-  };
-  const now = order.map((r) => seg(r, "current_credits", true));
-  // provisioned throughput that fits in the bill's gap is part of the billed total
   const ptuInBill = total ? numOrZero(total.ptu_in_bill_credits) : 0;
-  if (ptuInBill > 0) now.push({ key: "__ptu", label: "Provisioned throughput", value: ptuInBill, color: "var(--seq-2)" });
   const unexplained = total ? numOrZero(total.unexplained_credits) : 0;
-  if (unexplained > 0) now.push({ key: "__gap", label: "No feature explains", value: unexplained, unknown: true });
-  const before = order.map((r) => seg(r, "previous_credits", false));
-  const sum = (s: ShareSegment[]) => s.reduce((a, x) => a + x.value, 0);
-  // Rows can all be zero (only the billed-total row, still settling): say so rather than draw an empty bar.
-  if (sum(now) <= 0 && sum(before) <= 0) {
+  const now = order.reduce((a, r) => a + numOrZero(r.current_credits), 0) + ptuInBill + unexplained;
+  const before = order.reduce((a, r) => a + numOrZero(r.previous_credits), 0);
+  // Rows can all be zero (only the billed-total row, still settling): say so rather than draw empty bars.
+  if (now <= 0 && before <= 0) {
     return <div className="chart-note-oneline">No Cortex feature spend in this window yet; the billed AI total settles about 2 days after the day.</div>;
   }
+  const billed = total && numOrZero(total.billed_credits) > 0 ? numOrZero(total.billed_credits) : now;
+  const priced = isPriced(feats);
+  const row = (key: string, name: string, cur: number, prev: number | null, usd: number | null, extra?: Partial<CxBarRow>): CxBarRow => {
+    const ch = prev == null ? "-" : fmtChange(cur, prev, false);
+    return {
+      key, name, value: cur,
+      cells: [fmtShare(pctOf(cur, billed)), usd == null ? "–" : fmtMoney(usd, 0), fmtCreditsFine(cur).replace(" credits", ""),
+        prev == null ? "–" : fmtCreditsFine(prev).replace(" credits", ""), ch === "-" ? "–" : ch],
+      ...extra,
+    };
+  };
+  const list: CxBarRow[] = order.map((r) => row(String(r.feature), String(r.feature), numOrZero(r.current_credits), numOrZero(r.previous_credits),
+    priced && r.est_current_usd_list != null ? numOrZero(r.est_current_usd_list) * (1 - disc) : null));
+  if (ptuInBill > 0) list.push(row("__ptu", "Provisioned throughput", ptuInBill, null, null, { color: "var(--c-other)" }));
+  if (unexplained > 0) list.push(row("__gap", "No feature explains", unexplained, null, null, { hatched: true }));
   return (
-    <div className="ais-stack-pair">
-      <StackedShareBar segments={now} valueFmt={fmtCreditsShort} maxSegments={6}
-        totalLabel={`This period · ${fmtCreditsShort(sum(now))}${total ? " billed" : ""}`} ariaLabel="AI credits by feature, this period" />
-      {sum(before) > 0 && (
-        <StackedShareBar segments={before} valueFmt={fmtCreditsShort} maxSegments={6} height={14}
-          totalLabel={`Period before · ${fmtCreditsShort(sum(before))} (features only)`} ariaLabel="AI credits by feature, the period before" />
-      )}
-      {prov && numOrZero(prov.current_credits) - ptuInBill > 0.005 && (
-        <div className="chart-note-oneline">{`Provisioned throughput outside the AI bill: ${fmtCreditsShort(numOrZero(prov.current_credits) - ptuInBill)}.`}</div>
-      )}
-    </div>
+    <>
+      <CxGridBars aria="AI credits by feature" n={12} nameWidth="minmax(120px, 1.2fr)" legend={false}
+        cols={[{ label: "Share" }, { label: "$" }, { label: "Credits" }, { label: "Before" }, { label: "Change" }]}
+        rows={list} />
+      <div className="metric-note">{`${fmtCreditsShort(now)} this period${total ? " billed" : ""} vs ${fmtCreditsShort(before)} before (features only).`}
+        {prov && numOrZero(prov.current_credits) - ptuInBill > 0.005 ? ` Provisioned throughput outside the AI bill: ${fmtCreditsShort(numOrZero(prov.current_credits) - ptuInBill)}.` : ""}</div>
+    </>
   );
 }
 
@@ -647,25 +577,26 @@ export function ApAiApps(p: ApPageProps) {
   const poolCur = pools.rows && poolS ? pools.rows.reduce((a, r) => a + poolS.val(r), 0) : 0;
   const idleFlag = (idle.rows || []).filter(isFlagged);
   const codeFlag = (code.rows || []).filter(isFlagged);
+  const poolName = (r: Row) => nameId(r.compute_pool_name, r.compute_pool_id, "(no compute pool)");
   useLede(p, pools.loading || idle.loading, pools.rows && poolS && poolCur > 0
     ? `Compute pools cost ${poolS.fmt(poolCur)} in ${w || "the window"}${idle.rows ? `; ${fmtInt(idleFlag.length)} of ${fmtInt(idle.rows.length)} billed with nothing running on them` : ""}.${code.rows ? ` ${fmtInt(codeFlag.length)} of ${fmtInt(code.rows.length)} functions and procedures are flagged.` : ""}`
     : null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
         <CheckTile c={pools} label="Compute pool spend" build={(rows, c) => {
           const s = spendOf(rows, c.disc, "est_current_usd_list", "current_credits");
           const prev = rows.reduce((a, r) => a + (s.priced ? numOrZero(r.est_previous_usd_list) * (1 - c.disc) : numOrZero(r.previous_credits)), 0);
           const ch = fmtChange(poolCur, prev, false);
           return {
-            headline: s.fmt(poolCur), pill: <KindChip>Context</KindChip>, status: "neutral",
-            base: `${fmtInt(rows.filter((r) => s.val(r) > 0).length)} of ${fmtInt(rows.length)} compute pools billed${ch !== "-" ? ` · ${ch} vs before` : ""}`,
+            headline: s.fmt(poolCur), status: "neutral",
+            base: `${fmtInt(rows.filter((r) => s.val(r) > 0).length)} of ${fmtInt(rows.length)} compute pools billed in ${w || "the window"}${ch !== "-" ? `, ${ch} vs before` : ""}.`,
             cause: <span className="ais-spark-cause"><SummaryTileSpark points={spark} /><span>Spend, not waste.</span></span>,
           };
         }} />
         <MoneyTile c={idle} label="Pools with no live service" cause={(rows) => {
           const top = [...rows].filter(isFlagged).sort((a, b) => numOrZero(b.est_wasted_usd_list) - numOrZero(a.est_wasted_usd_list))[0];
-          return top ? `${nameId(top.compute_pool_name, top.compute_pool_id)} · ${fmtInt(top.idle_hours)} idle h` : "Every billed pool ran a service";
+          return top ? `${poolName(top)}: ${fmtInt(top.idle_hours)} idle hours.` : "Every billed pool ran a service.";
         }} />
         <CheckTile c={pools} label="Always-on pools" badge build={(rows, c) => {
           const s = spendOf(rows, c.disc, "est_current_usd_list", "current_credits");
@@ -674,9 +605,9 @@ export function ApAiApps(p: ApPageProps) {
           const top = [...on].sort((a, b) => s.val(b) - s.val(a))[0];
           return {
             headline: fmtShare(pctOf(on.reduce((a, r) => a + s.val(r), 0), total) ?? 0), unit: "of pool spend",
-            flagged: on.length, population: rows.length, noun: "pools",
+            flagged: on.length, population: rows.length, noun: "pools never stop",
             status: on.length ? statusWord(on) : "ok",
-            cause: top ? `${nameId(top.compute_pool_name, top.compute_pool_id)} up ${fmtShare(numOrZero(top.always_on_pct))} of hours; nodes stay up between jobs.` : "No pool is up every hour.",
+            cause: top ? `${poolName(top)} is up ${fmtShare(numOrZero(top.always_on_pct))} of hours.` : "No pool is up every hour.",
           };
         }} />
         <CheckTile c={code} label="Functions & procedures at risk" build={(rows) => {
@@ -685,78 +616,95 @@ export function ApAiApps(p: ApPageProps) {
           flagged.forEach((r) => codeCauses(r).split(";").filter(Boolean).forEach((k) => counts.set(k, (counts.get(k) || 0) + 1)));
           const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
           return {
-            headline: fmtShare(pctOf(flagged.length, rows.length) ?? 0), unit: " flagged",
-            flagged: flagged.length, population: rows.length, noun: "objects",
-            cause: top ? `${top[0]}: ${fmtInt(top[1])}` : "None flagged",
+            headline: `${fmtInt(flagged.length)} of ${fmtInt(rows.length)}`, unit: "flagged",
+            base: `${fmtShare(pctOf(flagged.length, rows.length) ?? 0)} of functions and procedures.`,
+            cause: top ? `${top[0]}: ${fmtInt(top[1])} of them.` : "None flagged.",
           };
         }} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={pools} title="Compute pools by spend" subtitle="colour: status · value: spend and share of hours up">
+      <CxRow2>
+        <CxSlot c={pools} title="Compute pools by spend" subtitle="Share of hours each pool was up">
           {(rows, c) => {
             const s = spendOf(rows, c.disc, "est_current_usd_list", "current_credits");
-            const items: StatusBarItem[] = rows.map((r) => ({
-              name: String(r.compute_pool_name || "(no compute pool)"), value: s.val(r), status: r.status,
-              valueText: `${s.fmt(s.val(r))} · up ${fmtShare(numOrZero(r.always_on_pct))}`,
-            }));
-            return items.length >= 2 ? <StatusBars items={items} n={8} onBarClick={c.open} ariaLabel="Compute pool spend" /> : null;
+            const list = [...rows].sort((a, b) => s.val(b) - s.val(a));
+            if (list.length < 2) return null;
+            return <CxGridBars aria="Compute pool spend" n={8} cols={[{ label: s.priced ? "Spend" : "Credits" }, { label: "Hours up" }]}
+              rows={list.map((r) => ({
+                key: `${r.account_id}|${r.compute_pool_id ?? r.compute_pool_name}`, name: poolName(r), value: s.val(r), status: r.status, onOpen: c.open,
+                cells: [s.fmt(s.val(r)), fmtShare(numOrZero(r.always_on_pct))],
+              }))} />;
           }}
-        </Slot>
-        <Slot c={code} title="Why functions & procedures are flagged" subtitle="share of flagged objects per cause">
+        </CxSlot>
+        <CxSlot c={code} title="Why functions are flagged" subtitle="Flagged functions and procedures per cause · one can have several causes">
           {(rows, c) => {
-            const flagged = rows.filter(isFlagged).map((r) => ({ ...r, cause: codeCauses(r) }));
-            return flagged.length ? <CauseSplitBar rows={flagged} column="cause" noun="objects" labelFor={(x) => x} onCauseClick={() => c.open()} /> : null;
+            const flagged = rows.filter(isFlagged);
+            if (!flagged.length) return null;
+            const counts = new Map<string, number>();
+            flagged.forEach((r) => codeCauses(r).split(";").filter(Boolean).forEach((k) => counts.set(k, (counts.get(k) || 0) + 1)));
+            return <CxBars aria="Why functions and procedures are flagged" n={8} max={flagged.length} legend={false}
+              rows={[...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => ({
+                key: k, name: k, value: v, onOpen: c.open, cells: [`${fmtInt(v)} of ${fmtInt(flagged.length)}`, fmtShare(pctOf(v, flagged.length))],
+              }))} />;
           }}
-        </Slot>
-      </Row2>
-      <Row2>
-        <Slot c={nb} title="Notebooks: hours billed per active day" subtitle="red or amber: a kernel left up">
+        </CxSlot>
+      </CxRow2>
+      <CxRow2>
+        <CxSlot c={nb} title="Notebooks: hours billed per active day" subtitle="Warning: a kernel was left up">
           {(rows, c) => {
             const s = spendOf(rows, c.disc, "est_within_usd_list", "current_credits");
-            const items: StatusBarItem[] = rows.map((r) => ({
-              name: nameId(r.notebook_name, r.notebook_id, "(no notebook)"), value: numOrZero(r.hours_per_active_day), status: r.status,
-              valueText: `${numOrZero(r.hours_per_active_day).toFixed(1)} h/day · ${s.fmt(s.val(r))}`,
-            }));
-            return items.length >= 2 ? <StatusBars items={items} n={8} max={24} onBarClick={c.open} ariaLabel="Notebook hours billed per active day" /> : null;
+            const list = [...rows].sort((a, b) => numOrZero(b.hours_per_active_day) - numOrZero(a.hours_per_active_day));
+            if (list.length < 2) return null;
+            return <CxGridBars aria="Notebook hours billed per active day" n={8} max={24} cols={[{ label: "h / day" }, { label: s.priced ? "Spend" : "Credits" }]}
+              rows={list.map((r) => ({
+                key: `${r.account_id}|${r.notebook_id ?? r.notebook_name}`, name: nameId(r.notebook_name, r.notebook_id, "(no notebook)"),
+                value: numOrZero(r.hours_per_active_day), status: r.status, onOpen: c.open,
+                cells: [`${numOrZero(r.hours_per_active_day).toFixed(1)} h`, s.fmt(s.val(r))],
+              }))} />;
           }}
-        </Slot>
-        <Slot c={apps} title="Native apps by spend" subtitle="value: spend and change vs the period before">
+        </CxSlot>
+        <CxSlot c={apps} title="Native apps by spend" subtitle="Change vs the period before">
           {(rows, c) => {
             const s = spendOf(rows, c.disc, "est_current_usd_list", "current_credits");
             const prevOf = (r: Row) => (s.priced ? numOrZero(r.est_previous_usd_list) * (1 - c.disc) : numOrZero(r.previous_credits));
-            const items: StatusBarItem[] = groupBy(rows, (r) => String(r.app_name || "(no app)"), s.val, prevOf).filter((x) => x.value > 0).map((x) => {
-              const ch = fmtChange(x.value, x.prev, false);
-              return { name: x.name, value: x.value, status: x.status, valueText: `${s.fmt(x.value)}${ch !== "-" ? ` · ${ch}` : ""}` };
-            });
-            return items.length >= 2 ? <StatusBars items={items} n={8} onBarClick={c.open} ariaLabel="Native app spend" /> : null;
+            const list = groupBy(rows, (r) => String(r.app_name || "(no app)"), s.val, prevOf).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
+            if (list.length < 2) return null;
+            return <CxBars aria="Native app spend" n={8}
+              rows={list.map((x) => {
+                const ch = fmtChange(x.value, x.prev, false);
+                return { key: x.name, name: x.name, value: x.value, status: x.status, onOpen: c.open, cells: [s.fmt(x.value), ch !== "-" ? ch : null].filter((v): v is string => !!v) };
+              })} />;
           }}
-        </Slot>
-      </Row2>
-      <Slot c={ingress} title="Services that can take internet traffic" subtitle="the owner role holds BIND SERVICE ENDPOINT · confirm with SHOW ENDPOINTS IN SERVICE">
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={ingress} title="Services that can take internet traffic" subtitle="The owner role holds BIND SERVICE ENDPOINT · confirm with SHOW ENDPOINTS IN SERVICE">
         {(rows) => {
           const acct = rows.find((r) => r.row_kind === "account");
           const rank = (r: Row) => (r.status === "CRITICAL" ? 0 : r.status === "WARN" ? 1 : r.status === "NOT_ASSESSED" ? 2 : 3);
           const svc = rows.filter((r) => r.row_kind === "service").sort((a, b) => rank(a) - rank(b));
-          const pub = !acct ? null : acct.status === "NOT_ASSESSED" ? "PUBLIC: – the role can't see the grant"
+          const pub = !acct ? null : acct.status === "NOT_ASSESSED" ? "PUBLIC: – the role can't see the grant."
             : acct.owner_can_bind ? "PUBLIC holds BIND SERVICE ENDPOINT: every service owner can open a public endpoint."
             : `PUBLIC does not hold it${acct.public_revoked_on ? ` (revoked ${fmtDayShort(acct.public_revoked_on)})` : ""}; ${fmtInt(acct.other_roles)} other roles do.`;
+          const endpoint = (r: Row) => (r.status === "NOT_ASSESSED" ? "– not known" : r.owner_can_bind ? `Can open one (via ${r.bind_via})` : "Cannot open one");
+          // The same answer on every row is said once, above the table.
+          const same = svc.length > 1 && new Set(svc.map(endpoint)).size === 1;
           return (
-            <div className="ais-stack-pair">
-              {pub && <div className="chart-note-oneline">{pub}</div>}
+            <>
+              {pub && <div className="metric-note">{pub}{same ? ` ${svc.length === 1 ? "The service" : `All ${fmtInt(svc.length)} services`}: ${endpoint(svc[0]).toLowerCase()}.` : ""}</div>}
               {svc.length > 0 && (
-                <DrillTable aria="Container services that can take internet traffic" n={8}
-                  cols={[{ label: "Service" }, { label: "Owner" }, { label: "State", width: "minmax(80px, auto)" }, { label: "Public endpoint", width: "minmax(80px, auto)" }]}
+                <CxTable aria="Container services that can take internet traffic" n={8} minWidth={600}
+                  cols={[{ label: "Service" }, { label: "Owner role", width: "minmax(110px, auto)" }, { label: "State", width: "minmax(110px, auto)" },
+                    ...(same ? [] : [{ label: "Public endpoint", width: "minmax(130px, auto)" }])]}
                   rows={svc.map((r) => ({
                     key: `${r.account_id}|${r.service_id}`, status: r.status,
-                    cells: [String(r.service_full_name), String(r.service_owner || "–"),
-                      r.is_running ? "running" : r.reachable ? "resumes on request" : "suspended",
-                      r.status === "NOT_ASSESSED" ? "– not known" : dtChip(r.owner_can_bind ? `can open (via ${r.bind_via})` : "cannot", r.status)],
+                    cells: [<CxName key="n" name={nameId(r.service_full_name, r.service_id)} />, String(r.service_owner || "–"),
+                      r.is_running ? "Running" : r.reachable ? "Suspended, resumes on request" : "Suspended",
+                      ...(same ? [] : [endpoint(r)])],
                   }))} />
               )}
-            </div>
+            </>
           );
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
@@ -777,93 +725,102 @@ export function ApAiServing(p: ApPageProps) {
   const svRows = sv.rows || [];
   const svS = spendOf(svRows, sv.disc, "est_within_usd_list", "current_credits");
   const svCur = svRows.reduce((a, r) => a + svS.val(r), 0);
-  const upAll = svRows.filter((r) => numOrZero(r.always_on_pct) >= 99.5);
+  const versionKey = (r: Row) => String(r.model_version_id ?? modelName(r));
+  const versions = new Set(svRows.map(versionKey)).size;
+  const upAll = new Set(svRows.filter((r) => numOrZero(r.always_on_pct) >= 99.5).map(versionKey)).size;
   // Calls come from the service functions; a NULL means the export has no call count, never zero calls.
   const withCalls = svRows.filter((r) => r.invocations !== null && r.invocations !== undefined && r.invocations !== "");
   const winHours = numOrZero(p.filters.window) * 24;
   useLede(p, sv.loading, sv.rows && svCur > 0
-    ? `Model serving cost ${svS.fmt(svCur)} in ${w || "the window"}, inside container and warehouse spend.${upAll.length ? ` ${fmtInt(upAll.length)} of ${fmtInt(svRows.length)} model versions are up every hour.` : ""}`
+    ? `Model serving cost ${svS.fmt(svCur)} in ${w || "the window"}, inside container and warehouse spend.${upAll ? ` ${fmtInt(upAll)} of ${fmtInt(versions)} model versions ${upAll === 1 ? "is" : "are"} up every hour.` : ""}`
     : null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
-        <MoneyTile c={sv} label="Model serving spend" badge={false} cause={(rows) => {
-          const s = spendOf(rows, sv.disc, "est_within_usd_list", "current_credits");
+        {/* The page's own total, the same $ as the headline and the check's spend in scope. */}
+        <CheckTile c={sv} label="Model serving spend" build={(rows) => {
           const cur = rows.reduce((a, r) => a + numOrZero(r.current_credits), 0);
           const prev = rows.reduce((a, r) => a + numOrZero(r.previous_credits), 0);
           const ch = fmtChange(cur, prev, false);
-          return `inside container and warehouse spend${ch !== "-" ? ` · ${ch} vs before` : ""}${s.priced ? "" : " · credits"}`;
+          return {
+            headline: svS.fmt(svCur),
+            base: `${fmtInt(versions)} model versions in ${w || "the window"}${ch !== "-" ? `, ${ch} vs the period before` : ""}.`,
+            cause: `Already inside container and warehouse spend${svS.priced ? "" : "; in credits, no $ price in this export"}.`,
+          };
         }} />
-        <CheckTile c={sv} label="Spend on always-up services" build={(rows, c) => {
+        <CheckTile c={sv} label="On always-up services" badge build={(rows, c) => {
           const s = spendOf(rows, c.disc, "est_within_usd_list", "current_credits");
           const total = rows.reduce((a, r) => a + s.val(r), 0);
           const flagged = rows.filter(isFlagged);
+          const fl = flagged.reduce((a, r) => a + s.val(r), 0);
           const top = [...flagged].sort((a, b) => s.val(b) - s.val(a))[0];
           return {
-            headline: fmtShare(pctOf(flagged.reduce((a, r) => a + s.val(r), 0), total) ?? 0), unit: " of serving spend",
-            flagged: flagged.length, population: rows.length, noun: "model versions",
-            cause: top ? `${modelName(top)} up ${fmtShare(numOrZero(top.always_on_pct))} of hours` : "No service is up all the time",
+            headline: fmtShare(pctOf(fl, total) ?? 0), unit: "of serving spend",
+            base: `${s.fmt(fl)} on ${fmtInt(new Set(flagged.map(versionKey)).size)} of ${fmtInt(versions)} model versions.`,
+            cause: top ? `${modelName(top)} was up ${fmtShare(numOrZero(top.always_on_pct))} of hours.` : "No service is up all the time.",
           };
         }} />
         <CheckTile c={sv} label="Endpoints with no calls" build={(rows) => {
           if (!withCalls.length) return { headline: null, missingReason: "Call counts are not in this export: run the export again." };
           const none = withCalls.filter((r) => numOrZero(r.invocations) === 0);
           return {
-            headline: fmtInt(none.length), unit: `of ${fmtInt(withCalls.length)} endpoints`, pill: <KindChip>Context</KindChip>,
-            base: none.slice(0, 2).map(modelName).join(" · ") || `0 idle · ${w || "in the window"}`,
-            cause: rows.length > withCalls.length ? `${fmtInt(rows.length - withCalls.length)} more have no call count.` : undefined,
+            headline: fmtInt(none.length), unit: `of ${fmtInt(withCalls.length)} endpoints`,
+            base: none.length ? `${none.slice(0, 2).map(modelName).join(", ")}${none.length > 2 ? ` and ${fmtInt(none.length - 2)} more` : ""}.` : `None sat idle in ${w || "the window"}.`,
+            cause: rows.length > withCalls.length ? `${fmtInt(rows.length - withCalls.length)} more endpoints have no call count.` : undefined,
           };
         }} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={sv} title="Serving spend by model version" subtitle="colour: status · value: spend and share of hours up">
-          {(rows, c) => {
-            const s = spendOf(rows, c.disc, "est_within_usd_list", "current_credits");
-            const items: StatusBarItem[] = groupBy(rows, modelName, s.val).filter((x) => x.value > 0).map((x) => {
-              const r = rows.find((y) => modelName(y) === x.name)!;
-              const up = r.always_on_pct === null || r.always_on_pct === undefined ? "on a warehouse" : `up ${fmtShare(numOrZero(r.always_on_pct))}`;
-              return { name: x.name, value: x.value, status: x.status, valueText: `${s.fmt(x.value)} · ${up}` };
-            });
-            return items.length ? <StatusBars items={items} n={8} onBarClick={c.open} ariaLabel="Model serving spend by version" /> : null;
-          }}
-        </Slot>
-        <Slot c={sv} title="Serving spend by how models run" subtitle="share of serving spend">
-          {(rows, c) => {
-            const s = spendOf(rows, c.disc, "est_within_usd_list", "current_credits");
-            const segs: ShareSegment[] = SERVING_KINDS.map((k) => ({
-              key: k.key, label: k.label, color: k.color, value: rows.filter((r) => servingKind(r) === k.key).reduce((a, r) => a + s.val(r), 0),
-            }));
-            return segs.filter((x) => x.value > 0).length >= 2 ? <StackedShareBar segments={segs} valueFmt={s.fmt} ariaLabel="Serving spend by how models run" /> : null;
-          }}
-        </Slot>
-      </Row2>
-      <Slot c={sv} title="Endpoints · hours up" subtitle={`hours a service was up, of the ${fmtInt(winHours)} h in the window · calls and spend alongside · warehouse models have no service · click a row`}>
+      <CxSlot c={sv} title="Serving spend by how models run" subtitle={`Share of the ${svS.fmt(svCur)} serving spend`}>
+        {(rows, c) => {
+          const s = spendOf(rows, c.disc, "est_within_usd_list", "current_credits");
+          const segs: ShareSegment[] = SERVING_KINDS.map((k) => ({
+            key: k.key, label: k.label, color: k.color, value: rows.filter((r) => servingKind(r) === k.key).reduce((a, r) => a + s.val(r), 0),
+          }));
+          return segs.filter((x) => x.value > 0).length >= 2 ? <StackedShareBar segments={segs} valueFmt={s.fmt} ariaLabel="Serving spend by how models run" /> : null;
+        }}
+      </CxSlot>
+      <CxSlot c={sv} title="Serving spend by model version"
+        subtitle={`${fmtInt(svRows.length)} endpoints for ${fmtInt(versions)} model versions · hours a service was up, of the ${fmtInt(winHours)} h in the window · open a row`}>
         {(rows, c) => {
           const s = spendOf(rows, c.disc, "est_within_usd_list", "current_credits");
           const list = [...rows].sort((a, b) => s.val(b) - s.val(a));
+          // A version on both a warehouse and a service is two rows: say what they add up to.
+          const twice = groupBy(rows, versionKey, s.val).filter((x) => x.rows > 1).map((x) => {
+            const r = rows.find((y) => versionKey(y) === x.name)!;
+            return `${modelName(r)} runs on more than one kind of compute, ${s.fmt(x.value)} in all.`;
+          });
           return (
-            <DrillTable aria="Model endpoints, hours up" n={10}
-              cols={[{ label: "Model version" }, { label: "Runs on", width: "auto" }, { label: "Hours up", width: "minmax(70px, 1.4fr)" }, { label: "", num: true, width: "auto" }, { label: "Calls", num: true, width: "auto" }, { label: s.priced ? "Spend" : "Credits", num: true, width: "auto" }]}
-              rows={list.map((r) => {
-                const kind = servingKind(r);
-                const onWh = kind === "WAREHOUSE";
-                return {
-                  key: `${r.account_id}|${r.model_version_id ?? modelName(r)}|${r.service_id ?? ""}`, status: r.status,
-                  onOpen: () => DrawerBus.open({ id: "sf_ai_model_serving_spend", col: "model_version_id", val: r.model_version_id != null ? String(r.model_version_id) : null, label: modelName(r) }),
-                  cells: [modelName(r), (SERVING_KINDS.find((k) => k.key === kind) || SERVING_KINDS[0]).label.toLowerCase(),
-                    <MiniBar key="b" value={onWh ? winHours : numOrZero(r.active_hours)} max={winHours} hatched={onWh} />,
-                    onWh ? "–" : `${fmtInt(r.active_hours)} h`,
-                    r.invocations == null || r.invocations === "" ? "–" : fmtInt(r.invocations), s.fmt(s.val(r))],
-                };
-              })} />
+            <>
+              <CxTable aria="Serving spend by model version" n={10} minWidth={680}
+                cols={[{ label: "Model version" }, { label: "Runs on", width: "minmax(120px, auto)" }, { label: "Hours up", width: "minmax(200px, 1.4fr)" },
+                  { label: "Calls", num: true, width: "auto" }, { label: s.priced ? "Spend" : "Credits", num: true, width: "auto" }]}
+                rows={list.map((r) => {
+                  const kind = servingKind(r);
+                  return {
+                    key: `${r.account_id}|${r.model_version_id ?? modelName(r)}|${r.service_id ?? ""}`, status: r.status,
+                    onOpen: () => DrawerBus.open({ id: "sf_ai_model_serving_spend", col: "model_version_id", val: r.model_version_id != null ? String(r.model_version_id) : null, label: modelName(r) }),
+                    cells: [modelName(r), (SERVING_KINDS.find((k) => k.key === kind) || SERVING_KINDS[0]).label,
+                      kind === "WAREHOUSE"
+                        ? <span key="h" className="cx-sub">No service, so no hours up</span>
+                        : <span key="h" className="cx-hours"><MiniBar value={numOrZero(r.active_hours)} max={winHours} /><span className="cx-num">{`${fmtInt(r.active_hours)} h`}</span></span>,
+                      r.invocations == null || r.invocations === "" ? "–" : fmtInt(r.invocations), <b key="s">{s.fmt(s.val(r))}</b>],
+                  };
+                })} />
+              {twice.length > 0 && <div className="metric-note">{twice.join(" ")} Calls are counted only for warehouse models.</div>}
+            </>
           );
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
 
 // ═══════════════════════ Storage > Growth & stages ═══════════════════════
+
+/** "+$503 / month", "< $1 / month": storage $ added per month, never "+<$1/mo". */
+const perMonthAdd = (v: number) => (v < 1 ? "< $1 / month" : `+${fmtMoney(v, 0)} / month`);
+// "BASE TABLE" reads "Base table".
+const sentenceCase = (v: any) => { const s = String(v ?? "").replace(/_/g, " ").toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); };
 
 export function ApStorageGrowth(p: ApPageProps) {
   const gr = useCheck(p, "sf_storage_growth_by_database");
@@ -874,92 +831,97 @@ export function ApStorageGrowth(p: ApPageProps) {
   const gStart = sumCol(gr.rows || [], "start_bytes"), gEnd = sumCol(gr.rows || [], "end_bytes");
   const staleN = (stale.rows || []).filter(isFlagged).length;
   useLede(p, gr.loading || stale.loading, gr.rows && gStart > 0
-    ? `${fmtSize(gbOf(gEnd))} of storage, ${signedShare(pctOf(gEnd - gStart, gStart))} in the window.${stale.rows ? ` ${fmtInt(staleN)} of ${fmtInt(stale.rows.length)} stages hold files nobody cleaned up.` : ""}`
+    ? `Storage ${gEnd >= gStart ? "grew" : "shrank"} ${fmtShare(Math.abs(pctOf(gEnd - gStart, gStart) ?? 0))} to ${fmtSize(gbOf(gEnd))} in the window.${stale.rows ? ` ${fmtInt(staleN)} of ${fmtInt(stale.rows.length)} stages hold files nobody cleaned up.` : ""}`
     : null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
         <CheckTile c={gr} label="Storage growth" build={(rows, c) => {
-          const start = rows.reduce((a, r) => a + numOrZero(r.start_bytes), 0);
-          const end = rows.reduce((a, r) => a + numOrZero(r.end_bytes), 0);
-          const added = rows.reduce((a, r) => a + numOrZero(r.projected_added_usd_month), 0) * (1 - c.disc);
+          const start = sumCol(rows, "start_bytes"), end = sumCol(rows, "end_bytes");
+          const added = sumCol(rows, "projected_added_usd_month") * (1 - c.disc);
           const top = [...rows].sort((a, b) => numOrZero(b.growth_bytes) - numOrZero(a.growth_bytes))[0];
           const priced = isPriced(rows);
           return {
-            headline: signedShare(pctOf(end - start, start)), unit: " in the window", status: statusWord(rows),
-            base: `${fmtSize(gbOf(start))} → ${fmtSize(gbOf(end))} · ${fmtInt(rows.filter(isFlagged).length)} of ${fmtInt(rows.length)} databases flagged`,
-            trend: priced && added > 0 ? { text: `+${fmtMoney(added, 0)}/mo in 30 d`, direction: "up", tone: rows.some((r) => r.status === "CRITICAL") ? "bad" : "neutral" } : null,
-            cause: top && numOrZero(top.growth_bytes) > 0 ? `${nameId(top.database_name, top.database_id)} +${fmtSize(gbOf(top.growth_bytes))}` : "No database grew",
+            headline: signedShare(pctOf(end - start, start)), unit: `${fmtSize(gbOf(start))} → ${fmtSize(gbOf(end))}`, status: statusWord(rows),
+            base: `${priced && added > 0 ? `Adds ${perMonthAdd(added).replace(/^\+/, "")}. ` : ""}${fmtInt(rows.filter(isFlagged).length)} of ${fmtInt(rows.length)} databases flagged.`,
+            cause: top && numOrZero(top.growth_bytes) > 0 ? `${nameId(top.database_name, top.database_id)} grew ${fmtSize(gbOf(top.growth_bytes))}.` : "No database grew.",
           };
         }} />
         <CheckTile c={stage} label="Internal stages" build={(rows, c) => {
-          const sum = (col: string) => rows.reduce((a, r) => a + numOrZero(r[col]), 0);
-          const usd = sum("est_storage_usd_month") * (1 - c.disc);
+          const usd = sumCol(rows, "est_storage_usd_month") * (1 - c.disc);
           return {
-            headline: fmtSize(sum("end_stage_gb")), unit: ` · ${fmtShare(pctOf(sum("end_stage_bytes"), sum("end_total_bytes")))} of storage`, pill: <KindChip>Context</KindChip>,
-            base: [isPriced(rows) ? `${fmtMoney(usd, 0)}/mo storage` : null, `${fmtInt(sum("stale_named_stages"))} of ${fmtInt(sum("internal_named_stages"))} named stages stale`].filter(Boolean).join(" · "),
+            headline: fmtSize(sumCol(rows, "end_stage_gb")), unit: `${fmtShare(pctOf(sumCol(rows, "end_stage_bytes"), sumCol(rows, "end_total_bytes")))} of storage`,
+            base: `${isPriced(rows) ? `${fmtMoney(usd, 0)} / month. ` : ""}${fmtInt(sumCol(rows, "stale_named_stages"))} of ${fmtInt(sumCol(rows, "internal_named_stages"))} named stages are stale.`,
             cause: "Stage files bill like tables but never show in a schema.",
           };
         }} />
         <MoneyTile c={stale} label="Stale stage files" cause={(rows) => {
           const top = [...rows].filter(isFlagged).sort((a, b) => numOrZero(b.stage_gb) - numOrZero(a.stage_gb))[0];
-          return top ? `${nameId(top.stage_full_name, top.stage_id, "(unnamed stage)")} · ${fmtSize(numOrZero(top.stage_gb))} · ${top.finding}` : "No stale stage";
+          return top ? `Largest: ${nameId(top.stage_full_name, top.stage_id, "(unnamed stage)")}, ${fmtSize(numOrZero(top.stage_gb))}${top.newest_file_age_days != null ? ` untouched for ${fmtInt(top.newest_file_age_days)} days` : ""}.` : "No stale stage.";
         }} />
         <CheckTile c={arch} label="Pulled back from archive" build={(rows) => {
           const objs = rows.filter((r) => r.row_kind === "object");
           const list = objs.length ? objs : rows;
-          const gb = list.reduce((a, r) => a + numOrZero(r.gb_retrieved), 0);
           const top = [...list].sort((a, b) => numOrZero(b.gb_retrieved) - numOrZero(a.gb_retrieved))[0];
           return {
-            headline: fmtSize(gb), flagged: list.filter(isFlagged).length, population: list.length, noun: "objects",
-            cause: top && numOrZero(top.gb_retrieved) > 0 ? `${[top.database_name, top.schema_name, top.object_name].filter(Boolean).join(".")} · ${fmtSize(numOrZero(top.gb_retrieved))}` : "Nothing pulled back",
+            headline: fmtSize(sumCol(list, "gb_retrieved")), flagged: list.filter(isFlagged).length, population: list.length, noun: "archived objects",
+            cause: top && numOrZero(top.gb_retrieved) > 0 ? `Largest: ${[top.database_name, top.schema_name, top.object_name].filter(Boolean).join(".")}, ${fmtSize(numOrZero(top.gb_retrieved))}.` : "Nothing pulled back.",
           };
         }} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={gr} title="Growth by database" subtitle="% added in the window · projected $/mo added in 30 days">
+      <CxRow2>
+        <CxSlot c={gr} title="Growth by database" subtitle="% added in the window · projected $ a month it adds">
           {(rows, c) => {
-            const items: StatusBarItem[] = rows.filter((r) => numOrZero(r.growth_bytes) > 0).map((r) => {
-              const add = numOrZero(r.projected_added_usd_month) * (1 - c.disc);
-              const pct = pctOf(numOrZero(r.growth_bytes), numOrZero(r.start_bytes));
-              return {
-                name: `${nameId(r.database_name, r.database_id, "(unnamed database)")}${r.dropped_at ? " - dropped" : ""}`,
-                value: pct ?? 0, status: r.status,
-                valueText: `${signedShare(pct)}${isPriced([r]) && add > 0 ? ` · +${fmtMoney(add, 0)}/mo` : ""}`,
-              };
-            });
-            return items.length ? <StatusBars items={items} n={8} onBarClick={c.open} ariaLabel="Storage growth by database" emptyText="No database grew in this window." /> : null;
+            const list = rows.filter((r) => numOrZero(r.growth_bytes) > 0)
+              .map((r) => ({ r, pct: pctOf(numOrZero(r.growth_bytes), numOrZero(r.start_bytes)) ?? 0 })).sort((a, b) => b.pct - a.pct);
+            if (!list.length) return <div className="chart-note-oneline">No database grew in this window.</div>;
+            return <CxGridBars aria="Storage growth by database" n={8} cols={[{ label: "Growth" }, { label: "Adds" }]}
+              rows={list.map(({ r, pct }) => {
+                const add = numOrZero(r.projected_added_usd_month) * (1 - c.disc);
+                return {
+                  key: String(r.database_id ?? r.database_name), name: `${nameId(r.database_name, r.database_id, "(unnamed database)")}${r.dropped_at ? " - dropped" : ""}`,
+                  value: pct, status: r.status, onOpen: c.open, cells: [signedShare(pct), isPriced([r]) ? perMonthAdd(add) : "–"],
+                };
+              })} />;
           }}
-        </Slot>
-        <Slot c={stale} title="Stage files by size" subtitle="colour: status · value: size and why">
+        </CxSlot>
+        <CxSlot c={stale} title="Stage files by size" subtitle="Size, and how long since anyone touched them">
           {(rows, c) => {
-            const items: StatusBarItem[] = rows.filter((r) => numOrZero(r.stage_gb) > 0).map((r) => ({
-              name: nameId(r.stage_full_name, r.stage_id, "(unnamed stage)"), value: numOrZero(r.stage_gb), status: r.status,
-              valueText: `${fmtSize(numOrZero(r.stage_gb))} · ${r.finding === "ok" ? "in use" : String(r.finding || "").replace(/_/g, " ")}${r.newest_file_age_days != null ? ` · ${fmtInt(r.newest_file_age_days)} d` : ""}`,
-            }));
-            return items.length >= 2 ? <StatusBars items={items} n={8} onBarClick={c.open} ariaLabel="Stage size" /> : null;
+            const list = rows.filter((r) => numOrZero(r.stage_gb) > 0).sort((a, b) => numOrZero(b.stage_gb) - numOrZero(a.stage_gb));
+            if (list.length < 2) return null;
+            return <CxBars aria="Stage size" n={8}
+              rows={list.map((r) => {
+                const age = r.newest_file_age_days == null ? null : numOrZero(r.newest_file_age_days);
+                const what = r.finding === "ok" || !r.finding
+                  ? (age == null ? "in use" : age === 0 ? "in use today" : `in use ${fmtInt(age)} d ago`)
+                  : `${String(r.finding).replace(/_/g, " ")}${age != null ? ` ${fmtInt(age)} d` : ""}`;
+                return { key: String(r.stage_id ?? r.stage_full_name), name: nameId(r.stage_full_name, r.stage_id, "(unnamed stage)"), value: numOrZero(r.stage_gb), status: r.status, onOpen: c.open, cells: [fmtSize(numOrZero(r.stage_gb)), what] };
+              })} />;
           }}
-        </Slot>
-      </Row2>
-      <Slot c={types} title="Tables by type" subtitle="share of objects · size where Snowflake keeps one (views hold no bytes: –) · snapshot at export">
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={types} title="Tables by type" subtitle="Share of objects · snapshot at export">
         {(rows) => {
           const list = rows.map((g) => {
             const bytes = g.also ? g.also.table_bytes : null;
             return { type: String((g.key || [])[0] || "(no type)"), n: numOrZero(g.value), bytes: bytes === null || bytes === undefined ? null : Number(bytes) };
           }).filter((x) => x.n > 0).sort((a, b) => b.n - a.n);
           const total = list.reduce((a, x) => a + x.n, 0);
-          const palette = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--seq-3)"];
-          const segs: ShareSegment[] = list.map((x, i) => ({ key: x.type, label: x.type.toLowerCase(), value: x.n, color: palette[i % palette.length] }));
+          if (!list.length) return null;
+          // A size column that is "–" on most rows says nothing: keep it only when Snowflake recorded sizes.
+          const sized = list.filter((x) => x.bytes !== null && x.bytes > 0).length;
+          const withSize = sized > 0 && sized >= list.length / 2;
           return (
-            <div className="ais-stack-pair">
-              <StackedShareBar segments={segs} valueFmt={(v) => fmtInt(v)} totalLabel={`${fmtInt(total)} tables and views`} ariaLabel="Tables and views by type" />
-              <DrillTable aria="Tables by type" n={8}
-                cols={[{ label: "Type" }, { label: "Objects", num: true, width: "auto" }, { label: "Share", num: true, width: "auto" }, { label: "Size", num: true, width: "auto" }]}
-                rows={list.map((x) => ({ key: x.type, cells: [x.type.toLowerCase(), fmtInt(x.n), fmtShare(pctOf(x.n, total)), x.bytes === null ? "–" : fmtSize(gbOf(x.bytes))] }))} />
-            </div>
+            <>
+              <div className="metric-note">{`${fmtInt(total)} tables and views.`}</div>
+              <CxGridBars aria="Tables and views by type" n={12} max={total} legend={false} nameWidth="minmax(160px, 1fr)"
+                cols={[{ label: "Objects" }, { label: "Share" }, ...(withSize ? [{ label: "Size" }] : [])]}
+                rows={list.map((x) => ({ key: x.type, name: sentenceCase(x.type), value: x.n, cells: [fmtInt(x.n), fmtShare(pctOf(x.n, total)), ...(withSize ? [x.bytes === null ? "–" : fmtSize(gbOf(x.bytes))] : [])] }))} />
+              {!withSize && <div className="metric-note">Size is left out: Snowflake keeps no size for views, and none was recorded for most of these types.</div>}
+            </>
           );
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
@@ -979,75 +941,64 @@ export function ApStorageUnused(p: ApPageProps) {
   const asOf = p.meta && p.meta.as_of_date ? String(p.meta.as_of_date).slice(0, 10) : null;
   const monthOf = (c: Chk) => (c.rows ? tileMoney(c.f) : null);
   const parts = [[unused, "in tables never read"], [churn, "in tables rewritten but never read"], [dropped, "in dropped tables still billed"]] as [Chk, string][];
-  const said = parts.map(([c, w]) => { const v = monthOf(c); return v ? `${v}/mo ${w}` : null; }).filter(Boolean);
-  useLede(p, unused.loading || churn.loading || dropped.loading, said.length ? `Storage nobody reads: ${said.join(", ")}. Per month, kept apart from compute waste.` : null);
+  const said = parts.map(([c, x], i) => { const v = monthOf(c); return v ? `${v}${i === 0 ? " a month" : ""} ${x}` : null; }).filter(Boolean);
+  useLede(p, unused.loading || churn.loading || dropped.loading, said.length ? `Storage nobody reads costs ${said.join(", ")}.` : null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
-        <MoneyTile c={unused} label="Tables nobody has read · per month" cause={(rows) => {
+        <MoneyTile c={unused} label="Tables nobody has read" cause={(rows) => {
           const top = [...rows].filter(isFlagged).sort((a, b) => numOrZero(b.total_gb) - numOrZero(a.total_gb))[0];
-          return top ? `${nameId(top.table_fqn, top.table_id)} · ${fmtSize(numOrZero(top.total_gb))}` : "Every table was read";
+          return top ? `Largest: ${nameId(top.table_fqn, top.table_id)}, ${fmtSize(numOrZero(top.total_gb))}.` : "Every table was read.";
         }} />
-        <MoneyTile c={{ ...churn, open: () => p.goTo({ tab: p.area, subtab: "retention", focusQueryId: "sf_storage_churn_unread" }) }} label="Rewritten but never read · per month" cause={(rows) => {
+        <MoneyTile c={{ ...churn, open: () => p.goTo({ tab: p.area, subtab: "retention", focusQueryId: "sf_storage_churn_unread" }) }} label="Rewritten, never read" cause={(rows) => {
           const fl = rows.filter(isFlagged);
-          return fl.length ? `${fmtSize(sumCol(fl, "time_travel_gb") + sumCol(fl, "failsafe_gb"))} of history kept for tables nobody reads` : "None flagged";
+          return fl.length ? `${fmtSize(sumCol(fl, "time_travel_gb") + sumCol(fl, "failsafe_gb"))} of history kept for tables nobody reads.` : "None flagged.";
         }} />
-        <MoneyTile c={dropped} label="Dropped, still billed · per month" cause={(rows) => {
+        <MoneyTile c={dropped} label="Dropped, still billed" cause={(rows) => {
           const next = rows.map((r) => (r.purge_by ? String(r.purge_by).slice(0, 10) : null)).filter((d): d is string => !!d && (!asOf || d >= asOf)).sort()[0];
-          return next ? `Nothing frees Fail-safe early; the next leaves the bill ${fmtDayShort(next)}.` : "Fail-safe end dates unknown";
+          return next ? `Fail-safe cannot be freed early; the next one leaves the bill ${fmtDayShort(next)}.` : "Fail-safe end dates unknown.";
         }} />
-        <MoneyTile c={clones} label="Clones nobody reads · per month" cause={(rows) => {
+        <MoneyTile c={clones} label="Clones nobody reads" cause={(rows) => {
           const gb = rows.filter(isFlagged).reduce((a, r) => a + numOrZero(r.own_gb) + numOrZero(r.retained_for_clone_gb), 0);
-          return `${fmtSize(gb)} kept alive only by clones`;
+          return `${fmtSize(gb)} kept alive only by clones.`;
         }} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={unused} title="Unread tables by storage" subtitle="$ per month · colour: status">
-          {(rows, c) => {
-            const priced = isPriced(rows);
-            // An export from before written_in_window has no such key: no toggle, all unread tables.
-            const hasWrite = rows.some((r) => Object.prototype.hasOwnProperty.call(r, "written_in_window"));
-            // NULL written_in_window is unknown: it sits in neither group.
-            const inGroup = hasWrite ? rows.filter((r) => r.written_in_window === (writeView === "written")) : rows;
-            const unknown = rows.filter((r) => r.written_in_window === null || r.written_in_window === undefined).length;
-            const items: StatusBarItem[] = inGroup.map((r) => {
-              const usd = numOrZero(r.est_storage_usd_month) * (1 - c.disc);
-              return {
-                name: nameId(r.table_fqn, r.table_id, "(unnamed table)"), value: priced ? usd : numOrZero(r.total_gb), status: r.status,
-                valueText: priced ? `${fmtMoney(usd, 0)}/mo · ${fmtSize(numOrZero(r.total_gb))}` : fmtSize(numOrZero(r.total_gb)),
-              };
-            });
-            return (
-              <>
-                {hasWrite && (
-                  <div className="ais-grain-row">
-                    <div className="ws-actions" role="group" aria-label="Written in the window or not">
-                      <button type="button" className={writeView === "written" ? "on" : ""} onClick={() => setWriteView("written")}>Written but never read</button>
-                      <button type="button" className={writeView === "idle" ? "on" : ""} onClick={() => setWriteView("idle")}>Neither read nor written</button>
-                    </div>
+      <CxSlot c={unused} title="Unread tables by storage" subtitle="$ a month to keep each one">
+        {(rows, c) => {
+          const priced = isPriced(rows);
+          // An export from before written_in_window has no such key: no toggle, all unread tables.
+          const hasWrite = rows.some((r) => Object.prototype.hasOwnProperty.call(r, "written_in_window"));
+          // NULL written_in_window is unknown: it sits in neither group.
+          const inGroup = hasWrite ? rows.filter((r) => r.written_in_window === (writeView === "written")) : rows;
+          const unknown = rows.filter((r) => r.written_in_window === null || r.written_in_window === undefined).length;
+          const usdOf = (r: Row) => numOrZero(r.est_storage_usd_month) * (1 - c.disc);
+          const list = [...inGroup].sort((a, b) => (priced ? usdOf(b) - usdOf(a) : numOrZero(b.total_gb) - numOrZero(a.total_gb)));
+          return (
+            <>
+              {hasWrite && (
+                <div className="ais-grain-row">
+                  <div className="ws-actions" role="group" aria-label="Written in the window or not">
+                    <button type="button" className={writeView === "written" ? "on" : ""} onClick={() => setWriteView("written")}>Written but never read</button>
+                    <button type="button" className={writeView === "idle" ? "on" : ""} onClick={() => setWriteView("idle")}>Neither read nor written</button>
                   </div>
-                )}
-                <StatusBars items={items} n={8} onBarClick={c.open} ariaLabel="Unread tables by storage"
-                  emptyText={`None of the ${fmtInt(rows.length)} unread tables was ${writeView === "written" ? "written" : "left unwritten"} in ${w || "this window"}.`} />
-                <div className="metric-note">{hasWrite
-                  ? `${fmtInt(inGroup.length)} of ${fmtInt(rows.length)} unread tables${unknown ? ` · ${fmtInt(unknown)} with write history unknown read "–" and sit in neither group` : ""}.`
-                  : "This export predates the written-or-not split; re-export to see it."}</div>
-              </>
-            );
-          }}
-        </Slot>
-        <Slot c={sprawl} title="Unread share, flagged schemas" subtitle="bytes in tables nobody read">
-          {(rows, c) => {
-            const items = rows.filter(isFlagged).map((r) => ({
-              key: String(r.schema_id ?? r.schema_fqn), name: nameId(r.schema_fqn, r.schema_id, "(unnamed schema)"),
-              value: numOrZero(r.unread_bytes), total: numOrZero(r.total_bytes), status: r.status, onClick: c.open,
-            }));
-            return items.length ? <ShareBarList items={items} n={8} valueFmt={(v) => fmtSize(v / BIN)} /> : <div className="chart-note-oneline">No schema flagged.</div>;
-          }}
-        </Slot>
-      </Row2>
-      <Row2>
-        <Slot c={dropped} title="When dropped tables leave the bill" subtitle="GB by the day their Fail-safe ends">
+                </div>
+              )}
+              {list.length ? (
+                <CxGridBars aria="Unread tables by storage" n={8} nameWidth="minmax(220px, 1.6fr)" cols={[...(priced ? [{ label: "Per month" }] : []), { label: "Size" }]}
+                  foot={<span className="cx-sub">{hasWrite
+                    ? `${fmtInt(inGroup.length)} of ${fmtInt(rows.length)} unread tables${unknown ? `; ${fmtInt(unknown)} with write history unknown sit in neither group` : ""}.`
+                    : "This export predates the written-or-not split; export again to see it."}</span>}
+                  rows={list.map((r) => ({
+                    key: `${r.account_id}|${r.table_id}`, name: nameId(r.table_fqn, r.table_id, "(unnamed table)"), value: priced ? usdOf(r) : numOrZero(r.total_gb), status: r.status, onOpen: c.open,
+                    cells: [...(priced ? [fmtMoney(usdOf(r), 0)] : []), fmtSize(numOrZero(r.total_gb))],
+                  }))} />
+              ) : <div className="chart-note-oneline">{`None of the ${fmtInt(rows.length)} unread tables was ${writeView === "written" ? "written" : "left unwritten"} in ${w || "this window"}.`}</div>}
+            </>
+          );
+        }}
+      </CxSlot>
+      <CxRow2>
+        <CxSlot c={dropped} title="When dropped tables leave the bill" subtitle="GB by the day their Fail-safe ends · by database">
           {(rows, c) => {
             const ev = rows.filter((r) => r.purge_by && numOrZero(r.billed_gb) > 0)
               // A Fail-safe table keeps no name: it is named by its table id instead.
@@ -1057,11 +1008,24 @@ export function ApStorageUnused(p: ApPageProps) {
             const first = asOf && asOf < days[0] ? asOf : days[0];
             const all: string[] = [];
             for (let t = Date.parse(`${first}T00:00:00Z`), end = Date.parse(`${days[days.length - 1]}T00:00:00Z`); t <= end && all.length < 120; t += 86400000) all.push(new Date(t).toISOString().slice(0, 10));
-            return <DayKindTimeline rows={ev} days={all} valueFmt={fmtSize} unitLabel="" onDayClick={() => c.open()} ariaLabel="Dropped table storage by purge day" />;
+            return <CxDayStack rows={ev} days={all} unit="GB / day" word="GB" valueFmt={(v) => fmtInt(Math.round(v))} aria="Dropped table storage by the day its Fail-safe ends" onOpen={c.open} />;
           }}
-        </Slot>
-      </Row2>
-      <Slot c={oldest} title="Oldest untouched tables" subtitle="live tables, longest unchanged first · $ is what each costs to keep a month, not a saving · click a row">
+        </CxSlot>
+        <CxSlot c={sprawl} title="Unread share, flagged schemas" subtitle="Share of each schema's bytes in tables nobody reads">
+          {(rows, c) => {
+            const fl = rows.filter(isFlagged).sort((a, b) => numOrZero(b.unread_bytes) / Math.max(1, numOrZero(b.total_bytes)) - numOrZero(a.unread_bytes) / Math.max(1, numOrZero(a.total_bytes)));
+            if (!fl.length) return <div className="chart-note-oneline">No schema flagged.</div>;
+            return <CxBars aria="Unread share of flagged schemas" n={8} max={1} legend={false}
+              foot={<span className="cx-sub">{`${fmtInt(fl.length)} of ${plural(rows.length, "schema")} flagged.`}</span>}
+              rows={fl.map((r) => ({
+                key: String(r.schema_id ?? r.schema_fqn), name: nameId(r.schema_fqn, r.schema_id, "(unnamed schema)"), status: r.status, onOpen: c.open,
+                value: numOrZero(r.total_bytes) > 0 ? numOrZero(r.unread_bytes) / numOrZero(r.total_bytes) : 0,
+                cells: [fmtShare(pctOf(numOrZero(r.unread_bytes), numOrZero(r.total_bytes))), fmtSize(gbOf(r.unread_bytes))],
+              }))} />;
+          }}
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={oldest} title="Oldest untouched tables" subtitle="Live tables, longest unchanged first · $ is what each costs to keep a month, not a saving · open a row">
         {(all, c) => {
           // A table with no database name is internal or orphaned, never a live customer table: kept off the list.
           const rows = all.filter((r) => r.database_name != null && r.database_name !== "");
@@ -1069,34 +1033,31 @@ export function ApStorageUnused(p: ApPageProps) {
           const priced = isPriced(rows);
           const usdNum = (r: Row) => (r.price_basis !== "unpriced" && r.est_storage_usd_month != null ? numOrZero(r.est_storage_usd_month) * (1 - c.disc) : null);
           const usdOf = (r: Row) => { const v = usdNum(r); return v == null ? "–" : fmtMoney(v, 0); };
-          const word: Record<string, string> = { CRITICAL: "critical", WARN: "unchanged too long", OK: "ok", NOT_ASSESSED: "–" };
           const day = (v: any) => (v ? fmtDayShort(v) : "–");
           return (
-            <div className="ais-oldest">
-            <DrillTable aria="Oldest untouched tables" n={10} empty="No live table with a database name in this export."
-              cols={[{ label: "Table" }, { label: "Database", width: "minmax(64px, 1fr)" }, { label: "Schema", width: "minmax(64px, 1fr)" }, { label: "Type", width: "auto" },
-                { label: "Created", width: "auto" }, { label: "Last changed", width: "auto" }, { label: "Unchanged", num: true, width: "auto" }, { label: "Size", num: true, width: "auto" },
-                { label: "$/mo", num: true, width: "auto" }, { label: "", width: "minmax(64px, auto)" }]}
-              rows={rows.map((r) => ({
-                key: `${r.account_id}|${r.table_id}`, status: r.status,
-                onOpen: () => DrawerBus.open({ id: "sf_storage_oldest_untouched_tables", col: "table_id", val: String(r.table_id), label: nameId(r.table_name, r.table_id) }),
-                cells: [nameId(r.table_name, r.table_id, "(unnamed table)"), nameId(r.database_name, r.database_id, "–"), nameId(r.schema_name, r.schema_id, "–"), String(r.table_type || "–").toLowerCase(),
-                  day(r.created), day(r.last_altered), r.days_since_altered == null ? "–" : `${fmtInt(r.days_since_altered)} d`, r.total_gb == null ? "–" : fmtSize(numOrZero(r.total_gb)),
-                  usdOf(r), dtChip(word[String(r.status)] || String(r.status || "–").toLowerCase(), r.status)],
-              }))}
-              more={<CsvButton fileName="oldest-untouched-tables" rows={rows} columns={[
-                { label: "table", value: (r: Row) => nameId(r.table_name, r.table_id) }, { label: "database", value: (r: Row) => r.database_name }, { label: "schema", value: (r: Row) => r.schema_name },
-                { label: "type", value: (r: Row) => r.table_type }, { label: "created", value: (r: Row) => r.created }, { label: "last_altered", value: (r: Row) => r.last_altered },
-                { label: "days_since_altered", value: (r: Row) => r.days_since_altered }, { label: "total_gb", value: (r: Row) => r.total_gb },
-                // The same discounted $ the table shows.
-                { label: priced ? "est_storage_usd_month" : "est_storage_usd_month (unpriced)", value: (r: Row) => usdNum(r) },
-                { label: "status", value: (r: Row) => r.status },
-              ]} />} />
-            {noDb > 0 && <div className="metric-note">{`${fmtInt(noDb)} of ${fmtInt(all.length)} tables have no database name (internal or orphaned) and are left out.`}</div>}
-            </div>
+            <>
+              <CxTable aria="Oldest untouched tables" n={10} minWidth={760} empty="No live table with a database name in this export."
+                cols={[{ label: "Table" }, { label: "Type", width: "auto" }, { label: "Created", width: "auto" }, { label: "Last changed", width: "auto" },
+                  { label: "Unchanged", num: true, width: "auto" }, { label: "Size", num: true, width: "auto" }, { label: "Per month", num: true, width: "auto" }]}
+                rows={rows.map((r) => ({
+                  key: `${r.account_id}|${r.table_id}`, status: r.status,
+                  onOpen: () => DrawerBus.open({ id: "sf_storage_oldest_untouched_tables", col: "table_id", val: String(r.table_id), label: nameId(r.table_name, r.table_id) }),
+                  cells: [<CxName key="n" name={`${[r.database_name, r.schema_name, r.table_name].filter(Boolean).join(".")}${r.table_id != null ? ` (${r.table_id})` : ""}`} />, sentenceCase(r.table_type || "–"),
+                    day(r.created), day(r.last_altered), r.days_since_altered == null ? "–" : `${fmtInt(r.days_since_altered)} d`, r.total_gb == null ? "–" : fmtSize(numOrZero(r.total_gb)), usdOf(r)],
+                }))}
+                foot={<CsvButton fileName="oldest-untouched-tables" rows={rows} columns={[
+                  { label: "table", value: (r: Row) => nameId(r.table_name, r.table_id) }, { label: "database", value: (r: Row) => r.database_name }, { label: "schema", value: (r: Row) => r.schema_name },
+                  { label: "type", value: (r: Row) => r.table_type }, { label: "created", value: (r: Row) => r.created }, { label: "last_altered", value: (r: Row) => r.last_altered },
+                  { label: "days_since_altered", value: (r: Row) => r.days_since_altered }, { label: "total_gb", value: (r: Row) => r.total_gb },
+                  // The same discounted $ the table shows.
+                  { label: priced ? "est_storage_usd_month" : "est_storage_usd_month (unpriced)", value: (r: Row) => usdNum(r) },
+                  { label: "status", value: (r: Row) => r.status },
+                ]} />} />
+              {noDb > 0 && <div className="metric-note">{`${fmtInt(noDb)} of ${fmtInt(all.length)} tables have no database name (internal or orphaned) and are left out.`}</div>}
+            </>
           );
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
@@ -1109,56 +1070,53 @@ export function ApStorageRetention(p: ApPageProps) {
   const stg = useCheck(p, "sf_storage_failsafe_on_staging");
   const heavy = useCheck(p, "sf_use_table_churn");
   const slp = useCheck(p, "sf_storage_lifecycle_policy_failures");
-  const sums = (rows: Row[]) => ({
-    a: rows.reduce((s, r) => s + numOrZero(r.active_bytes), 0),
-    t: rows.reduce((s, r) => s + numOrZero(r.time_travel_bytes), 0),
-    f: rows.reduce((s, r) => s + numOrZero(r.failsafe_bytes), 0),
-  });
+  const sums = (rows: Row[]) => ({ a: sumCol(rows, "active_bytes"), t: sumCol(rows, "time_travel_bytes"), f: sumCol(rows, "failsafe_bytes") });
   const ts = sums(tt.rows || []);
   useLede(p, tt.loading, tt.rows && ts.a + ts.t + ts.f > 0
-    ? `${fmtShare(pctOf(ts.t + ts.f, ts.a + ts.t + ts.f))} of the bytes on ${fmtInt(tt.rows.length)} tables are history: ${fmtSize(gbOf(ts.t))} of Time Travel and ${fmtSize(gbOf(ts.f))} of Fail-safe against ${fmtSize(gbOf(ts.a))} of live data.`
+    ? `${fmtShare(pctOf(ts.t + ts.f, ts.a + ts.t + ts.f))} of the bytes on ${fmtInt(tt.rows.length)} tables are history: ${fmtSize(gbOf(ts.t))} of Time Travel and ${fmtSize(gbOf(ts.f))} of Fail-safe, against ${fmtSize(gbOf(ts.a))} of live data.`
     : null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
         <CheckTile c={tt} label="History share" build={(rows) => {
           const s = sums(rows);
           return {
-            headline: fmtShare(pctOf(s.t + s.f, s.a + s.t + s.f)), unit: " of bytes are history",
-            flagged: rows.filter(isFlagged).length, population: rows.length, noun: "tables flagged",
-            cause: `Time Travel ${fmtSize(gbOf(s.t))} · Fail-safe ${fmtSize(gbOf(s.f))}`,
+            headline: fmtShare(pctOf(s.t + s.f, s.a + s.t + s.f)), unit: "of bytes",
+            base: `Time Travel ${fmtSize(gbOf(s.t))} · Fail-safe ${fmtSize(gbOf(s.f))}.`,
+            cause: `${fmtInt(rows.filter(isFlagged).length)} of ${fmtInt(rows.length)} tables flagged.`,
           };
         }} />
-        <MoneyTile c={pol} label="Retention above policy" cause={(rows) => {
+        <MoneyTile c={pol} label="Retention over policy" cause={(rows) => {
           const top = [...rows].sort((a, b) => numOrZero(b.over_policy_tt_bytes) - numOrZero(a.over_policy_tt_bytes))[0];
           return top && numOrZero(top.over_policy_tables) > 0
-            ? `${nameId(top.database_name, top.database_id)}: ${fmtInt(top.over_policy_tables)} tables over ${fmtInt(top.max_retention_days)} d`
-            : "No table above the policy";
+            ? `${nameId(top.database_name, top.database_id)} keeps ${fmtInt(top.over_policy_tables)} tables over ${fmtInt(top.max_retention_days)} days.`
+            : "No table above the policy.";
         }} />
-        <MoneyTile c={stg} label="Fail-safe on staging tables" cause={(rows) => {
+        <MoneyTile c={stg} label="Fail-safe on staging" cause={(rows) => {
           const gb = rows.filter(isFlagged).reduce((a, r) => a + numOrZero(r.failsafe_gb), 0);
-          return `${fmtSize(gb)} in Fail-safe a transient table would not keep`;
+          return `${fmtSize(gb)} in Fail-safe that a transient table would not keep.`;
         }} />
-        <CheckTile c={heavy} label="Write-heavy tables · per month" badge build={(rows, c) => {
+        <CheckTile c={heavy} label="Write-heavy tables" badge build={(rows, c) => {
           const fl = rows.filter(isFlagged);
           const priced = isPriced(fl.length ? fl : rows);
           const usd = sumCol(fl, "est_history_usd_month") * (1 - c.disc);
+          const hist = sumCol(fl, "time_travel_gb") + sumCol(fl, "failsafe_gb");
           const top = [...fl].sort((a, b) => numOrZero(b.est_history_usd_month) - numOrZero(a.est_history_usd_month))[0];
           return {
-            headline: priced ? fmtMoney(usd, 0) : fmtSize(sumCol(fl, "time_travel_gb") + sumCol(fl, "failsafe_gb")), unit: priced ? "/mo history storage" : "of history",
-            base: `${fmtInt(fl.length)} of ${fmtInt(rows.length)} tables · ${fmtSize(sumCol(fl, "time_travel_gb") + sumCol(fl, "failsafe_gb"))} of history`,
-            cause: top ? `${nameId([top.database_name, top.schema_name, top.table_name].filter(Boolean).join("."), top.table_id)} is most of it.` : "No table rewrites itself heavily.",
+            headline: priced ? fmtMoney(usd, 0) : fmtSize(hist), unit: priced ? "/ month of history" : "of history",
+            base: `${fmtInt(fl.length)} of ${fmtInt(rows.length)} tables · ${fmtSize(hist)} of history.`,
+            cause: top ? `Largest: ${nameId([top.database_name, top.schema_name, top.table_name].filter(Boolean).join("."), top.table_id)}.` : "No table rewrites itself heavily.",
           };
         }} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={tt} title="Active vs history, by database" subtitle="bytes on the tables listed · blue active, sand Time Travel + Fail-safe · dot = the database's worst status">
+      <CxRow2>
+        <CxSlot c={tt} title="Active vs history, by database" subtitle="Bytes on the tables listed · bar = history's share of each database's bytes">
           {(rows) => {
             const s = sums(rows);
             const segs: ShareSegment[] = [
               { key: "a", label: "Active", value: gbOf(s.a), color: "var(--c1)" },
               { key: "t", label: "Time Travel", value: gbOf(s.t), color: "var(--c2)" },
-              { key: "f", label: "Fail-safe", value: gbOf(s.f), color: "var(--c-other)" },
+              { key: "f", label: "Fail-safe", value: gbOf(s.f), color: "var(--c3)" },
             ];
             const byDb = new Map<string, { rows: Row[]; a: number; h: number }>();
             rows.forEach((r) => {
@@ -1168,68 +1126,90 @@ export function ApStorageRetention(p: ApPageProps) {
               byDb.set(k, cur);
             });
             const dbs = [...byDb.entries()].sort((x, y) => y[1].h - x[1].h);
-            const max = Math.max(1, ...dbs.map(([, v]) => v.a + v.h));
             return (
-              <div className="ais-stack-pair">
+              <>
                 {segs.filter((x) => x.value > 0).length >= 2 && <StackedShareBar segments={segs} valueFmt={fmtSize} totalLabel={`${fmtSize(gbOf(s.a + s.t + s.f))} on ${fmtInt(rows.length)} tables`} ariaLabel="Active, Time Travel and Fail-safe bytes" />}
-                <DrillTable aria="Active vs history by database" n={8}
-                  cols={[{ label: "Database" }, { label: "Active · history", width: "minmax(80px, 1.6fr)" }, { label: "History", num: true, width: "auto" }, { label: "Share", num: true, width: "auto" }]}
+                <CxGridBars aria="History share by database" n={8} max={100} cols={[{ label: "History" }, { label: "Share" }]}
+                  foot={<span className="cx-sub">History = Time Travel + Fail-safe.</span>}
                   rows={dbs.map(([name, v]) => ({
-                    key: name, status: v.rows.some((r) => r.status === "CRITICAL") ? "CRITICAL" : v.rows.some((r) => r.status === "WARN") ? "WARN" : "OK",
-                    cells: [name, <SplitBar key="b" max={max} parts={[{ value: v.a, color: "var(--c1)" }, { value: v.h, color: "var(--c-other)" }]} />, fmtSize(gbOf(v.h)), fmtShare(pctOf(v.h, v.a + v.h))],
+                    key: name, name, value: pctOf(v.h, v.a + v.h) ?? 0,
+                    status: v.rows.some((r) => r.status === "CRITICAL") ? "CRITICAL" : v.rows.some((r) => r.status === "WARN") ? "WARN" : "OK",
+                    cells: [fmtSize(gbOf(v.h)), fmtShare(pctOf(v.h, v.a + v.h))],
                   }))} />
-              </div>
+              </>
             );
           }}
-        </Slot>
-        <Slot c={pol} title="Time Travel days by database" subtitle="tables per retention band · red: above the account policy">
-          {(rows, c) => <RetentionBands rows={rows} onOpen={c.open} />}
-        </Slot>
-      </Row2>
-      <Slot c={stg} title="Permanent staging tables paying for Fail-safe" subtitle="bytes in Fail-safe a transient table would not keep · $ per month at your rate · dot = status">
+        </CxSlot>
+        <CxSlot c={pol} title="Time Travel kept over policy" subtitle="Tables per database keeping Time Travel longer than the account policy">
+          {(rows, c) => {
+            const list = rows.filter((r) => numOrZero(r.tables_total) > 0)
+              .sort((a, b) => numOrZero(b.over_policy_tables) - numOrZero(a.over_policy_tables) || numOrZero(b.tables_total) - numOrZero(a.tables_total));
+            if (!list.length) return null;
+            const pols = [...new Set(list.map((r) => r.max_retention_days).filter((v) => v != null).map(Number))];
+            return <CxBars aria="Tables over the Time Travel policy, per database" n={8} max={1} legend={false}
+              foot={pols.length === 1 ? <span className="cx-sub">{`Policy: ${fmtInt(pols[0])} days.`}</span> : undefined}
+              rows={list.map((r) => {
+                const total = numOrZero(r.tables_total), over = numOrZero(r.over_policy_tables);
+                return {
+                  key: String(r.database_id ?? r.database_name), name: nameId(r.database_name, r.database_id, "(unnamed database)"), value: total > 0 ? over / total : 0, onOpen: c.open,
+                  cells: r.max_retention_days == null ? [`${fmtInt(total)} tables`, "no policy"] : [`${fmtInt(over)} of ${fmtInt(total)} tables`],
+                };
+              })} />;
+          }}
+        </CxSlot>
+      </CxRow2>
+      <CxSlot c={stg} title="Permanent staging tables paying for Fail-safe" subtitle="Bytes in Fail-safe a transient table would not keep · $ a month at your rate">
         {(rows, c) => {
           const priced = isPriced(rows);
-          const items: StatusBarItem[] = rows.filter((r) => numOrZero(r.failsafe_gb) > 0).map((r) => {
-            // Only flagged rows carry a saving: the others read "not flagged", never $0.
-            const usd = r.est_saving_usd_month == null ? null : numOrZero(r.est_saving_usd_month) * (1 - c.disc);
-            return {
-              key: `${r.account_id}|${r.table_id}`, name: nameId(r.table_fqn, r.table_id, "(unnamed table)"), value: priced ? (usd ?? 0) : numOrZero(r.failsafe_gb), status: r.status, tableId: r.table_id,
-              valueText: priced ? `${usd != null ? `${fmtMoney(usd, 0)}/mo` : "– not flagged"} · ${fmtSize(numOrZero(r.failsafe_gb))}` : fmtSize(numOrZero(r.failsafe_gb)),
-            };
-          });
-          return items.length ? <StatusBars items={items} n={8} ariaLabel="Staging tables paying for Fail-safe"
-            onBarClick={(it) => DrawerBus.open({ id: "sf_storage_failsafe_on_staging", col: "table_id", val: String(it.tableId), label: it.name })} /> : null;
+          // Only flagged rows carry a saving: the others read "Not flagged", never $0.
+          const usdOf = (r: Row) => (r.est_saving_usd_month == null ? null : numOrZero(r.est_saving_usd_month) * (1 - c.disc));
+          const list = rows.filter((r) => numOrZero(r.failsafe_gb) > 0).sort((a, b) => (priced ? (usdOf(b) ?? -1) - (usdOf(a) ?? -1) : 0) || numOrZero(b.failsafe_gb) - numOrZero(a.failsafe_gb));
+          if (!list.length) return null;
+          return <CxGridBars aria="Staging tables paying for Fail-safe" n={8} nameWidth="minmax(240px, 1.6fr)" cols={[...(priced ? [{ label: "Per month" }] : []), { label: "Fail-safe" }]}
+            rows={list.map((r) => ({
+              key: `${r.account_id}|${r.table_id}`, name: nameId(r.table_fqn, r.table_id, "(unnamed table)"), value: priced ? (usdOf(r) ?? 0) : numOrZero(r.failsafe_gb), status: r.status,
+              onOpen: () => DrawerBus.open({ id: "sf_storage_failsafe_on_staging", col: "table_id", val: String(r.table_id), label: nameId(r.table_fqn, r.table_id) }),
+              cells: [...(priced ? [usdOf(r) != null ? fmtMoney(usdOf(r)!, 0) : "Not flagged"] : []), fmtSize(numOrZero(r.failsafe_gb))],
+            }))} />;
         }}
-      </Slot>
-      <Slot c={slp} title="Storage lifecycle policies" subtitle="daily expire and archive runs · a failed run keeps rows past their expiry · click a row">
+      </CxSlot>
+      <CxSlot c={slp} title="Storage lifecycle policies" subtitle="Daily expire and archive runs · a failed run keeps rows past their expiry · open a row">
         {(rows) => {
           const rank = (r: Row) => (r.status === "CRITICAL" ? 0 : r.status === "WARN" ? 1 : 2);
           const list = [...rows].sort((a, b) => rank(a) - rank(b) || numOrZero(b.failures_in_a_row) - numOrZero(a.failures_in_a_row));
-          const word: Record<string, string> = { failing: "failing", not_running: "stopped running", no_runs: "never ran", recovered: "failed, recovered", ok: "runs clean" };
+          const word: Record<string, string> = { failing: "Failing", not_running: "Stopped running", no_runs: "Never ran", recovered: "Failed, then recovered", ok: "Runs clean" };
           return (
-            <DrillTable aria="Storage lifecycle policies by table" n={8}
-              cols={[{ label: "Policy" }, { label: "Table" }, { label: "Last run", width: "auto" }, { label: "Failed in a row", num: true, width: "auto" }, { label: "", width: "minmax(80px, auto)" }]}
+            <CxTable aria="Storage lifecycle policies by table" n={8} minWidth={760}
+              cols={[{ label: "Policy" }, { label: "Table", width: "minmax(160px, 1.4fr)" }, { label: "Last run", width: "auto" }, { label: "Failed in a row", num: true, width: "auto" }, { label: "What happened", width: "minmax(140px, auto)" }]}
               rows={list.map((r) => ({
                 key: `${r.account_id}|${r.policy_full_name}|${r.table_full_name}`, status: r.status,
                 onOpen: () => DrawerBus.open({ id: "sf_storage_lifecycle_policy_failures", col: "policy_full_name", val: String(r.policy_full_name), label: String(r.policy_full_name) }),
-                cells: [String(r.policy_full_name), String(r.table_full_name), r.last_run_time ? fmtDayShort(r.last_run_time) : "–", fmtInt(r.failures_in_a_row),
-                  dtChip(`${word[String(r.finding)] || String(r.finding)}${r.failed_tasks && r.finding !== "ok" ? ` · ${String(r.failed_tasks).toLowerCase()}` : ""}`, r.status)],
+                cells: [<CxName key="p" name={String(r.policy_full_name)} />, <CxName key="t" name={String(r.table_full_name)} />, r.last_run_time ? fmtDayShort(r.last_run_time) : "–", fmtInt(r.failures_in_a_row),
+                  `${word[String(r.finding)] || String(r.finding)}${r.failed_tasks && r.finding !== "ok" ? `: ${String(r.failed_tasks).toLowerCase()}` : ""}`],
               }))} />
           );
         }}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
 
 // ═══════════════════════ Storage > Backups ═══════════════════════
 
+// One colour per expiry kind, the same in the bar, the ranked list and the table.
 const BACKUP_KINDS = [
-  { key: "none", label: "No policy: never expires", color: "var(--st-crit)" },
-  { key: "snapshot", label: "Snapshot (deprecated)", color: "var(--st-warn)" },
-  { key: "policy", label: "Expires by policy", color: "var(--c-other)" },
+  { key: "none", label: "No policy, never expires", color: "var(--c2)" },
+  { key: "policy", label: "Expires by policy", color: "var(--c3)" },
+  { key: "snapshot", label: "Snapshot, deprecated", color: "var(--c5)" },
 ];
 const backupKind = (r: Row) => (String(r.set_kind || "").toLowerCase() === "snapshot" ? "snapshot" : r.policy_name ? "policy" : "none");
+const kindColor = (k: string) => (BACKUP_KINDS.find((x) => x.key === k) || BACKUP_KINDS[0]).color;
+/** "GOV_DB.BACKUPS.SET_BIG (9503)", or "Set 9505 · name not in this export" when the role could not list it. */
+function setName(r: Row): string {
+  const unlisted = r.set_name == null || /^\(set .* not listed\)$/i.test(String(r.set_name));
+  const base = unlisted ? `Set ${r.set_id ?? "?"} · name not in this export` : nameId(r.set_name, r.set_id, "(unnamed backup set)");
+  return `${base}${r.set_deleted ? " · deleted" : ""}`;
+}
 
 export function ApStorageBackups(p: ApPageProps) {
   const bk = useCheck(p, "sf_storage_backup_snapshot");
@@ -1243,76 +1223,75 @@ export function ApStorageBackups(p: ApPageProps) {
     ? `${fmtInt(never.length)} of ${fmtInt(bkRows.length)} backup sets have nothing that expires them${never.length ? `, so they can grow to ${fmtSize(gbOf(sumCol(never, "retained_bytes_upper")))}${bkPriced ? ` and up to ${fmtMoney(neverUsd, 0)} a month` : ""}` : ""}.`
     : null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-c">
       <SummaryTileRow compact>
-        <CheckTile c={bk} label="Backup storage · per month" badge build={(rows, c) => {
+        <CheckTile c={bk} label="Backup storage" badge build={(rows, c) => {
           const usd = sumCol(rows, "est_storage_usd_month") * (1 - c.disc);
           const gb = gbOf(sumCol(rows, "retained_bytes_upper"));
           return {
-            headline: isPriced(rows) ? `up to ${fmtMoney(usd, 0)}` : `up to ${fmtSize(gb)}`, unit: isPriced(rows) ? "/mo storage" : undefined,
-            base: `at most · ${fmtInt(rows.length)} sets · ${fmtSize(gb)}`,
+            headline: isPriced(rows) ? fmtMoney(usd, 0) : fmtSize(gb), unit: isPriced(rows) ? "/ month at most" : "at most",
+            base: `All ${plural(rows.length, "set")} · up to ${fmtSize(gb)}.`,
             cause: "An upper bound: a backup shares bytes with its table until the table changes.",
           };
         }} />
         <CheckTile c={bk} label="Sets that never expire" badge build={(rows) => {
           const none = rows.filter(neverExpires);
-          const gb = none.reduce((a, r) => a + gbOf(r.retained_bytes_upper), 0);
+          const gone = rows.filter((r) => backupKind(r) === "none" && r.set_deleted);
           return {
-            headline: fmtInt(none.length), unit: ` of ${fmtInt(rows.length)} sets`,
-            cause: none.length ? `no backup policy expires them · up to ${fmtSize(gb)}` : "Every set has an expiring policy",
+            headline: `${fmtInt(none.length)} of ${fmtInt(rows.length)}`, unit: "sets",
+            base: none.length ? `No policy expires them · up to ${fmtSize(gbOf(sumCol(none, "retained_bytes_upper")))}.` : "Every set has an expiring policy.",
+            cause: gone.length ? `${plural(gone.length, "more set")} with no policy ${gone.length === 1 ? "is" : "are"} deleted but still listed.` : undefined,
           };
         }} />
         <CheckTile c={bk} label="Deprecated snapshots" build={(rows) => {
           const snaps = rows.filter((r) => backupKind(r) === "snapshot");
           return {
-            headline: fmtInt(snaps.length), unit: ` of ${fmtInt(rows.length)} sets`,
-            cause: snaps.length ? `up to ${fmtSize(snaps.reduce((a, r) => a + gbOf(r.retained_bytes_upper), 0))} · move to backup sets` : "No snapshot sets",
+            headline: fmtInt(snaps.length), unit: `of ${plural(rows.length, "set")}`,
+            base: snaps.length ? `Up to ${fmtSize(gbOf(sumCol(snaps, "retained_bytes_upper")))}.` : "No snapshot sets.",
+            cause: snaps.length ? "Move them to backup sets." : undefined,
           };
         }} />
       </SummaryTileRow>
-      <Row2>
-        <Slot c={bk} title="Backup storage by set" subtitle="up to: the most each set may hold · colour: policy state">
-          {(rows, c) => (
-            <ColorBars kinds={BACKUP_KINDS} onBarClick={c.open} ariaLabel="Backup storage by set, upper bound"
-              items={rows.map((r) => {
-                const usd = numOrZero(r.est_storage_usd_month) * (1 - c.disc);
-                const gb = gbOf(r.retained_bytes_upper);
-                return {
-                  key: String(r.set_id ?? r.set_name), name: `${nameId(r.set_name, r.set_id, "(unnamed backup set)")}${r.set_deleted ? " - deleted" : ""}`,
-                  value: gb, kind: backupKind(r),
-                  valueText: `up to ${fmtSize(gb)}${r.price_basis !== "unpriced" ? ` · ${fmtMoney(usd, 0)}/mo` : ""}`,
-                };
-              })} />
-          )}
-        </Slot>
-        <Slot c={bk} title="What expires the backups" subtitle="upper-bound bytes by policy state · snapshot at export">
-          {(rows) => {
-            const segs: ShareSegment[] = BACKUP_KINDS.map((k) => {
-              const of = rows.filter((r) => backupKind(r) === k.key);
-              // Neutral series colours: the status sits on the pill and the table, never on the bar.
-              const color = k.key === "none" ? "var(--c1)" : k.key === "policy" ? "var(--c3)" : "var(--c-other)";
-              return { key: k.key, label: `${k.label} · ${fmtInt(of.length)} set${of.length === 1 ? "" : "s"}`, color, value: gbOf(sumCol(of, "retained_bytes_upper")) };
-            });
-            return segs.some((x) => x.value > 0) ? <StackedShareBar segments={segs} valueFmt={fmtSize} ariaLabel="Backup bytes by what expires them" /> : null;
-          }}
-        </Slot>
-      </Row2>
-      <Slot c={bk} title="Backup sets" subtitle="what each set protects, how many backups it holds and what stops it growing · click a row">
+      <CxSlot c={bk} title="Backup storage by set" subtitle="The most each set may hold · colour = what expires it · snapshot at export">
+        {(rows, c) => {
+          const segs: ShareSegment[] = BACKUP_KINDS.map((k) => {
+            const of = rows.filter((r) => backupKind(r) === k.key);
+            return { key: k.key, label: `${k.label} · ${plural(of.length, "set")}`, color: k.color, value: gbOf(sumCol(of, "retained_bytes_upper")) };
+          });
+          const list = [...rows].filter((r) => numOrZero(r.retained_bytes_upper) > 0).sort((a, b) => numOrZero(b.retained_bytes_upper) - numOrZero(a.retained_bytes_upper));
+          if (!list.length) return null;
+          return (
+            <>
+              <div className="cx-group-head">What expires the backups · share of bytes</div>
+              <StackedShareBar segments={segs} valueFmt={fmtSize} ariaLabel="Backup bytes by what expires them" />
+              <div className="cx-group-head">By set</div>
+              <CxGridBars aria="Backup storage by set, upper bound" n={10} legend={false} nameWidth="minmax(220px, 1.4fr)"
+                cols={[{ label: "Up to" }, ...(isPriced(rows) ? [{ label: "Per month" }] : [])]}
+                rows={list.map((r) => ({
+                  key: String(r.set_id ?? r.set_name), name: setName(r), value: gbOf(r.retained_bytes_upper), color: kindColor(backupKind(r)), onOpen: c.open,
+                  cells: [fmtSize(gbOf(r.retained_bytes_upper)), ...(isPriced(rows) ? [r.price_basis !== "unpriced" ? fmtMoney(numOrZero(r.est_storage_usd_month) * (1 - c.disc), 0) : "–"] : [])],
+                }))} />
+            </>
+          );
+        }}
+      </CxSlot>
+      <CxSlot c={bk} title="Backup sets" subtitle="What each set protects, how many backups it holds and what stops it growing · open a row">
         {(rows, c) => (
-          <DrillTable aria="Backup sets" n={10}
-            cols={[{ label: "Set" }, { label: "Protects", width: "minmax(80px, 1fr)" }, { label: "Expiry", width: "auto" }, { label: "Backups", num: true, width: "auto" }, { label: "Up to", num: true, width: "auto" }, { label: "$/mo", num: true, width: "auto" }]}
+          <CxTable aria="Backup sets" n={10} minWidth={720}
+            cols={[{ label: "Set" }, { label: "Protects", width: "minmax(100px, 1fr)" }, { label: "Expiry", width: "minmax(150px, auto)" }, { label: "Backups", num: true, width: "auto" },
+              { label: "Up to", num: true, width: "auto" }, { label: "Per month", num: true, width: "auto" }]}
             rows={[...rows].sort((a, b) => numOrZero(b.retained_bytes_upper) - numOrZero(a.retained_bytes_upper)).map((r) => {
               const kind = backupKind(r);
               return {
                 key: `${r.account_id}|${r.set_id ?? r.set_name}`, status: r.status,
-                onOpen: () => DrawerBus.open({ id: "sf_storage_backup_snapshot", col: "set_name", val: String(r.set_name), label: nameId(r.set_name, r.set_id) }),
-                cells: [`${nameId(r.set_name, r.set_id, "(unnamed backup set)")}${r.set_deleted ? " - deleted" : ""}`, String(r.object_name || "–"),
-                  dtChip(kind === "none" ? "no policy" : kind === "snapshot" ? "snapshot" : String(r.policy_name), kind === "none" ? "CRITICAL" : kind === "snapshot" ? "WARN" : "OK"),
+                onOpen: () => DrawerBus.open({ id: "sf_storage_backup_snapshot", col: "set_name", val: String(r.set_name), label: setName(r) }),
+                cells: [<CxName key="n" name={setName(r)} />, String(r.object_name || "–"),
+                  <span key="k" className="cx-legend-item"><span className="cx-sw" style={{ background: kindColor(kind) }} />{kind === "none" ? "No policy" : kind === "snapshot" ? "Snapshot, deprecated" : `${r.policy_name} policy`}</span>,
                   fmtInt(r.backups), fmtSize(gbOf(r.retained_bytes_upper)), r.price_basis !== "unpriced" ? fmtMoney(numOrZero(r.est_storage_usd_month) * (1 - c.disc), 0) : "–"],
               };
             })} />
         )}
-      </Slot>
+      </CxSlot>
     </div>
   );
 }
