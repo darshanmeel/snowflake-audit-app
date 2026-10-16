@@ -12,16 +12,16 @@ import type { AggOpts } from "./hooks";
 import { ChartCard, KindChip, StatusPill, bandOf } from "./primitives";
 import { COST_MONEY_COL, WASTE_ITEMS } from "./tab_registry";
 import { buildWasteEntry, wasteTotal } from "./waste_total";
-import { DrillTable, MiniBar, SplitBar } from "./drill_table";
+import { DrillTable, SplitBar } from "./drill_table";
 import { CellBar, CxTable, EmptyStrip, HourLine, NameBars, NameIdText, SevWord } from "./cx_b";
 import { Columns } from "./charts_more";
-import { chartLabel, truncateLeft } from "./charts";
+import { chartLabel } from "./charts";
 import { notAssessedText } from "./scope";
 import { REASON_INFO } from "./labels";
 import { partialBarKeys, scrollToAnchor, windowShortLabel } from "./overview_tile";
 import { rowLabelOf, withoutTotalRows } from "../tabs/tab_area";
 import { DrawerBus, useDrawer } from "./drawer";
-import { IssueTile, ShareBarList, StackedShareBar, StatusBars, DayKindTimeline, statusBarColor, WeekHourHeatmap, WEEKDAYS_ISO, emptyWeekHourGrid, fmtShare, pctOf } from "./blocks";
+import { IssueTile, StackedShareBar, DayKindTimeline, statusBarColor, WeekHourHeatmap, WEEKDAYS_ISO, emptyWeekHourGrid, fmtShare, pctOf } from "./blocks";
 import type { ShareItem, ShareSegment, StatusBarItem, WeekHourGrid } from "./blocks";
 import { ClusterDots } from "./blocks_2";
 import { SUSPEND_BANDS, TopOffenders, suspendText } from "./wh_idle_detail";
@@ -29,7 +29,7 @@ import type { Offender } from "./wh_idle_detail";
 import { QueryPatternTable, WarehouseLoadBands, aggNote, useQueryPatterns, useWarehouseLoad } from "./de_blocks";
 import { WarehouseSpendMonths, windowDayList } from "./run_blocks";
 import { QTrend } from "./query_trend";
-import { CxBars, CxCellBar, CxTable, Dot, dotOf, fmtDur } from "./cx_d";
+import { CxBars, CxCellBar, CxTable as CxTableD, Dot, dotOf, fmtDur } from "./cx_d";
 import type { CxBarItem } from "./cx_d";
 import type { ApPageProps } from "./area_pages";
 import type { FetchState, Finding, Row } from "../types";
@@ -175,19 +175,6 @@ function worstStatus(rows: Row[]): string {
   if (rows.some((r) => r.status === "WARN")) return "WARN";
   if (rows.length && rows.every((r) => r.status === "NOT_ASSESSED")) return "NOT_ASSESSED";
   return "OK";
-}
-
-/** A ranked list that collapses to one line when it holds a single row. */
-function RankedOrLine({ items, valueFmt, unitLabel, onBarClick, emptyText, ariaLabel, n = 8, max }: {
-  items: StatusBarItem[]; valueFmt?: (v: number) => string; unitLabel?: string;
-  onBarClick?: ((it: StatusBarItem) => void) | null; emptyText: string; ariaLabel: string; n?: number; max?: number;
-}) {
-  if (!items.length) return <div className="chart-note-oneline">{emptyText}</div>;
-  if (items.length === 1) {
-    const it = items[0];
-    return <div className="chart-note-oneline ac-one-line"><strong>{it.name}</strong>{` · ${it.valueText || (valueFmt ? valueFmt(it.value) : fmtInt(it.value))}`}</div>;
-  }
-  return <StatusBars items={items} n={n} valueFmt={valueFmt} unitLabel={unitLabel} onBarClick={onBarClick} ariaLabel={ariaLabel} max={max} />;
 }
 
 /** A finding's own headline money, or null when it has none. */
@@ -1522,7 +1509,7 @@ function QEfficiency(p: ApPageProps) {
             {!cacheWh.length ? <div className="chart-note-oneline">{`None in ${rangeOf(p) || "this window"}.`}</div> : cacheSame ? (
               <>
                 <div className="ac-one-sentence">{"On every warehouse shown, "}<b>{fmtShare(pctOf(cacheWh[0].part, cacheWh[0].whole))}</b>{" of repeat runs re-ran instead of being served from the result cache."}</div>
-                <CxTable aria="Warehouses with cache misses" n={10} noun="warehouses"
+                <CxTableD aria="Warehouses with cache misses" n={10} noun="warehouses"
                   cols={[{ label: "Warehouse" }, { label: "Repeat runs missed", num: true }, { label: "Status" }]}
                   rows={cacheWh.map((w) => ({ key: w.key, cells: [w.name, fmtInt(w.part), <span key="s" className={`cxd-sev ${dotOf(w.status)}`}><Dot status={flagDot(w.status) || ""} />{statusWord(w.status)}</span>] }))} />
               </>
@@ -1537,7 +1524,7 @@ function QEfficiency(p: ApPageProps) {
         <div id="ac-eff-compile">
           <Panel p={p} src={comp} title="Compile time dominates" subtitle="Share of each warehouse's runs where compiling took longer than running">
             {compWh.length ? (
-              <CxTable aria="Compile time dominates, by warehouse" n={8} noun="warehouses"
+              <CxTableD aria="Compile time dominates, by warehouse" n={8} noun="warehouses"
                 cols={[{ label: "Warehouse", width: "38%" }, { label: "Share of runs", cls: "c-bar" }, { label: "", num: true }, { label: "Runs", num: true }]}
                 rows={compWh.map((w) => ({ key: w.key, status: flagDot(w.status) || "", cells: [w.name, <CxCellBar key="b" value={w.part} max={w.whole} />, <b key="p">{fmtShare(pctOf(w.part, w.whole))}</b>, `${fmtInt(w.part)} of ${fmtInt(w.whole)}`] }))}
                 foot={<span>Many small statements: batch them, or move them off the warehouse.</span>} />
@@ -1552,7 +1539,7 @@ function QEfficiency(p: ApPageProps) {
       </Row2>
       <Panel p={p} src={slow} title="Statement shapes that got slower" subtitle="Median run time, last week vs the days before · compile + execution, no queueing · $ is a change, not waste">
         {slowRows.length ? (
-          <CxTable aria="Statement shapes that got slower" n={8} noun="shapes"
+          <CxTableD aria="Statement shapes that got slower" n={8} noun="shapes"
             cols={[{ label: "Shape · warehouse" }, { label: "Before", num: true }, { label: "Last week", num: true }, { label: "Why" }, { label: "$ change", num: true }]}
             rows={slowRows.map((r) => {
               const usd = numOrZero(r.est_change_usd_list) * (1 - discOf(slow));
@@ -1704,7 +1691,7 @@ function QFailures(p: ApPageProps) {
       <div id="qf-where">
         <Panel p={p} src={whFail} title="Where failures land, by warehouse" subtitle={`${fmtInt(whAll)} failed or cancelled statements on warehouses; retried ones are under retries · failed-SQL $ is possible waste${whList.length > 6 ? ` · the top 6 of ${fmtInt(whList.length)} warehouses hold ${fmtShare(pctOf(whList.slice(0, 6).reduce((s, w) => s + w.n, 0), whAll))}` : ""}`}>
           {whRows && (whList.length ? (
-            <CxTable aria="Failures by warehouse" n={8} noun="warehouses"
+            <CxTableD aria="Failures by warehouse" n={8} noun="warehouses"
               cols={[{ label: "Warehouse · top error", width: "34%" }, { label: "Failed or cancelled", cls: "c-bar" }, { label: "", num: true }, { label: "% of warehouse's queries", num: true }, { label: "Top user" }, { label: "Failed SQL $", num: true }]}
               rows={whList.map((w) => ({
                 key: whKey(w.r), status: w.r.status,
@@ -1855,7 +1842,7 @@ function QWaiting(p: ApPageProps) {
             ? (() => {
               const ranked = rowsW.map(([id, w]) => ({ id, name: whName(id), pct: pctOf(w.q, w.a) ?? 0, q: w.q, a: w.a })).sort((x, y) => y.pct - x.pct);
               return (
-                <CxTable aria="Queued share by warehouse" n={10} noun="warehouses"
+                <CxTableD aria="Queued share by warehouse" n={10} noun="warehouses"
                   cols={[{ label: "Warehouse", width: "40%" }, { label: "Queued", cls: "c-bar" }, { label: "", num: true }]}
                   rows={ranked.map((r) => ({ key: r.id, title: `${fmtInt(r.q)} of ${fmtInt(r.a)} queries queued`, cells: [r.name, <CxCellBar key="b" value={r.pct} max={ranked[0].pct} />, <b key="p">{fmtShare(r.pct)}</b>] }))} />
               );
@@ -1974,7 +1961,7 @@ function QTeam(p: ApPageProps) {
       </Tiles>
       <div id="qt-client">
         <Panel p={p} src={client} title="Compute by client tool" subtitle={`${fmtV(all)} across ${fmtInt(named.length)} client tools${unk ? " and compute with no session record" : ""} · share of queries with no tag · share that failed · click a row`}>
-          <CxTable aria="Compute by client tool" n={10} noun="rows"
+          <CxTableD aria="Compute by client tool" n={10} noun="rows"
             cols={[{ label: "Client" }, { label: "Queries", num: true }, { label: `${priced ? "Spend" : "Credits"} · share`, cls: "c-bar" }, { label: "", num: true }, { label: "No tag", num: true }, { label: "Failed", num: true }]}
             rows={clientRows.map((c) => {
               const failedQ = c.rows.reduce((s, r) => s + numOrZero(r.queries) * numOrZero(r.failed_pct) / 100, 0);
@@ -1992,7 +1979,7 @@ function QTeam(p: ApPageProps) {
       <div id="qt-source">
         <Panel p={p} src={prov} title="Queries by source" subtitle="Queries, with average and p95 run time from start to end, queueing included">
           {srcSorted.length ? (
-            <CxTable aria="Queries by source"
+            <CxTableD aria="Queries by source"
               cols={[{ label: "Source", width: "16%" }, { label: "Queries", cls: "c-bar" }, { label: "", num: true }, { label: "Avg", num: true }, { label: "p95", num: true }]}
               rows={srcSorted.map((s) => {
                 const p95 = p95Of(s.rows);
@@ -2008,7 +1995,7 @@ function QTeam(p: ApPageProps) {
       <Panel p={p} src={mix} title="What each warehouse is used for" subtitle="Share of each warehouse's statements, by kind · most statements first · dot = status">
         {mixRows && <div className="blk-legend ac-mix-legend">{MIX.map(([, w, color]) => <span key={w} className="blk-legend-item"><span className="blk-sw" style={{ background: color }} />{w}</span>)}</div>}
         {mixRows && (
-          <CxTable aria="Statement kinds by warehouse" n={10} noun="rows"
+          <CxTableD aria="Statement kinds by warehouse" n={10} noun="rows"
             cols={[{ label: "Warehouse", width: "30%" }, { label: "Statements", num: true }, { label: "Mix", cls: "c-bar" }, { label: "Mainly" }]}
             rows={[...mixRows].sort((a, b) => numOrZero(b.queries) - numOrZero(a.queries)).map((r) => ({
               key: whKey(r), status: r.status === "CRITICAL" || r.status === "WARN" ? r.status : "",

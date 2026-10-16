@@ -839,8 +839,7 @@ export function ActionsPanel({ filters, dims, allFindingsIndex, goTo, roleAreas,
       ? `${fmtInt(Math.min(5, moneyCount))} action${moneyCount === 1 ? "" : "s"} that move money, out of ${fmtInt(actions.length)} the audit found; ${fmtInt(quick)} take under 15 minutes per object.`
       : `${fmtInt(actions.length)} action${actions.length === 1 ? "" : "s"} from ${fmtInt(flaggedIds.length)} flagged checks; ${fmtInt(quick)} take under 15 minutes per object.`)
     : "Nothing flagged that a fix on this page covers.";
-  // After the page frame's own reset on mount, which runs after this child's effect and would clear it.
-  React.useEffect(() => { const t = setTimeout(() => { if (onVerdict && verdict) onVerdict(verdict); }); return () => clearTimeout(t); }, [verdict, onVerdict]);
+  React.useEffect(() => { if (onVerdict && verdict) onVerdict(verdict); }, [verdict, onVerdict]);
 
   // Tiles: label · number + unit · mono base · one line. Kinds of money are never added.
   const notRun = (fig: { ran: number }) => (fig.ran > 0 ? "flagged, not priced in this export" : "none of these checks ran");
