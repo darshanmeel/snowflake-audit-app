@@ -24,8 +24,8 @@
 .cx-foot-left .cx-dot { margin-right: 2px; }
 .cx-e .cj-charts-2 { align-items: start; }
 .cx-e > .pattern-card { margin-bottom: 16px; }
-.cx-e .cj-charts-2 > div > .chart-card-v2 + .chart-card-v2 { margin-top: 14px; }
 .cx-e .cj-charts-2 { align-items: start; }
+.cx-block { margin-top: 12px; }
 .cx-block + .cx-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .cx-lead { font-size: 14px; color: var(--text-2); margin-bottom: 12px; }
 
@@ -69,8 +69,6 @@
 
 /* Cards in a two-up grid size to their content instead of stretching to the taller neighbour. */
 .cx-e .pl-grid { align-items: start; }
-.cx-e > .chart-card-v2, .cx-e > div > .chart-card-v2, .cx-e .pl-grid > div > .chart-card-v2 + .chart-card-v2, .cx-e .pl-grid > div > div + .chart-card-v2 { margin-bottom: 14px; }
-.cx-e .pl-grid > div > div > .chart-card-v2 { margin-bottom: 14px; }
 .cx-why { display: inline-block; max-width: 420px; font-size: 13px; color: var(--text-2); }
 .cx-code { font-family: var(--f-mono); font-size: 12px; color: var(--text); overflow-wrap: anywhere; word-break: break-word; }
 .cx-nowrap { white-space: nowrap; }
@@ -89,7 +87,7 @@
 
 /* Ranked rows: dot | name | bar | value, the same x for every track. */
 .cx-bars { display: flex; flex-direction: column; }
-.cx-bars-row { display: grid; grid-template-columns: 10px minmax(0, 200px) minmax(80px, 1fr) minmax(110px, 170px); gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.cx-bars-row { display: grid; grid-template-columns: 10px minmax(0, 200px) minmax(70px, 1fr) minmax(90px, 160px); gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .cx-bars-row:last-child { border-bottom: 0; }
 .cx-bars-track { display: block; height: 10px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .cx-bars-fill { display: block; height: 100%; min-width: 2px; background: var(--c1); border-radius: 3px; }
@@ -176,3 +174,8 @@
   .cx-dumb-row .cx-db-track, .cx-dumb-row .cx-db-axis { grid-column: 1 / 3; grid-row: 2; }
   .cx-dumb-axis > .cx-muted { display: none; }
 }
+.cx-dblist { font-size: 13px; margin-top: 6px; line-height: 1.6; }
+.cx-axis-unit { font-size: 11.5px; color: var(--text-3); margin-bottom: -4px; }
+/* Every card in these pages keeps one gap under it, stacked or in a grid. */
+.cx-e .chart-card-v2 { margin-bottom: 14px; }
+.cx-e .pl-grid, .cx-e .cj-charts-2 { margin-bottom: 0; row-gap: 0; }

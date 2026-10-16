@@ -14,19 +14,19 @@ import { ApPanel, ApRow } from "./area_pages";
 import type { ApPageProps } from "./area_pages";
 import { Columns, Dumbbell, RankedBars } from "./charts_more";
 import {
-  DayKindTimeline, IssueTile, ShareBar, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf,
+  DayKindTimeline, IssueTile, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf,
 } from "./blocks";
 import type { ShareItem, ShareSegment, StatusBarItem } from "./blocks";
 import { ChartCard, KindChip, bandOf } from "./primitives";
-import { DrillTable, MiniBar } from "./drill_table";
+import { DrillTable } from "./drill_table";
 import { notAssessedText } from "./scope";
-import { SummaryTileRow, windowShortLabel, windowSpan } from "./overview_tile";
+import { SummaryTileRow, scrollToAnchor, windowShortLabel, windowSpan } from "./overview_tile";
 import {
   CheckTile, MoneyTile, Row2, Slot, dtChip, fmtSize, isFlagged, nameId, useCheck, useLede,
 } from "./area_ai_storage";
 import type { Chk } from "./area_ai_storage";
-import { CxChip, CxMissing, CxRanked, CxStat, CxTable, CxTwoBar } from "./cx_e";
-import type { CxRankItem } from "./cx_e";
+import { CxBarRows, CxChip, CxEyebrow, CxMissing, CxObjName, CxRanked, CxStat, CxTable, CxTwoBar } from "./cx_e";
+import type { CxBarRow, CxRankItem } from "./cx_e";
 import type { FetchState, Finding, Row } from "../types";
 
 // ═══════════════════════ shared helpers ═══════════════════════
@@ -768,12 +768,27 @@ export function ApAuditChanges(p: ApPageProps) {
 
 const category = (r: Row) => words(r.semantic_category || r.privacy_category || "unclassified");
 
-/** Sensitive columns grouped by a key: unmasked of all, as share bars that open the drawer on that key. */
-function unmaskedBy(rows: Row[], key: (r: Row) => string, col: string | null): ShareItem[] {
-  return tally(rows, key).map((g) => ({
-    key: g.name, name: g.name, value: g.rows.filter((r) => !isTrue(r.is_masked)).length, total: g.n,
-    onClick: col ? drawerBy("sf_gov_sensitive_columns_unprotected", col, g.name, g.name) : null,
-  }));
+/** Sensitive columns grouped by a key as ranked "N of M · share" rows, the highest unmasked share first. */
+function unmaskedRanked(rows: Row[], key: (r: Row) => string, col: string | null, cap = false): CxRankItem[] {
+  return tally(rows, key).map((g) => {
+    const v = g.rows.filter((r) => !isTrue(r.is_masked)).length;
+    return {
+      key: g.name, label: cap ? g.name.charAt(0).toUpperCase() + g.name.slice(1) : g.name, value: pctOf(v, g.n) ?? 0, strong: `${fmtInt(v)} of ${fmtInt(g.n)}`, rest: fmtShare(pctOf(v, g.n)),
+      onClick: col ? drawerBy("sf_gov_sensitive_columns_unprotected", col, g.name, g.name) : null,
+    };
+  }).sort((a, b) => b.value - a.value || String(a.label).localeCompare(String(b.label)));
+}
+
+/** Ranked rows, the first `n`, then "Show N more <noun>". */
+function RankedMore({ items, n = 8, noun, ariaLabel, labelWidth }: { items: CxRankItem[]; n?: number; noun: string; ariaLabel: string; labelWidth?: number }) {
+  const [all, setAll] = React.useState(false);
+  const shown = all ? items : items.slice(0, n);
+  return (
+    <div>
+      <CxRanked items={shown} max={100} labelWidth={labelWidth} ariaLabel={ariaLabel} />
+      {items.length > n && <div className="cx-foot"><button type="button" className="cx-linkbtn" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show ${fmtInt(items.length - n)} more ${noun}`}</button></div>}
+    </div>
+  );
 }
 
 export function ApPiiSensitive(p: ApPageProps) {
@@ -791,56 +806,61 @@ export function ApPiiSensitive(p: ApPageProps) {
     den.rows && cols ? `Only ${fmtShare(pctOf(tagged, cols))} of all columns carry a tag.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <CheckTile c={uc} label="Sensitive columns with no mask" badge build={(rows) => ({
           headline: fmtShare(pctOf(openTables, tables)), unit: " of tables",
-          base: `${fmtInt(openTables)} of ${plural(tables, "table")} · ${fmtInt(open.length)} of ${plural(rows.length, "sensitive column")}`,
+          base: `${fmtInt(openTables)} of ${plural(tables, "table")}; ${fmtInt(open.length)} of ${plural(rows.length, "sensitive column")} have no masking policy.`,
           cause: "No masking policy reaches them: every reader sees the value in clear.", openLabel: "By database ↓",
         })} />
         <AffTile c={cc} label="Found sensitive, left untagged" noun="columns" openLabel="By category ↓"
-          cause={(rows) => `${fmtInt(rows.filter((r) => isFlagged(r) && !isTrue(r.is_masked)).length)} of them also unmasked; the classifier recommended the tag.`} />
+          cause={(rows) => `Found sensitive by the classifier, but no tag was applied. ${fmtInt(rows.filter((r) => isFlagged(r) && !isTrue(r.is_masked)).length)} of them are also unmasked.`} />
         <AffTile c={lin} label="Copied into untagged columns" as="count" noun="columns"
-          cause={() => "CTAS and INSERT … SELECT targets: the copy carries the data but neither the tag nor the mask."} />
+          cause={() => "Copied by CTAS or INSERT … SELECT into columns with no tag or mask."} />
         <CheckTile c={den} label="Columns tagged, of all columns" badge build={(rows) => {
           const withTag = rows.filter((r) => numOrZero(r.tagged_columns) > 0).length;
           return {
             headline: fmtShare(pctOf(tagged, cols)), unit: " of columns",
-            base: `${fmtInt(tagged)} of ${plural(cols, "column")} · ${fmtInt(withTag)} of ${plural(rows.length, "database")}`,
-            cause: `${plural(rows.length - withTag, "database")} have no tagged column: tag-based masking cannot start there.`, openLabel: "By database ↓",
+            base: `${fmtInt(tagged)} of ${plural(cols, "column")} carry a tag. ${fmtInt(rows.length - withTag)} of ${plural(rows.length, "database")} have none.`,
+            cause: "Tag-based masking cannot start where nothing is tagged.", openLabel: "By database ↓",
           };
         }} />
       </SummaryTileRow>
       <Row2>
-        <Slot c={uc} title="Unmasked sensitive columns, by database" subtitle="bar = unmasked share of each database's sensitive columns">
+        <Slot c={uc} title="Unmasked sensitive columns, by database" subtitle="Unmasked columns · bar = share of the database's sensitive columns">
           {(rows) => (
             <div>
-              <Headline><b>{`${fmtInt(open.length)} of ${plural(rows.length, "sensitive column")}`}</b>{" unmasked"}</Headline>
-              <ShareBarList items={unmaskedBy(rows, (r) => String(r.database_name || "(no database)"), "database_name")} n={8} noun="sensitive columns" />
+              <CxStat>{<span><b>{`${fmtInt(open.length)} of ${plural(rows.length, "sensitive column")}`}</b>{` are unmasked (${fmtShare(pctOf(open.length, rows.length))}).`}</span>}</CxStat>
+              <div className="cx-block"><RankedMore items={unmaskedRanked(rows, (r) => String(r.database_name || "(no database)"), "database_name")} noun="databases" labelWidth={190} ariaLabel="Unmasked sensitive columns by database" /></div>
             </div>
           )}
         </Slot>
-        <Slot c={uc} title="Unmasked sensitive columns, by category" subtitle="what the unmasked columns hold · classifier category">
+        <Slot c={uc} title="Unmasked sensitive columns, by kind" subtitle="What the unmasked columns hold · share of each kind left unmasked">
           {(rows) => {
-            const items = unmaskedBy(rows, category, null);
-            return items.length >= 2 ? <ShareBarList items={items} n={8} noun="sensitive columns" /> : null;
+            const items = unmaskedRanked(rows, category, null, true);
+            if (items.length < 2) return null;
+            // Kinds with the same share read as one sentence, not identical bars.
+            if (new Set(items.map((x) => x.value)).size === 1) return <CxStat>{`${items.map((x) => x.label).join(", ")}: each ${items[0].rest} unmasked.`}</CxStat>;
+            return <RankedMore items={items} noun="kinds" ariaLabel="Unmasked sensitive columns by kind" />;
           }}
         </Slot>
       </Row2>
       <GovLineageUntagged p={p} />
-      <Slot c={uc} title="Tables with unmasked sensitive columns" subtitle="worst first · bar = unmasked share of the table's sensitive columns · click a row">
-        {(rows) => (
-          <DrillTable aria="Tables with unmasked sensitive columns" n={10}
-            cols={[{ label: "Table" }, { label: "Unmasked", width: "minmax(70px, 1fr)" }, { label: "Columns", num: true, width: "auto" }, { label: "Holds", width: "minmax(80px, 1.2fr)" }]}
-            rows={tally(rows, (r) => String(r.table_fqn || "(no table)")).map((g) => ({ ...g, open: g.rows.filter((r) => !isTrue(r.is_masked)) }))
-              .filter((g) => g.open.length > 0)
-              .sort((a, b) => b.open.length - a.open.length || b.n - a.n)
-              .map((g) => ({
-                key: g.name, status: g.status, onOpen: drawerBy("sf_gov_sensitive_columns_unprotected", "table_fqn", g.name, g.name),
-                cells: [g.name, <MiniBar key="b" value={g.open.length} max={g.n} />, `${fmtInt(g.open.length)} of ${fmtInt(g.n)}`,
+      <Slot c={uc} title="Tables with unmasked sensitive columns" subtitle="Worst first · bar = unmasked share of the table's sensitive columns · select a row">
+        {(rows) => {
+          const groups = tally(rows, (r) => String(r.table_fqn || "(no table)")).map((g) => ({ ...g, open: g.rows.filter((r) => !isTrue(r.is_masked)) }))
+            .filter((g) => g.open.length > 0).sort((a, b) => b.open.length - a.open.length || b.n - a.n);
+          if (!groups.length) return okNote("Every sensitive column has a masking policy.");
+          return (
+            <CxTable ariaLabel="Tables with unmasked sensitive columns" n={10}
+              cols={[{ label: "Table" }, { label: "Unmasked", width: "28%" }, { label: "Columns", num: true }, { label: "Holds" }]}
+              rows={groups.map((g) => ({
+                key: g.name, status: g.status, onClick: drawerBy("sf_gov_sensitive_columns_unprotected", "table_fqn", g.name, g.name),
+                cells: [<CxObjName full={g.name} />, <CxTwoBar part={g.open.length} whole={g.n} max={g.n} />, `${fmtInt(g.open.length)} of ${fmtInt(g.n)}`,
                   [...new Set(g.open.map(category))].slice(0, 3).join(", ")],
-              }))} empty="Every sensitive column has a masking policy." />
-        )}
+              }))} />
+          );
+        }}
       </Slot>
     </div>
   );
@@ -861,7 +881,6 @@ const POLICY_COLORS: Record<string, string> = {
   "In use": "var(--c1)", "Attached, never evaluated": "var(--c2)", "Partly on dropped objects": "var(--c3)",
   "Only on dropped objects": "var(--c4)", "Attached to nothing": "var(--c5)",
 };
-const policyChip = (r: Row) => dtChip(policyState(r).toLowerCase(), policyState(r) === "In use" ? "OK" : r.status);
 
 export function ApPiiPolicies(p: ApPageProps) {
   const up = useCheck(p, "sf_secx_unused_policies");
@@ -875,68 +894,82 @@ export function ApPiiPolicies(p: ApPageProps) {
     aE ? `${ofText(aE)} let an admin role or PUBLIC straight through.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <AffTile c={up} label="Policies that protect nothing" noun="policies" openLabel="By state ↓"
           cause={(rows) => {
             const fl = rows.filter(isFlagged);
             const n = (s: string) => fl.filter((r) => policyState(r) === s).length;
-            return `${fmtInt(n("Attached to nothing"))} attached to nothing · ${fmtInt(n("Attached, never evaluated"))} never evaluated · ${fmtInt(n("Only on dropped objects") + n("Partly on dropped objects"))} on dropped objects`;
+            return `${fmtInt(n("Attached to nothing"))} attached to nothing, ${fmtInt(n("Attached, never evaluated"))} never evaluated, ${fmtInt(n("Only on dropped objects") + n("Partly on dropped objects"))} on dropped objects.`;
           }} />
         <AffTile c={ex} label="Policies that let admins through" noun="policies" openLabel="By role ↓"
-          cause={(rows) => `${fmtInt(rows.filter((r) => isTrue(r.exempts_public)).length)} exempt PUBLIC · ${fmtInt(rows.filter((r) => isTrue(r.exempts_admin)).length)} exempt an admin role · read from the policy body`} />
+          cause={(rows) => `Let roles straight through: ${fmtInt(rows.filter((r) => isTrue(r.exempts_public)).length)} exempt PUBLIC, ${fmtInt(rows.filter((r) => isTrue(r.exempts_admin)).length)} exempt an admin role.`} />
         <AffTile c={pp} label="Aggregation & projection policies" as="count" noun="policies"
           cause={() => "Attached nowhere or in a broken state."} />
         <CheckTile c={uc} label="Sensitive columns covered" build={(rows) => {
           const masked = rows.filter((r) => isTrue(r.is_masked)).length;
           return {
-            headline: fmtShare(pctOf(masked, rows.length)), unit: " of sensitive columns", pill: <KindChip>Context</KindChip>,
-            base: `${fmtInt(masked)} of ${plural(rows.length, "column")}`,
-            cause: `${plural(rows.length - masked, "column")} still in clear.`, openLabel: "Sensitive data →",
+            headline: fmtShare(pctOf(masked, rows.length)), unit: " of sensitive columns",
+            base: `${fmtInt(masked)} of ${fmtInt(rows.length)} are covered; ${fmtInt(rows.length - masked)} are still in clear.`,
+            cause: "For context.", openLabel: "Sensitive data →",
           };
         }} />
       </SummaryTileRow>
       <Row2>
-        <Slot c={up} title="Masking and row policies, by state" subtitle="every policy the audit role can see · then in use per kind">
+        <div>
+          <Slot c={up} title="Masking and row policies, by state" subtitle="Every policy the audit role can see">
+            {(rows) => {
+              const items: CxRankItem[] = Object.keys(POLICY_COLORS).map((label) => {
+                const v = rows.filter((r) => policyState(r) === label).length;
+                return { key: label, label, value: v, color: POLICY_COLORS[label], strong: plural(v, "policy", "policies"), rest: fmtShare(pctOf(v, rows.length)) };
+              }).filter((x) => x.value > 0);
+              const kinds: CxRankItem[] = tally(rows, (r) => words(r.policy_kind) || "(no kind)").map((g) => {
+                const v = g.rows.filter((r) => policyState(r) === "In use").length;
+                return { key: g.name, label: `${g.name.charAt(0).toUpperCase()}${g.name.slice(1)}`, value: pctOf(v, g.n) ?? 0, strong: fmtShare(pctOf(v, g.n)), rest: `${fmtInt(v)} of ${fmtInt(g.n)}` };
+              });
+              return (
+                <div>
+                  <CxRanked items={items} ariaLabel="Policies by state" />
+                  {kinds.length >= 2 && <div className="cx-block"><CxEyebrow>Share in use, by kind</CxEyebrow><CxRanked items={kinds} max={100} ariaLabel="Share of policies in use by kind" /></div>}
+                </div>
+              );
+            }}
+          </Slot>
+          <GovMaskAttachment p={p} />
+        </div>
+        <Slot c={ex} title="Who the policies let through" subtitle="Roles a policy body exempts · bar = policies · dot = status">
           {(rows) => {
-            const segs: ShareSegment[] = Object.keys(POLICY_COLORS).map((label) => ({ key: label, label, value: rows.filter((r) => policyState(r) === label).length, color: POLICY_COLORS[label] }));
-            const kinds: ShareItem[] = tally(rows, (r) => words(r.policy_kind) || "(no kind)").map((g) => ({ key: g.name, name: g.name, value: g.rows.filter((r) => policyState(r) === "In use").length, total: g.n }));
-            return (
-              <div className="ais-stack-pair">
-                <StackedShareBar segments={segs} valueFmt={(v) => plural(v, "policy", "policies")} ariaLabel="Policies by state" />
-                {kinds.length >= 2 && <ShareBarList items={kinds} n={6} noun="policies in use" />}
-              </div>
-            );
-          }}
-        </Slot>
-        <Slot c={ex} title="Who the policies let through" subtitle="roles a policy body exempts · bar = policies · dot = status">
-          {(rows) => {
-            const by = new Map<string, StatusBarItem>();
+            const by = new Map<string, { n: number; status: string }>();
             rows.forEach((r) => String(r.exempt_roles || "").split(",").map((x) => x.trim()).filter(Boolean).forEach((role) => {
-              const cur = by.get(role) || { key: role, name: role, value: 0, status: "OK" };
-              cur.value += 1;
+              const cur = by.get(role) || { n: 0, status: "OK" };
+              cur.n += 1;
               cur.status = worse(cur.status, r.status);
               by.set(role, cur);
             }));
-            const items = [...by.values()].map((it) => ({ ...it, valueText: plural(it.value, "policy", "policies") }));
-            return items.length ? <StatusBars items={items} n={8} ariaLabel="Roles exempted by policies" onBarClick={() => ex.open()} />
+            const items: CxBarRow[] = [...by.entries()].map(([role, v]) => ({ key: role, name: role, value: v.n, status: v.status, strong: plural(v.n, "policy", "policies"), onClick: () => ex.open() }))
+              .sort((x, y) => y.value - x.value);
+            return items.length ? <CxBarRows rows={items} ariaLabel="Roles exempted by policies" />
               : <div className="chart-note-oneline">No policy body exempts a role.</div>;
           }}
         </Slot>
       </Row2>
-      <GovMaskAttachment p={p} />
-      <Slot c={up} title="Policies that protect nothing" subtitle="attached to nothing, never evaluated, or on dropped objects · snapshot at export · click a row">
-        {(rows) => (
-          <DrillTable aria="Policies that protect nothing" n={10}
-            cols={[{ label: "Policy" }, { label: "Kind", width: "auto" }, { label: "State", width: "minmax(90px, 1.2fr)" }, { label: "Refs", num: true, width: "auto" }, { label: "Evaluated", num: true, width: "auto" }]}
-            rows={rows.filter(isFlagged).sort((a, b) => numOrZero(a.attachments) - numOrZero(b.attachments)).map((r) => ({
-              key: `${r.account_id}|${r.policy_id ?? r.policy_fqn}`, status: r.status,
-              onOpen: drawerBy("sf_secx_unused_policies", "policy_fqn", r.policy_fqn, nameId(r.policy_name, r.policy_id)),
-              cells: [nameId(r.policy_name, r.policy_id, "(unnamed policy)"), words(String(r.policy_kind || "").replace(/_POLICY$/i, "")), policyChip(r),
-                numOrZero(r.inactive_attachments) > 0 ? `${fmtInt(numOrZero(r.attachments) - numOrZero(r.inactive_attachments))} of ${fmtInt(r.attachments)}` : fmtInt(numOrZero(r.attachments)),
-                r.last_evaluated ? lastDay(r.last_evaluated) : "never"],
-            }))} empty="Every policy protects something." />
-        )}
+      <Slot c={up} title="Policies that protect nothing" subtitle="Attached to nothing, never evaluated, or on dropped objects · snapshot at export · select a row">
+        {(rows) => {
+          const fl = rows.filter(isFlagged).sort((a, b) => numOrZero(a.attachments) - numOrZero(b.attachments));
+          if (!fl.length) return okNote("Every policy protects something.");
+          return (
+            <CxTable ariaLabel="Policies that protect nothing" n={10}
+              cols={[{ label: "Policy" }, { label: "Kind" }, { label: "State" }, { label: "References", num: true }, { label: "Last evaluated", num: true }]}
+              rows={fl.map((r) => ({
+                key: `${r.account_id}|${r.policy_id ?? r.policy_fqn}`, status: r.status,
+                onClick: drawerBy("sf_secx_unused_policies", "policy_fqn", r.policy_fqn, nameId(r.policy_name, r.policy_id)),
+                cells: [nameId(r.policy_name, r.policy_id, "(unnamed policy)"), words(String(r.policy_kind || "").replace(/_POLICY$/i, "")),
+                  <CxChip status={policyState(r) === "In use" ? "OK" : r.status}>{policyState(r)}</CxChip>,
+                  numOrZero(r.inactive_attachments) > 0 ? `${fmtInt(numOrZero(r.attachments) - numOrZero(r.inactive_attachments))} of ${fmtInt(r.attachments)}` : fmtInt(numOrZero(r.attachments)),
+                  r.last_evaluated ? lastDay(r.last_evaluated) : "Never"],
+              }))} />
+          );
+        }}
       </Slot>
       <GovPolicyOwnerFit p={p} />
     </div>
@@ -955,7 +988,12 @@ function egressDays(rows: Row[], p: ApPageProps): string[] {
   }
   return [...new Set(rows.map((r) => day(r.day)).filter((d): d is string => !!d))].sort();
 }
-const destOf = (r: Row) => `${words(r.transfer_type || r.row_kind)} → ${[r.target_cloud, r.target_region].filter(Boolean).join(" ") || "(no destination)"}`;
+const destOf = (r: Row) => {
+  const cloud = r.target_cloud ? String(r.target_cloud) : "";
+  // The region often repeats the cloud ("AWS_EU_WEST_1"): say the cloud once.
+  const region = r.target_region ? String(r.target_region).replace(new RegExp(`^${cloud}[_ ]`, "i"), "") : "";
+  return `${words(r.transfer_type || r.row_kind)} → ${[cloud, region].filter(Boolean).join(" ") || "(no destination)"}`;
+};
 
 export function ApPiiReads(p: ApPageProps) {
   const sa = useCheck(p, "sf_gov_sensitive_data_access");
@@ -971,66 +1009,64 @@ export function ApPiiReads(p: ApPageProps) {
     eg.rows ? `${fmtSize(gb)} left the account to ${plural(dests.size, "destination")}.` : null,
   ].filter(Boolean).join(" ") || null);
   return (
-    <div className="ais-page">
+    <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <CheckTile c={sa} label="Roles that read sensitive columns" badge build={(rows) => ({
           headline: fmtShare(pctOf(flRoles, roles)), unit: " of roles",
-          base: `${fmtInt(flRoles)} of ${plural(roles, "role")} · ${fmtInt(rows.reduce((s, r) => s + numOrZero(r.queries), 0))} queries · ${plural(distinct(rows, "user_name"), "user")}`,
+          base: `${fmtInt(flRoles)} of ${plural(roles, "role")}: ${fmtInt(rows.reduce((s, r) => s + numOrZero(r.queries), 0))} queries by ${plural(distinct(rows, "user_name"), "user")}.`,
           cause: `${fmtInt(distinct(rows.filter((r) => isFlagged(r) && ADMIN_RE.test(String(r.role_name || ""))), "role_name"))} of them are admin roles.`, openLabel: "By role ↓",
         })} />
         <CheckTile c={eg} label="Data leaving the account" badge build={(rows) => {
           const fl = new Set(rows.filter(isFlagged).map(destOf));
           return {
             headline: fmtSize(gb), unit: " in the window",
-            base: `${fmtInt(fl.size)} of ${plural(dests.size, "destination")} flagged · ${plural(distinct(rows, "role_name"), "role")} unloading`,
+            base: `${fmtInt(fl.size)} of ${plural(dests.size, "destination")} flagged; ${plural(distinct(rows, "role_name"), "role")} unloading.`,
             cause: "Unloads, copies and replication, by cloud and region.", openLabel: "By destination ↓",
           };
         }} />
         <AffTile c={sh} label="Shares carrying sensitive columns" as="count" noun="shares" openLabel="Sharing & org →"
           onOpen={() => p.goTo({ tab: "sharing", subtab: "shares", focusQueryId: null })}
-          extra={() => "snapshot"}
-          cause={(rows) => `${fmtInt(rows.reduce((s, r) => s + numOrZero(r.unmasked_sensitive_columns), 0))} sensitive columns shared with no mask.`} />
+          cause={(rows) => `${plural(rows.reduce((s, r) => s + numOrZero(r.unmasked_sensitive_columns), 0), "sensitive column")} shared with no mask. As of the export snapshot.`} />
         <AffTile c={dm} label="Data movement policy hits" as="count" noun="users"
-          cause={(rows) => { const t = [...new Set(rows.filter(isFlagged).map((r) => words(r.movement_type)))]; return t.length ? `Moved to ${t.slice(0, 3).join(", ")}` : "No blocked move in the window"; }} />
+          cause={(rows) => { const t = [...new Set(rows.filter(isFlagged).map((r) => words(r.movement_type)))]; return t.length ? `Moved protected tables to ${t.slice(0, 3).join(", ")}.` : "No blocked move in the window."; }} />
       </SummaryTileRow>
       <Row2>
-        <Slot c={sa} title="Sensitive reads, by role" subtitle="queries that read a sensitive column in clear · bar = queries · dot = status">
+        <Slot c={sa} title="Sensitive reads, by role" subtitle="Queries that read a sensitive column in clear · bar = queries">
           {(rows) => {
-            const items: StatusBarItem[] = tally(rows, (r) => String(r.role_name || "(no role)"), (r) => numOrZero(r.queries)).map((g) => ({
-              key: g.name, name: g.name, value: g.value, status: g.status, valueText: `${fmtInt(g.value)} · ${plural(distinct(g.rows, "user_name"), "user")}`,
-            }));
-            return items.length ? <StatusBars items={items} n={8} unitLabel="queries" ariaLabel="Sensitive reads by role"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_gov_sensitive_data_access", col: "role_name", val: String(it.key), label: it.name })} /> : null;
+            const items: CxBarRow[] = tally(rows, (r) => String(r.role_name || "(no role)"), (r) => numOrZero(r.queries)).map((g) => ({
+              key: g.name, name: g.name, value: g.value, status: g.status, strong: fmtInt(g.value), rest: plural(distinct(g.rows, "user_name"), "user"),
+              onClick: () => DrawerBus.open({ id: "sf_gov_sensitive_data_access", col: "role_name", val: g.name, label: g.name }),
+            })).sort((x, y) => y.value - x.value);
+            return items.length ? <CxBarRows rows={items} ariaLabel="Sensitive reads by role" /> : null;
           }}
         </Slot>
-        <Slot c={eg} title="Where data goes, by destination" subtitle="GB leaving the account in the window · then per day">
+        <Slot c={eg} title="Where data goes" subtitle="Data leaving the account, by transfer type and destination · in the window">
           {(rows) => {
-            const items: StatusBarItem[] = tally(rows, destOf, (r) => numOrZero(r.gb_window)).filter((g) => g.value > 0).map((g) => ({
-              key: g.name, name: `${g.name}${g.rows.some((r) => isTrue(r.new_destination)) ? " (new)" : ""}`, value: g.value, status: g.status, valueText: fmtSize(g.value),
-            }));
-            if (!items.length) return null;
-            const days = rows.some((r) => r.day != null) ? egressDays(rows, p) : [];
-            const series = days.length ? tally(rows.filter((r) => r.day != null), destOf, (r) => numOrZero(r.gb_window)).filter((g) => g.value > 0).map((g) => {
-              const m = new Map<string, number>();
-              g.rows.forEach((r) => { const d = day(r.day)!; m.set(d, (m.get(d) || 0) + numOrZero(r.gb_window)); });
-              return { name: g.name, id: g.name, values: days.map((d) => m.get(d) || 0) };
-            }) : [];
-            return (
-              <div className="ais-stack-pair">
-                <StatusBars items={items} n={8} unitLabel="GB" ariaLabel="Data leaving the account by destination" onBarClick={() => eg.open()} />
-                {series.length > 0 && <Columns days={days} series={series} unitLabel="GB" valueFmt={(v: number) => fmtSize(v)} ariaLabel="Data leaving the account per day by destination" />}
-              </div>
-            );
+            const items: CxBarRow[] = tally(rows, destOf, (r) => numOrZero(r.gb_window)).filter((g) => g.value > 0).map((g) => ({
+              key: g.name, name: `${g.name}${g.rows.some((r) => isTrue(r.new_destination)) ? " (new)" : ""}`, value: g.value, status: g.status, strong: fmtSize(g.value), onClick: () => eg.open(),
+            })).sort((x, y) => y.value - x.value);
+            return items.length ? <CxBarRows rows={items} ariaLabel="Data leaving the account by destination" /> : null;
           }}
         </Slot>
       </Row2>
-      <Slot c={sa} title="The people behind the reads" subtitle="users who read sensitive columns in clear · worst first · click a row">
+      <Slot c={eg} title="Data leaving per day, by destination" subtitle="GB a day leaving the account · every day of the window">
+        {(rows) => {
+          const days = rows.some((r) => r.day != null) ? egressDays(rows, p) : [];
+          const series = days.length ? tally(rows.filter((r) => r.day != null), destOf, (r) => numOrZero(r.gb_window)).filter((g) => g.value > 0).map((g) => {
+            const m = new Map<string, number>();
+            g.rows.forEach((r) => { const d = day(r.day)!; m.set(d, (m.get(d) || 0) + numOrZero(r.gb_window)); });
+            return { name: g.name, id: g.name, values: days.map((d) => m.get(d) || 0) };
+          }) : [];
+          return series.length ? <div><div className="cx-axis-unit">GB / day</div><Columns days={days} series={series} unitLabel="GB / day" valueFmt={(v: number) => fmtSize(v)} ariaLabel="Data leaving the account per day by destination" /></div> : null;
+        }}
+      </Slot>
+      <Slot c={sa} title="The people behind the reads" subtitle="Users who read sensitive columns in clear · worst first · select a row">
         {(rows) => (
-          <DrillTable aria="Users reading sensitive columns" n={10}
-            cols={[{ label: "User" }, { label: "Roles used", width: "minmax(80px, 1.2fr)" }, { label: "Queries", num: true, width: "auto" }, { label: "Tables", num: true, width: "auto" }, { label: "Last read", num: true, width: "auto" }]}
+          <CxTable ariaLabel="Users reading sensitive columns" n={10}
+            cols={[{ label: "User" }, { label: "Roles used" }, { label: "Queries", num: true }, { label: "Tables", num: true }, { label: "Last read", num: true }]}
             rows={tally(rows, (r) => String(r.user_name || "(no user)"), (r) => numOrZero(r.queries)).sort((a, b) => (STATUS_RANK[b.status] ?? 0) - (STATUS_RANK[a.status] ?? 0) || b.value - a.value).map((g) => ({
-              key: g.name, status: g.status, onOpen: drawerBy("sf_gov_sensitive_data_access", "user_name", g.name, g.name),
-              cells: [g.name, [...new Set(g.rows.map((r) => String(r.role_name || "")))].filter(Boolean).slice(0, 2).join(", ") || "–", fmtInt(g.value),
+              key: g.name, status: g.status, onClick: drawerBy("sf_gov_sensitive_data_access", "user_name", g.name, g.name),
+              cells: [g.name, [...new Set(g.rows.map((r) => String(r.role_name || "")))].filter(Boolean).join(", ") || "–", fmtInt(g.value),
                 fmtInt(distinct(g.rows, "table_fqn")), lastDay(g.rows.map((r) => String(r.last_read || "")).sort().pop())],
             }))} />
         )}
@@ -1044,45 +1080,60 @@ export function ApPiiReads(p: ApPageProps) {
 
 export function ApPiiQuality(p: ApPageProps) {
   const dmf = useCheck(p, "sf_gov_dmf_coverage");
+  const ex = useCheck(p, "sf_gov_dmf_expectation_failures");
+  const st = useCheck(p, "sf_gov_dmf_static_table_schedules");
   const rows0 = dmf.rows || [];
   const cov = rows0.reduce((s, r) => s + numOrZero(r.covered_tables), 0);
   const all = rows0.reduce((s, r) => s + numOrZero(r.base_tables), 0);
   const none = rows0.filter((r) => numOrZero(r.base_tables) > 0 && numOrZero(r.covered_tables) === 0).length;
   useLede(p, dmf.loading, dmf.rows && all ? `A data metric function watches ${fmtInt(cov)} of ${plural(all, "base table")}; ${fmtInt(none)} of ${plural(rows0.length, "database")} have none.` : null);
   return (
-    <div className="ais-page">
-      <SummaryTileRow compact>
+    <div className="ais-page cx-e">
+      <div className="summary-tile-row compact ln-tiles-3">
         <CheckTile c={dmf} label="Tables watched by a DMF" badge build={(rows) => ({
           headline: fmtShare(pctOf(cov, all)), unit: " of base tables",
-          base: `${fmtInt(cov)} of ${plural(all, "table")} · ${fmtInt(none)} of ${plural(rows.length, "database")} have none`,
+          base: `${fmtInt(cov)} of ${plural(all, "table")}. ${fmtInt(none)} of ${plural(rows.length, "database")} have none.`,
           cause: `${plural(rows.reduce((s, r) => s + numOrZero(r.sensitive_uncovered), 0), "table")} holding sensitive columns are unwatched.`, openLabel: "By database ↓",
         })} />
-      </SummaryTileRow>
+        <AffTile c={ex} label="Expectations failing" as="count" noun="tables" openLabel="Expectations ↓" onOpen={() => scrollToAnchor("dq-exp")}
+          cause={(rows) => {
+            const worst = Math.max(0, ...rows.filter(isFlagged).map((r) => numOrZero(r.failing_days)));
+            return `Expectations that fail, or error and are never checked.${worst ? ` The worst has failed ${plural(worst, "day")} running.` : ""}`;
+          }} />
+        <MoneyTile c={st} label="DMF billed, table unchanged"
+          cause={() => "DMF runs on tables where no rows were added, removed or updated."} />
+      </div>
       <Row2>
-        <Slot c={dmf} title="Tables watched by a DMF, by database" subtitle="base tables with a data metric function · lowest first">
-          {(rows) => {
-            const items: ShareItem[] = rows.map((r) => ({
-              key: String(r.database_name), name: String(r.database_name || "(no database)"), value: numOrZero(r.covered_tables), total: numOrZero(r.base_tables),
-              onClick: drawerBy("sf_gov_dmf_coverage", "database_name", r.database_name, String(r.database_name)),
-            }));
-            return items.length ? (
-              <div>
-                <ShareBar value={cov} total={all} noun="base tables" />
-                {items.length > 1 && <div className="gov-sub"><ShareBarList items={items} n={8} sort="asc" noun="base tables" /></div>}
-              </div>
-            ) : null;
-          }}
-        </Slot>
-        <Slot c={dmf} title="Unwatched databases that matter most" subtitle="most sensitive tables with no DMF first · click a row">
+        <Slot c={dmf} title="Unwatched databases that matter most" subtitle="Most sensitive tables with no DMF first · select a row">
           {(rows) => (
-            <DrillTable aria="Databases by unwatched tables" n={8}
-              cols={[{ label: "Database" }, { label: "Base tables", num: true, width: "auto" }, { label: "Watched", num: true, width: "auto" }, { label: "Sensitive, unwatched", num: true, width: "auto" }]}
+            <CxTable ariaLabel="Databases by unwatched tables" n={8}
+              cols={[{ label: "Database" }, { label: "Base tables", num: true }, { label: "Watched", num: true }, { label: "Sensitive unwatched", num: true }]}
               rows={[...rows].sort((a, b) => numOrZero(b.sensitive_uncovered) - numOrZero(a.sensitive_uncovered) || (numOrZero(b.base_tables) - numOrZero(b.covered_tables)) - (numOrZero(a.base_tables) - numOrZero(a.covered_tables)))
                 .map((r) => ({
-                  key: String(r.database_name), status: r.status, onOpen: drawerBy("sf_gov_dmf_coverage", "database_name", r.database_name, String(r.database_name)),
-                  cells: [String(r.database_name || "(no database)"), fmtInt(numOrZero(r.base_tables)), fmtInt(numOrZero(r.covered_tables)), fmtInt(numOrZero(r.sensitive_uncovered))],
+                  key: String(r.database_name), status: r.status, onClick: drawerBy("sf_gov_dmf_coverage", "database_name", r.database_name, String(r.database_name)),
+                  cells: [String(r.database_name || "(no database)"), fmtInt(numOrZero(r.base_tables)), fmtInt(numOrZero(r.covered_tables)), <b>{fmtInt(numOrZero(r.sensitive_uncovered))}</b>],
                 }))} />
           )}
+        </Slot>
+        <Slot c={dmf} title="Tables watched, by database" subtitle="Share of base tables with a DMF · lowest first">
+          {(rows) => {
+            const items: CxRankItem[] = rows.filter((r) => numOrZero(r.base_tables) > 0).map((r) => ({
+              key: String(r.database_name), label: String(r.database_name || "(no database)"), value: pctOf(numOrZero(r.covered_tables), numOrZero(r.base_tables)) ?? 0,
+              strong: fmtShare(pctOf(numOrZero(r.covered_tables), numOrZero(r.base_tables))), rest: `${fmtInt(r.covered_tables)} of ${fmtInt(r.base_tables)}`,
+              onClick: drawerBy("sf_gov_dmf_coverage", "database_name", r.database_name, String(r.database_name)),
+            })).sort((x, y) => x.value - y.value);
+            if (!items.length) return null;
+            // Databases at 0% read as a list, not as empty bars.
+            const zero = items.filter((x) => x.value === 0);
+            const some = items.filter((x) => x.value > 0);
+            return (
+              <div>
+                <CxStat>{<span>{zero.length ? `${plural(zero.length, "database")} ${zero.length === 1 ? "is" : "are"} at ` : ""}{zero.length ? <b>0%</b> : null}{zero.length ? "; " : ""}{"account-wide it is "}<b>{fmtShare(pctOf(cov, all))}</b>{"."}</span>}</CxStat>
+                {zero.length > 0 && <div className="cx-stat cx-muted cx-dblist">{zero.map((x) => x.label).join(" · ")}</div>}
+                {some.length > 0 && <div className="cx-block"><CxRanked items={some} max={100} layout="above" ariaLabel="Share of base tables watched by database" /></div>}
+              </div>
+            );
+          }}
         </Slot>
       </Row2>
       <GovQualityFit p={p} />
@@ -1611,34 +1662,37 @@ function GovQualityFit({ p }: { p: ApPageProps }) {
   const ex = useCheck(p, "sf_gov_dmf_expectation_failures");
   const st = useCheck(p, "sf_gov_dmf_static_table_schedules");
   return (
-    <Row2>
-      <Slot c={ex} title="Expectations failing or never checked" subtitle="latest run per expectation · longest failing first · click a row">
+    <div>
+      <div id="dq-exp">
+      <Slot c={ex} title="Expectations failing or never checked" subtitle="Latest run per expectation · longest failing first · select a row">
         {(rows) => {
           const fl = flaggedFirst(rows).sort((a, b) => byStatus(a, b) || numOrZero(b.failing_days) - numOrZero(a.failing_days));
           return fl.length ? (
-            <DrillTable aria="Failing expectations" n={8}
-              cols={[{ label: "Table" }, { label: "Expectation" }, { label: "Latest", width: "auto" }, { label: "Days failing", num: true, width: "auto" }, { label: "Runs failed", num: true, width: "auto" }]}
+            <CxTable ariaLabel="Failing expectations" n={8}
+              cols={[{ label: "Table" }, { label: "Expectation" }, { label: "Latest" }, { label: "Days failing", num: true }, { label: "Runs failed", num: true }]}
               rows={fl.map((r, i) => ({
-                key: `${r.table_fqn}-${r.expectation_id}-${i}`, status: r.status, onOpen: drawerBy("sf_gov_dmf_expectation_failures", "table_fqn", r.table_fqn, String(r.table_fqn)),
-                cells: [String(r.table_fqn), String(r.expectation_name || "–"), words(r.latest_state), r.failing_days == null ? "–" : fmtInt(numOrZero(r.failing_days)), `${fmtInt(numOrZero(r.violations))} of ${fmtInt(numOrZero(r.evaluations))}`],
+                key: `${r.table_fqn}-${r.expectation_id}-${i}`, status: r.status, onClick: drawerBy("sf_gov_dmf_expectation_failures", "table_fqn", r.table_fqn, String(r.table_fqn)),
+                cells: [<CxObjName full={String(r.table_fqn)} />, <code className="cx-code">{String(r.expectation_name || "–")}</code>, words(r.latest_state).replace(/^./, (x) => x.toUpperCase()),
+                  r.failing_days == null ? "–" : fmtInt(numOrZero(r.failing_days)), `${fmtInt(numOrZero(r.violations))} of ${fmtInt(numOrZero(r.evaluations))}`],
               }))} />
           ) : okNote(`All ${plural(rows.length, "expectation")} passed on their latest run.`);
         }}
       </Slot>
+      </div>
       <Slot c={st} title="DMFs billed on tables that did not change" subtitle="no rows added, removed or updated in the window · possible waste, part of DMF spend">
         {(rows) => {
           const fl = flaggedFirst(rows).sort((a, b) => numOrZero(b.dmf_credits) - numOrZero(a.dmf_credits));
           return fl.length ? (
-            <DrillTable aria="DMFs on unchanged tables" n={8}
-              cols={[{ label: "Table" }, { label: "Schedule", width: "auto" }, { label: "Credits", num: true, width: "auto" }, { label: "Possible waste", num: true, width: "auto" }]}
+            <CxTable ariaLabel="DMFs on unchanged tables" n={8}
+              cols={[{ label: "Table" }, { label: "Schedule" }, { label: "Credits", num: true }, { label: "Possible waste", num: true }]}
               rows={fl.map((r) => ({
-                key: String(r.table_fqn), status: r.status, onOpen: drawerBy("sf_gov_dmf_static_table_schedules", "table_fqn", r.table_fqn, String(r.table_fqn)),
-                cells: [String(r.table_fqn), r.shortest_interval_min != null ? `every ${fmtInt(numOrZero(r.shortest_interval_min))} min` : String(r.schedule_kinds || "–"), fmtInt(Math.round(numOrZero(r.dmf_credits))), r.est_wasted_usd_list == null ? "–" : fmtMoney(numOrZero(r.est_wasted_usd_list))],
+                key: String(r.table_fqn), status: r.status, onClick: drawerBy("sf_gov_dmf_static_table_schedules", "table_fqn", r.table_fqn, String(r.table_fqn)),
+                cells: [<CxObjName full={String(r.table_fqn)} />, r.shortest_interval_min != null ? `every ${fmtInt(numOrZero(r.shortest_interval_min))} min` : String(r.schedule_kinds || "–"), fmtInt(Math.round(numOrZero(r.dmf_credits))), r.est_wasted_usd_list == null ? "–" : fmtMoney(numOrZero(r.est_wasted_usd_list))],
               }))} />
           ) : okNote(`All ${plural(rows.length, "table")} with billed DMFs changed in the window.`);
         }}
       </Slot>
-    </Row2>
+    </div>
   );
 }
 
@@ -1646,13 +1700,14 @@ function GovQualityFit({ p }: { p: ApPageProps }) {
 function GovAgentsFit({ p }: { p: ApPageProps }) {
   const ag = useCheck(p, "sf_gov_ai_agent_data_access");
   return (
-    <Slot c={ag} title="Tables AI agents read" subtitle="agent nearest the read · unmasked sensitive columns first · click a row">
+    <Slot c={ag} title="Tables AI agents read" subtitle="The agent nearest each read · unmasked sensitive columns first · select a row">
       {(rows) => rows.length ? (
-        <DrillTable aria="Tables read by AI agents" n={8}
-          cols={[{ label: "Agent" }, { label: "Kind", width: "auto" }, { label: "Table" }, { label: "Queries", num: true, width: "auto" }, { label: "Users", num: true, width: "auto" }, { label: "Unmasked sensitive" }]}
+        <CxTable ariaLabel="Tables read by AI agents" n={8}
+          cols={[{ label: "Agent" }, { label: "Kind" }, { label: "Table" }, { label: "Queries", num: true }, { label: "Users", num: true }, { label: "Unmasked sensitive" }]}
           rows={[...rows].sort((a, b) => byStatus(a, b) || numOrZero(b.queries) - numOrZero(a.queries)).map((r, i) => ({
-            key: `${r.agent_name}-${r.table_fqn}-${i}`, status: r.status, onOpen: drawerBy("sf_gov_ai_agent_data_access", "table_fqn", r.table_fqn, String(r.table_fqn)),
-            cells: [String(r.agent_name || "–"), words(r.agent_type), String(r.table_fqn), fmtInt(numOrZero(r.queries)), fmtInt(numOrZero(r.users)), String(r.unmasked_columns || "–")],
+            key: `${r.agent_name}-${r.table_fqn}-${i}`, status: r.status, onClick: drawerBy("sf_gov_ai_agent_data_access", "table_fqn", r.table_fqn, String(r.table_fqn)),
+            cells: [<CxObjName full={String(r.agent_name || "–")} />, words(r.agent_type).replace(/^./, (x) => x.toUpperCase()), <CxObjName full={String(r.table_fqn)} />,
+              fmtInt(numOrZero(r.queries)), fmtInt(numOrZero(r.users)), r.unmasked_columns ? String(r.unmasked_columns) : "–"],
           }))} />
       ) : okNote("No agent read a table in the window.")}
     </Slot>
@@ -1663,15 +1718,15 @@ function GovAgentsFit({ p }: { p: ApPageProps }) {
 function GovPolicyOwnerFit({ p }: { p: ApPageProps }) {
   const so = useCheck(p, "sf_gov_policy_separation_of_duties");
   return (
-    <Slot c={so} title="Policies owned by the role that owns the data" subtitle="that role can change or drop the protection alone · sensitive tables first">
+    <Slot c={so} title="Policies owned by the role that owns the data" subtitle="That role can change or drop the protection on its own · sensitive tables first">
       {(rows) => {
         const fl = flaggedFirst(rows);
         return fl.length ? (
-          <DrillTable aria="Policies owned by the data owner" n={8}
-            cols={[{ label: "Table" }, { label: "Policy" }, { label: "Owner of both", width: "auto" }, { label: "Through", width: "auto" }]}
+          <CxTable ariaLabel="Policies owned by the data owner" n={8}
+            cols={[{ label: "Table" }, { label: "Policy" }, { label: "Owner of both" }, { label: "Applied through" }]}
             rows={fl.map((r, i) => ({
-              key: `${r.table_fqn}-${r.policy_fqn}-${i}`, status: r.status, onOpen: drawerBy("sf_gov_policy_separation_of_duties", "table_fqn", r.table_fqn, String(r.table_fqn)),
-              cells: [String(r.table_fqn), String(r.policy_fqn), String(r.table_owner), r.via_tag ? `tag ${r.via_tag}` : "the policy"],
+              key: `${r.table_fqn}-${r.policy_fqn}-${i}`, status: r.status, onClick: drawerBy("sf_gov_policy_separation_of_duties", "table_fqn", r.table_fqn, String(r.table_fqn)),
+              cells: [<CxObjName full={String(r.table_fqn)} />, <CxObjName full={String(r.policy_fqn)} />, String(r.table_owner), r.via_tag ? `Tag ${r.via_tag}` : "The policy itself"],
             }))} />
         ) : okNote(`A different role owns the policy on all ${plural(rows.length, "protected table")}.`);
       }}
@@ -1799,7 +1854,7 @@ function GovGrantsByPrivilege({ p }: { p: ApPageProps }) {
 function GovLineageUntagged({ p }: { p: ApPageProps }) {
   const lin = emptyAs(useCheck(p, "sf_secx_sensitive_lineage_untagged"), "no sensitive column was copied to another table.");
   return (
-    <Slot c={lin} title="Sensitive data copied into untagged columns" subtitle="target table · bar = copied columns with no tag or mask · source on the right · click a bar">
+    <Slot c={lin} title="Sensitive data copied into untagged columns" subtitle="Copied from a source into a table with no tag or mask · select a row">
       {(rows) => {
         // OK rows landed in a tagged or masked column: protected, so not drawn here.
         const fl = rows.filter(isFlagged);
@@ -1814,8 +1869,17 @@ function GovLineageUntagged({ p }: { p: ApPageProps }) {
             title: `${g.name} ← ${src.join(", ")} · at least ${plural(q, "query", "queries")} · ${[...new Set(g.rows.map(category))].join(", ")}`,
           };
         });
-        return <StatusBars items={items} n={8} ariaLabel="Target tables that took sensitive columns into untagged columns"
-          onBarClick={(it) => DrawerBus.open({ id: "sf_secx_sensitive_lineage_untagged", col: "target_table", val: String(it.key), label: String(it.name) })} />;
+        // Equal bars carry nothing: list target, count and source as rows.
+        return (
+          <CxTable ariaLabel="Target tables that took sensitive columns into untagged columns"
+            cols={[{ label: "Target table" }, { label: "Copied", num: true }, { label: "From" }]}
+            rows={items.map((it) => {
+              const g = fl.filter((r) => String(r.target_table || "(no target)") === it.key);
+              const src = [...new Set(g.map((r) => String(r.source_table || "(no source)")))];
+              return { key: String(it.key), status: it.status, onClick: () => DrawerBus.open({ id: "sf_secx_sensitive_lineage_untagged", col: "target_table", val: String(it.key), label: String(it.name) }),
+                cells: [<CxObjName full={String(it.name)} />, plural(Number(it.value), "column"), <span>{src.map((x) => <CxObjName key={x} full={x} />)}</span>] };
+            })} />
+        );
       }}
     </Slot>
   );
@@ -1827,7 +1891,7 @@ function GovMaskAttachment({ p }: { p: ApPageProps }) {
   // A snapshot, not a window: an empty result means no mask the role can see, not a quiet week.
   const mk = raw.empty && /^No data for this/.test(raw.why || "") ? { ...raw, why: "No masking policy is attached to a column the audit role can see (snapshot at export)." } : raw;
   return (
-    <Slot c={mk} title="Masking attached by tag vs directly" subtitle="masked columns · a tag carries the mask to new columns, a direct mask does not · snapshot at export">
+    <Slot c={mk} title="Masking by tag vs directly" subtitle="A tag carries the mask to new columns; a direct mask does not · snapshot at export">
       {(rows) => {
         // One row per policy reference: count columns, and a direct mask wins over a tag's.
         const cols = new Map<string, { direct: boolean; tags: Set<string> }>();
@@ -1846,6 +1910,11 @@ function GovMaskAttachment({ p }: { p: ApPageProps }) {
         const byTag = new Map<string, number>();
         viaTag.forEach((c) => c.tags.forEach((t) => byTag.set(t, (byTag.get(t) || 0) + 1)));
         const tags = [...byTag.entries()].map(([name, value]) => ({ name, value }));
+        if (viaTag.length === 0 || viaTag.length === cols.size) {
+          return <CxStat>{<span><b>{`${fmtInt(viaTag.length)} of ${plural(cols.size, "masked column")}`}</b>{viaTag.length === 0
+            ? ` are masked through a tag. All ${fmtInt(cols.size)} carry the mask directly on the column, so a new column made from them starts unmasked.`
+            : " are masked through a tag, so the mask follows the tag to new columns."}</span>}</CxStat>;
+        }
         return (
           <div className="ais-stack-pair">
             <StackedShareBar segments={segs} valueFmt={(v) => plural(v, "column")} ariaLabel="Masked columns by attachment"
