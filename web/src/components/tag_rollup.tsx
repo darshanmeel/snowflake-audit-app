@@ -224,8 +224,8 @@ export function TagRollupByValueTable({ byValue, area, primaryMetric, fmtV }: { 
           <th style={{ textAlign: "left" }}>Value</th>
           <th style={{ textAlign: "right" }}>{area === "cost" ? "$" : "Statements"}</th>
           <th style={{ textAlign: "right" }}>Share</th>
-          <th style={{ textAlign: "left" }}>Counted by</th>
-          <th style={{ textAlign: "right" }}>Overrides outer</th>
+          <th style={{ textAlign: "left" }}>Tag comes from</th>
+          <th style={{ textAlign: "right" }}>Overrides a wider tag</th>
         </tr>
       </thead>
       <tbody>

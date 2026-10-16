@@ -15,6 +15,7 @@ import { DrawerBus } from "./drawer";
 import { DAY_ROWS_MAX, MONTH_ROWS_MAX, GrainSwitch, fmtMonth, latest, monthOf, monthRun, partialMonths } from "./grain";
 import type { Grain } from "./grain";
 import { CsvButton } from "./csv";
+import { CxEmpty } from "./cx_d";
 import type { CsvColumn } from "./csv";
 import type { ApPageProps } from "./area_pages";
 import type { FetchState, Finding, Row } from "../types";
@@ -180,11 +181,17 @@ export function QTrend(p: ApPageProps) {
     : null;
   const ledeTail = busiest ? ` ran ${fmtShare(pctOf(busiest.queries, totalQ))} of them.` : "";
   const loading = (s.phase === "loading" || sP95.phase === "loading") && !!f;
-  const ledeKey = loading ? "…" : ledeHead ? `${ledeHead}${busiestName}${ledeTail}` : "";
+  // No data: the lede says why there is no trend, so the page head is never blank.
+  const missing = note && note !== "…" ? note.replace(/^– /, "") : null;
+  const notInExport = !!missing && /^Not in this export/i.test(missing);
+  const noteLede = missing ? (notInExport
+    ? `The day-by-day query load per warehouse is not in this export yet, so there is no trend to show for these ${fmtInt(p.filters.window)} days.`
+    : `There is no trend to show for these ${fmtInt(p.filters.window)} days: ${missing.replace(/\.$/, "")}.`) : null;
+  const ledeKey = loading ? "…" : ledeHead ? `${ledeHead}${busiestName}${ledeTail}` : noteLede || "";
   React.useEffect(() => {
     if (!p.setLede) return;
     // A node, so a long warehouse name can wrap on a phone.
-    const node = loading ? "…" : ledeHead ? <>{ledeHead}<span className="qt-lede-name">{busiestName}</span>{ledeTail}</> : null;
+    const node = loading ? "…" : ledeHead ? <>{ledeHead}<span className="qt-lede-name">{busiestName}</span>{ledeTail}</> : noteLede;
     (p.setLede as unknown as (v: React.ReactNode) => void)(node);
   }, [ledeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -220,8 +227,18 @@ export function QTrend(p: ApPageProps) {
     </div>
   );
 
+  // A chart with no data is one dashed line: no measure pills, Day/Month or CSV for nothing.
+  if (missing) {
+    return (
+      <div className="ac-page qt-page cxd">
+        <CxEmpty title="Queries by warehouse, per day"
+          reason={notInExport ? "Not in this export yet — run the export again to include the daily query load per warehouse." : missing} />
+      </div>
+    );
+  }
+
   return (
-    <div className="ac-page qt-page">
+    <div className="ac-page qt-page cxd">
       <ChartCard title={`${m.label} by warehouse`} subtitle={`${m.what} · ${plotWord} · top ${TOP_N} warehouses${rows ? ` of ${fmtInt(rows.length)}` : ""}`}
         onOpenCheck={f ? () => DrawerBus.open({ id: QID }) : null} takeaway={null}>
         <div className="qt-bar">

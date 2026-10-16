@@ -9,6 +9,7 @@ import { resolveName, useNames } from "./names";
 import { notAssessedText } from "./scope";
 import { windowShortLabel } from "./overview_tile";
 import { NameId, StateBandList } from "./blocks_2";
+import { fmtDur } from "./cx_d";
 import type { StateBandRow } from "./blocks_2";
 import { fmtShare, pctOf } from "./blocks";
 import type { FetchState, Filters, Meta, Row } from "../types";
@@ -223,14 +224,17 @@ export function QueryPatternTable({ rows, n = 10, onOpen }: { rows: PatternRow[]
     return r.cacheShare ?? -1;
   };
   const shown = [...rows].sort((a, b) => val(b, sort) - val(a, sort)).slice(0, n);
-  const dot = (s: string) => (s === "CRITICAL" ? "crit" : s === "WARN" ? "warn" : "ok");
+  // A cache column that reads 0% on every shape says nothing: drop it and say so once under the table.
+  const noCache = shown.length > 0 && shown.every((r) => r.cacheShare == null || r.cacheShare === 0);
+  const cols = noCache ? COLS.filter((c) => c.k !== "cache") : COLS;
   return (
+    <div>
     <div className="b2-scroll de-qp-box">
       <table className="de-qp">
         <thead>
           <tr>
             <th scope="col">Shape · warehouse · user</th>
-            {COLS.map((c) => (
+            {cols.map((c) => (
               <th key={c.k} scope="col" className="num" aria-sort={sort === c.k ? "descending" : undefined}>
                 <button type="button" className={`de-sort${sort === c.k ? " on" : ""}`} onClick={() => setSort(c.k)}>{c.label}{sort === c.k ? " ↓" : ""}</button>
               </th>
@@ -241,22 +245,25 @@ export function QueryPatternTable({ rows, n = 10, onOpen }: { rows: PatternRow[]
         <tbody>
           {shown.map((r) => (
             <tr key={r.key}>
-              <td className="de-qp-shape">
-                <span className={`de-dot ${dot(r.status)}`} aria-hidden="true" />
-                <span className="b2-mono">{r.shape}</span>
-                <span className="de-qp-sub"><NameId name={r.wh.name} id={r.wh.id} />{r.user ? ` · ${r.user}` : ""}</span>
+              <td>
+                <span className="de-qp-shape">
+                  <span className="de-qp-chip">{r.shape}</span>
+                  <span className="de-qp-sub"><NameId name={r.wh.name} id={r.wh.id} />{r.user ? ` · ${r.user}` : ""}</span>
+                </span>
               </td>
               <td className="num">{fmtInt(r.runs)}</td>
-              <td className="num">{fmtMoney(r.usd, 0)}</td>
+              <td className="num"><b>{fmtMoney(r.usd, 0)}</b></td>
               <td className="num">{r.runs > 0 ? fmtMoney(r.usd / r.runs, r.usd / r.runs >= 100 ? 0 : 2) : "–"}</td>
               <td className="num">{r.readBytes != null ? fmtBytes(r.readBytes) : "–"}</td>
-              <td className="num">{r.avgMs != null ? fmtDuration(r.avgMs / 1000) : "–"}</td>
-              <td className="num">{r.cacheShare != null ? fmtShare(r.cacheShare * 100) : "–"}</td>
-              <td>{onOpen && <button type="button" className="ck-link" onClick={() => onOpen(r)}>{"Runs →"}</button>}</td>
+              <td className="num">{r.avgMs != null ? fmtDur(r.avgMs / 1000) : "–"}</td>
+              {!noCache && <td className="num">{r.cacheShare != null ? fmtShare(r.cacheShare * 100) : "–"}</td>}
+              <td className="num">{onOpen && <button type="button" className="ck-link" onClick={() => onOpen(r)}>{"Runs →"}</button>}</td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+    {noCache && <div className="de-more">{`None of these ${fmtInt(shown.length)} shapes was served from the result cache (0% cache hits on every one), so the column is left out.`}</div>}
     </div>
   );
 }

@@ -468,7 +468,7 @@ export function CostTagRollup({ filters, meta }: { filters: Filters; meta: Meta 
   return <Card title="Spend by tag"><TagRollupView filters={filters} area="cost" meta={meta} /></Card>;
 }
 export function QueryTagRollup({ filters, meta }: { filters: Filters; meta: Meta }) {
-  return <Card title="Statements by tag"><TagRollupView filters={filters} area="performance" meta={meta} /></Card>;
+  return <div className="cxd-tagroll"><Card title="Statements by tag"><TagRollupView filters={filters} area="performance" meta={meta} /></Card></div>;
 }
 
 // Every drill-down sub-tab without a bespoke page. Cost > Trend, Waste, Actions, Overview and

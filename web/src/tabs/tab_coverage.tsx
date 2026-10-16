@@ -6,20 +6,19 @@
 import { FixCopyButton } from "../components/fixcopy_button";
 import React from "react";
 import { Api } from "../api";
-import { fmtDuration, fmtInt, fmtMoney } from "../format";
+import { fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { numOrZero, sumBy, useFindingData } from "../components/hooks";
-import { ChartCard, KindChip, bandOf, isUncertainBand, noDataText, ranCountsOf } from "../components/primitives";
+import { ChartCard, bandOf, isUncertainBand, noDataText, ranCountsOf } from "../components/primitives";
 import { AreaContent } from "../area_content";
 import { getCheckLabel } from "../components/labels";
-import { IssueTile, StatusBars, fmtShare, pctOf } from "../components/blocks";
-import type { StatusBarItem } from "../components/blocks";
-import { StatStrip } from "../components/blocks_2";
-import { DrillTable, MiniBar } from "../components/drill_table";
+import { IssueTile, fmtShare, pctOf } from "../components/blocks";
 import { SummaryTileRow } from "../components/overview_tile";
 import "../styles/css/p_area_governance.css";
 import { notAssessedText } from "../components/scope";
 import { AREA_REGISTRY, homeForQuery } from "../components/tab_registry";
-import { HomeChecksList } from "./tab_findings";
+import { CxBars, CxCellBar, CxTable, afHomeOf, fmtDur } from "../components/cx_d";
+import type { CxRow } from "../components/cx_d";
+import { navHref } from "../components/nav_hash";
 import type { Filters, Finding, GoToFn, Meta, Row } from "../types";
 
 /** One source in the coverage `tables` map: how its read went and which checks depend on it. */
@@ -157,6 +156,21 @@ function useFreshness(filters: Filters) {
   return { rows, why, loading: state.phase === "loading" };
 }
 const lagHours = (r: Row) => (r.lag_hours != null ? numOrZero(r.lag_hours) : r.days_behind != null ? numOrZero(r.days_behind) * 24 : null);
+const isFlaggedRow = (r: Row) => r.status === "CRITICAL" || r.status === "WARN";
+const plural = (n: number, one: string) => `${fmtInt(n)} ${n === 1 ? one : `${one}s`}`;
+
+// The grant that lets SHOW WAREHOUSES list a warehouse the role cannot see yet.
+const WH_GRANT = "GRANT MONITOR ON WAREHOUSE <warehouse> TO ROLE <audit_role>;";
+
+/** A grant line in mono with its own Copy button. */
+function GrantLine({ text }: { text: string }) {
+  return (
+    <div className="cv-grant-box" onClick={(e) => e.stopPropagation()}>
+      <code>{text}</code>
+      <FixCopyButton text={text} />
+    </div>
+  );
+}
 
 // What running this audit itself cost, from cost_audit_self_usage (coverage-only: that check emits
 // no status column). Spend, kept apart from the account's own figures.
@@ -175,12 +189,47 @@ function AuditSelfCost({ filters }: { filters: Filters }) {
     if (!priced.length) why = "Not priced: no $ price for this export.";
     else value = fmtMoney(priced.reduce((s: number, r: Row) => s + numOrZero(auditUsd(r)), 0), 2);
   }
+  const queries = rows ? sumBy(rows, "matched_statement_count") : null;
   return (
-    <StatStrip ariaLabel="What this audit cost" cells={[
-      { key: "cost", label: "Audit cost", pill: null, value: value, unit: <KindChip>Spend</KindChip>, missing: why || undefined },
-      { key: "q", label: "Queries", value: rows ? fmtInt(sumBy(rows, "matched_statement_count")) : null, missing: why || undefined },
-      { key: "wh", label: "Warehouses", value: rows ? fmtInt(rows.length) : null, missing: why || undefined },
-    ]} />
+    <div className="cv-audit">
+      <div className="cv-audit-value">{value || "–"}{value && value !== "…" && <span className="cv-audit-unit">for this export</span>}</div>
+      {why && <div className="cv-audit-line">{why}</div>}
+      {rows && rows.length > 0 && <div className="cv-audit-line">{`${fmtInt(numOrZero(queries))} quer${numOrZero(queries) === 1 ? "y" : "ies"} on ${plural(rows.length, "warehouse")}.`}</div>}
+    </div>
+  );
+}
+
+/** The views' freshness: one sentence and chips when none is late; ranked lag bars when some are. */
+function SourceFreshness({ fresh, meta, filters }: { fresh: ReturnType<typeof useFreshness>; meta: Meta | null; filters: Filters }) {
+  if (!fresh.rows) return <div className="chart-note-oneline">{fresh.loading ? "…" : fresh.why === "no data in this window" ? noDataText(meta, filters.window) : `– ${fresh.why}`}</div>;
+  const rows = fresh.rows.filter((r) => lagHours(r) != null);
+  const late = rows.filter(isFlaggedRow);
+  const normal = rows.map((r) => numOrZero(r.expected_latency_hours)).filter((h) => h > 0);
+  const byDelay = [...rows].sort((a, b) => numOrZero(a.expected_latency_hours) - numOrZero(b.expected_latency_hours) || String(a.source_view).localeCompare(String(b.source_view)));
+  if (!late.length) {
+    return (
+      <div>
+        <div className="cv-fresh-ok"><span aria-hidden="true">✓</span>
+          {`All ${plural(rows.length, "usage view")} are on time: none is behind its normal delay${normal.length ? `, which runs from ${fmtDur(Math.min(...normal) * 3600)} to ${fmtDur(Math.max(...normal) * 3600)}` : ""}.`}
+        </div>
+        <div className="cv-chips">
+          {byDelay.map((r) => (
+            <span key={String(r.source_view)} className="cxd-chip">{String(r.source_view || "(unknown view)")}
+              {r.expected_latency_hours != null && <span className="cv-chip-h">{` ${fmtDur(numOrZero(r.expected_latency_hours) * 3600)}`}</span>}
+            </span>
+          ))}
+        </div>
+        <div className="cxd-foot">Normal delay shown after each view.</div>
+      </div>
+    );
+  }
+  return (
+    <CxBars n={12} noun="views" ariaLabel="Hours each view is behind"
+      items={[...rows].sort((a, b) => lagHours(b)! - lagHours(a)!).map((r) => ({
+        key: String(r.source_view), name: String(r.source_view || "(unknown view)"), value: lagHours(r)!, status: r.status,
+        valueText: `${fmtDur(lagHours(r)! * 3600)} behind`,
+        extra: `normal ${r.expected_latency_hours != null ? fmtDur(numOrZero(r.expected_latency_hours) * 3600) : "–"}`,
+      }))} />
   );
 }
 
@@ -198,97 +247,106 @@ export function CoverageSourcesPanel({ goTo, filters, meta, allFindingsIndex, on
   const wh = vis && vis.warehouses;
   const unreadable = (vis && vis.unreadable) || [];
   const truncated = (cov && cov.truncated_query_ids) || [];
-  const late = (fresh.rows || []).filter((r) => r.status === "CRITICAL" || r.status === "WARN").length;
+  const late = (fresh.rows || []).filter(isFlaggedRow).length;
   const bands = Object.values(allFindingsIndex || {}).map((f) => bandOf(f));
   const nBand = (b: string) => bands.filter((x) => x === b).length;
   useCvLede(onVerdict, !cov || !ran ? "…" : [
-    `${fmtInt(ran.assessed)} of ${fmtInt(ran.total)} ${ran.unit} ran.`,
-    entries.length ? `${fmtInt(readOk)} of ${fmtInt(entries.length)} Snowflake views and commands were readable.` : null,
+    `${fmtInt(ran.assessed)} of ${fmtInt(ran.total)} ${ran.unit} ran${entries.length ? (readOk === entries.length ? `, and all ${fmtInt(entries.length)} Snowflake views and commands were readable.` : `; ${fmtInt(readOk)} of ${fmtInt(entries.length)} Snowflake views and commands were readable.`) : "."}`,
     wh ? `The role sees ${fmtInt(wh.visible)} of ${fmtInt(wh.billed)} billed ${wh.unit || "warehouses"}${wh.missing > 0 ? `; the other ${fmtInt(wh.missing)} are missing from warehouse checks, not clean` : ""}.` : null,
   ].filter(Boolean).join(" "));
-  if (error) return <div className="honest-card error"><div className="h-title">Could not read coverage</div><div className="h-note mono">{error}</div></div>;
+  if (error) return <div className="honest-card error"><div className="h-title">Could not read coverage</div><div className="h-note">Couldn't read the coverage summary from this export.</div></div>;
   if (!cov) return <div className="loading-note">…</div>;
 
   const grouped: Record<string, [string, CoverageSource][]> = {};
   entries.forEach(([key, info]) => { (grouped[cvGroupForKey(key)] = grouped[cvGroupForKey(key)] || []).push([key, info]); });
   const noExport = cov.export_mode === "none";
+  const families = CV_GROUP_ORDER.filter((g) => grouped[g]).map((g) => {
+    const list = grouped[g];
+    const ok = list.filter(([, i]) => state(i) === "ok" || state(i) === "empty").length;
+    return { g, ok, bad: list.length - ok };
+  });
+  const familyRows: CxRow[] = [
+    ...families.map((f) => ({
+      key: f.g, title: CV_GROUP_NOTE[f.g],
+      cells: [/^[A-Z_]+$/.test(f.g) ? <span key="c" className="cxd-chip">{f.g}</span> : f.g, <b key="r">{fmtInt(f.ok)}</b>, fmtInt(f.bad),
+        <span key="s" className="cv-state"><span className={`cxd-dot ${f.bad ? "na" : "ok"}`} aria-hidden="true" />{f.bad ? `${fmtInt(f.bad)} not readable` : "All read"}</span>],
+    })),
+    { key: "__total", cells: [<b key="t">Total</b>, <b key="r">{fmtInt(readOk)}</b>, <b key="n">{fmtInt(entries.length - readOk)}</b>, ""] },
+  ];
   return (
-    <div>
+    <div className="cxd cv-page">
       {noExport && <div className="page-intro-verdict">Nothing has been exported yet: no source has been read.</div>}
       <div className="cv-tiles">
         <SummaryTileRow compact>
-          <IssueTile label="Checks that ran" headline={ran ? fmtShare(pctOf(ran.assessed, ran.total)) : null} loading={!ran} unit=" of checks" pill={<KindChip>Context</KindChip>}
-            base={ran ? `${fmtInt(ran.assessed)} of ${fmtInt(ran.total)} ${ran.unit} · ${fmtInt(nBand("CRITICAL"))} critical · ${fmtInt(nBand("WARN"))} warning` : null}
-            cause={ran && ran.total > ran.assessed ? `${fmtInt(ran.total - ran.assessed)} did not run: see Not assessed.` : "Every check ran."}
+          <IssueTile label="Checks that ran" headline={ran ? fmtShare(pctOf(ran.assessed, ran.total)) : null} loading={!ran} unit={ran ? `${fmtInt(ran.assessed)} of ${fmtInt(ran.total)}` : undefined} pill={null}
+            base={ran ? `${fmtInt(nBand("CRITICAL"))} critical · ${fmtInt(nBand("WARN"))} warning.` : null}
+            cause={ran && ran.total > ran.assessed ? `${fmtInt(ran.total - ran.assessed)} did not run; Not assessed lists them.` : "Every check ran."}
             onOpen={() => goTo({ tab: "coverage", subtab: "couldnt" })} openLabel="Which ones →" />
-          <IssueTile label="Sources read" headline={entries.length ? fmtShare(pctOf(readOk, entries.length)) : null} unit=" of sources" pill={<KindChip>Context</KindChip>}
+          <IssueTile label="Sources read" headline={entries.length ? fmtShare(pctOf(readOk, entries.length)) : null} unit={`${fmtInt(readOk)} of ${fmtInt(entries.length)}`} pill={null}
             missingReason="no source in this export"
-            base={`${fmtInt(readOk)} of ${fmtInt(entries.length)} views and commands · ${fmtInt(truncated.length)} hit the export row cap`}
-            cause={unreadable.length ? `${fmtInt(unreadable.length)} the role cannot read: the grant is in the sources list.` : "Every usage view and SHOW command answered."}
+            base={unreadable.length ? `${fmtInt(unreadable.length)} the role cannot read: the grant is in the sources list.` : "Every usage view and SHOW command was readable."}
+            cause={truncated.length ? `${plural(truncated.length, "check")} hit the export row cap.` : "None hit the export row cap."}
             onOpen={() => setShowSources(true)} openLabel="By family ↓" />
-          <IssueTile label="Warehouses the role sees" headline={wh ? fmtShare(pctOf(wh.visible, wh.billed)) : null} unit=" of billed warehouses"
+          <IssueTile label="Warehouses seen" headline={wh ? fmtShare(pctOf(wh.visible, wh.billed)) : null} unit={wh ? `${fmtInt(wh.visible)} of ${fmtInt(wh.billed)} billed` : undefined}
             missingReason={vis ? "billed vs listed could not be compared" : "not probed in this export"}
-            base={wh ? `${fmtInt(wh.visible)} of ${fmtInt(wh.billed)} ${wh.unit || "warehouses"}${wh.missing > 0 ? ` · ${fmtInt(wh.missing)} bill but are missing from SHOW WAREHOUSES` : ""}` : null}
-            cause={wh && wh.missing > 0 ? "Missing, not clean. GRANT MONITOR on each warehouse widens the view." : null}
-            status={!wh ? "not_assessed" : wh.missing > 0 ? "not_assessed" : "ok"}
-            pill={wh && wh.missing > 0 ? <span className="nj-pill">{`– ${fmtInt(wh.missing)} not visible`}</span> : undefined}
+            base={wh ? (wh.missing > 0 ? `${fmtInt(wh.missing)} bill but are missing from SHOW WAREHOUSES — not assessed, not clean.` : "SHOW WAREHOUSES lists every warehouse that billed.") : null}
+            cause={wh && wh.missing > 0 ? <GrantLine text={WH_GRANT} /> : null}
+            status={!wh || wh.missing > 0 ? "not_assessed" : "neutral"}
             onOpen={() => goTo({ tab: "coverage", subtab: "limits" })} openLabel="Known limitations →" />
-          <IssueTile label="Views behind their normal delay" loading={fresh.loading} headline={fresh.rows ? fmtInt(late) : null} unit={fresh.rows ? ` of ${fmtInt(fresh.rows.length)} views` : undefined}
-            missingReason={fresh.why} status={fresh.rows ? (late ? "warn" : "ok") : "not_assessed"}
-            base={fresh.rows ? (late ? `${fmtInt(late)} views are further behind than Snowflake documents` : "newest row within the normal delay for each") : null}
-            cause={fresh.rows ? "A view far behind makes the newest days read too low." : null} />
         </SummaryTileRow>
       </div>
+      <div className="cv-tiles cv-wide-tile">
+        <IssueTile label="Views running late" loading={fresh.loading} headline={fresh.rows ? fmtInt(late) : null} unit={fresh.rows ? `of ${plural(fresh.rows.length, "view")}` : undefined}
+          missingReason={fresh.why} status={fresh.rows ? (late ? "warn" : "neutral") : "not_assessed"}
+          base={fresh.rows ? (late ? `${plural(late, "view")} ${late === 1 ? "is" : "are"} further behind than Snowflake documents.` : "Each view's newest row is within its normal delay.") : null}
+          cause={fresh.rows ? "A late view would make the newest days look low." : null}
+          onOpen={() => { const el = document.getElementById("cv-fresh"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }} openLabel="Source freshness ↓" />
+      </div>
 
-      <div className="cj-charts-2">
-        <ChartCard title="Source freshness" subtitle="how far each view is behind, against its normal delay · dot = status" takeaway={null}>
-          {fresh.rows ? (
-            <StatusBars n={12} unitLabel="behind" ariaLabel="Hours each view is behind"
-              items={fresh.rows.filter((r) => lagHours(r) != null).map((r): StatusBarItem => ({
-                key: String(r.source_view), name: String(r.source_view || "(unknown view)"), value: lagHours(r)!, status: r.status,
-                valueText: `${fmtDuration(lagHours(r)! * 3600)} · normal ${r.expected_latency_hours != null ? fmtDuration(numOrZero(r.expected_latency_hours) * 3600) : "–"}`,
-              }))} />
-          ) : <div className="chart-note-oneline">{fresh.loading ? "…" : fresh.why === "no data in this window" ? noDataText(meta, filters.window) : `– ${fresh.why}`}</div>}
-        </ChartCard>
-        <ChartCard title="Sources by state" subtitle={`${fmtInt(entries.length)} views and commands, by family · read, or not readable`} takeaway={null}>
-          <DrillTable aria="Sources by family" n={CV_GROUP_ORDER.length}
-            cols={[{ label: "Family" }, { label: "Read", width: "minmax(60px, 1fr)" }, { label: "Sources", num: true, width: "auto" }]}
-            rows={CV_GROUP_ORDER.filter((g) => grouped[g]).map((g) => {
-              const list = grouped[g];
-              const ok = list.filter(([, i]) => state(i) === "ok" || state(i) === "empty").length;
-              return {
-                key: g, status: ok < list.length ? "NOT_ASSESSED" : "OK", title: CV_GROUP_NOTE[g],
-                cells: [g, <MiniBar key="b" value={ok} max={list.length} />, `${fmtInt(ok)} read · ${fmtInt(list.length - ok)} not readable of ${fmtInt(list.length)}`],
-              };
-            })} />
-          {truncated.length > 0 && <div className="chart-note-oneline">{`${fmtInt(truncated.length)} check${truncated.length === 1 ? "" : "s"} hit the export row cap: only the first rows per window were kept.`}</div>}
-          <button type="button" className="cv-toggle-btn" onClick={() => setShowSources(!showSources)} aria-expanded={showSources}>
-            {showSources ? "Hide the sources list" : `Show all ${fmtInt(entries.length)} sources`}
-          </button>
-          <div className="gov-sub">
-            <div className="gov-sub-title">What this audit cost · kept apart from the account's spend</div>
-            <AuditSelfCost filters={filters} />
+      <div className="card cv-card">
+        <div className="cxd-card-head">
+          <div>
+            <div className="card-title">Sources by state</div>
+            <div className="cxd-card-sub">{`${fmtInt(entries.length)} views and commands, by family · read, or not readable`}</div>
           </div>
-        </ChartCard>
+          <div className="cxd-card-right">
+            <button type="button" className="ck-link" onClick={() => setShowSources(!showSources)} aria-expanded={showSources}>
+              {showSources ? "Hide the sources list" : `Show all ${fmtInt(entries.length)} sources →`}
+            </button>
+          </div>
+        </div>
+        <CxTable aria="Sources by family" rows={familyRows}
+          cols={[{ label: "Family" }, { label: "Read", num: true, width: "110px" }, { label: "Not readable", num: true, width: "130px" }, { label: "State", width: "180px" }]} />
+        {truncated.length > 0 && <div className="cxd-foot">{`${plural(truncated.length, "check")} hit the export row cap: only the first rows per window were kept.`}</div>}
       </div>
 
       {showSources && (
-        <div className="card">
-          <DrillTable aria="Every source" n={entries.length}
-            cols={[{ label: "Source" }, { label: "Checks OK", num: true, width: "auto" }, { label: "Covers", width: "auto" }, { label: "If not read: why, and the grant", width: "minmax(120px, 2fr)" }]}
-            rows={CV_GROUP_ORDER.filter((g) => grouped[g]).flatMap((g) => grouped[g].map(([key, info]) => {
-              const st = state(info);
-              const grant = unreadable.find((u) => u.source === key);
-              const range = st === "not_assessed" ? "–" : info.covers === "window" ? (info.window_days ? `last ${fmtInt(info.window_days)} d` : "trailing window") : "current state";
-              return {
-                key, status: st === "ok" || st === "empty" ? "OK" : "NOT_ASSESSED",
-                cells: [key, info.checks_total ? `${fmtInt(info.checks_ok || 0)} of ${fmtInt(info.checks_total)}` : "–", range,
-                  st === "empty" ? "Read, 0 rows: a true zero, or a feature this account does not use."
-                    : st !== "ok" ? <span>{cvReasonText(info)}{grant && grant.grant && <span className="cv-grant">{` ${grant.grant}`}</span>}</span> : ""],
-              };
-            }))} />
+        <div className="card cv-card">
+          <CxTable aria="Every source" rows={CV_GROUP_ORDER.filter((g) => grouped[g]).flatMap((g) => grouped[g].map(([key, info]): CxRow => {
+            const st = state(info);
+            const grant = unreadable.find((u) => u.source === key);
+            const range = st === "not_assessed" ? "–" : info.covers === "window" ? (info.window_days ? `last ${fmtInt(info.window_days)} d` : "trailing window") : "current state";
+            return {
+              key, status: st === "ok" || st === "empty" ? "OK" : "NOT_ASSESSED",
+              cells: [<span key="k" className="cxd-mono">{key}</span>, info.checks_total ? `${fmtInt(info.checks_ok || 0)} of ${fmtInt(info.checks_total)}` : "–", range,
+                st === "empty" ? "Read, 0 rows: a true zero, or a feature this account does not use."
+                  : st !== "ok" ? <span>{cvReasonText(info)}{grant && grant.grant && <span className="cv-grant">{` ${grant.grant}`}</span>}</span> : ""],
+            };
+          }))}
+            cols={[{ label: "Source" }, { label: "Checks OK", num: true }, { label: "Covers" }, { label: "If not read: why, and the grant" }]} />
         </div>
       )}
+
+      <div className="cj-charts-2 cv-row">
+        <div id="cv-fresh">
+          <ChartCard title="Source freshness" subtitle="How far each usage view is behind, against its normal delay" takeaway={null}>
+            <SourceFreshness fresh={fresh} meta={meta} filters={filters} />
+          </ChartCard>
+        </div>
+        <ChartCard title="What this audit cost" subtitle="Kept apart from the account's spend" takeaway={null}>
+          <AuditSelfCost filters={filters} />
+        </ChartCard>
+      </div>
     </div>
   );
 }
@@ -315,6 +373,16 @@ export const CV_CAUSE: Record<string, string> = {
   unknown: "failed",
 };
 
+/** A home-tab link: "Warehouses › Idle & settings →". */
+function HomeLink({ qid, goTo }: { qid: string; goTo: GoToFn }) {
+  const home = afHomeOf({ query_id: qid });
+  if (!home) return <span className="muted">–</span>;
+  return (
+    <a className="cxd-where" href={navHref({ tab: home.tab, subtab: home.subtab, focus: qid })}
+      onClick={(e) => { e.preventDefault(); goTo({ tab: home.tab, subtab: home.subtab, focusQueryId: qid }); }}>{`${home.text} →`}</a>
+  );
+}
+
 // ═══════════════════════ Not assessed ═══════════════════════
 
 export function CoverageCouldntPanel({ allFindingsIndex, goTo, meta, onVerdict }: CoveragePanelProps) {
@@ -329,7 +397,7 @@ export function CoverageCouldntPanel({ allFindingsIndex, goTo, meta, onVerdict }
   const groups = groupChecksNotOk(notOk);
   const grants = [...new Set(notOk.flatMap((c) => (c.grants || []).map((g) => String(g).split("--")[0].trim())))].filter(Boolean);
   useCvLede(onVerdict, !cov ? "…" : notOk.length
-    ? `${fmtInt(notOk.length)} of ${fmtInt(total)} checks are not in this export${groups.length === 1 && groups[0].label ? `: ${groups[0].label}` : ""}. Their panels show "–": could not look, never a verified zero.`
+    ? `${fmtInt(notOk.length)} of ${fmtInt(total)} checks are not in this export${groups.length === 1 && groups[0].label ? `: ${groups[0].label}` : ""}. Their panels show "–": the check could not look, which is never a verified zero.`
     : "Every check in this export ran.");
   const byHome = new Map<string, { n: number; na: number }>();
   all.forEach((f) => {
@@ -340,64 +408,98 @@ export function CoverageCouldntPanel({ allFindingsIndex, goTo, meta, onVerdict }
     if (b === "NOT_ASSESSED" || b === "ERROR") cur.na += 1;
     byHome.set(k, cur);
   });
-  const hit = [...byHome.entries()].filter(([, v]) => v.na > 0);
+  const hit = [...byHome.entries()].filter(([, v]) => v.na > 0).sort((a, b) => b[1].n - a[1].n);
   const rest = [...byHome.entries()].filter(([, v]) => v.na === 0).reduce((s, [, v]) => s + v.n, 0);
-  const asRows = (fs: Finding[]) => fs.map((f) => ({ row: f as Row, band: bandOf(f) }));
-  const notOkFindings = notOk.map((c) => (allFindingsIndex && allFindingsIndex[c.query_id]) || ({ query_id: c.query_id, title: c.title, not_assessed: { label: c.reason_label || CV_CAUSE[c.cause!] || "did not run" } } as unknown as Finding));
+  const maxHome = Math.max(rest, ...hit.map(([, v]) => v.n));
+
+  // One list: every check that judged nothing, plus a check the export lists as not OK although it ran.
+  const reasonOf = (f: Finding) => (f.not_assessed && f.not_assessed.label) || "did not run";
+  const gapIds = new Set(gaps.map((f) => f.query_id));
+  const merged: { qid: string; title: string; band: string; window: string }[] = [
+    ...gaps.map((f) => {
+      const b = bandOf(f);
+      const c = notOk.find((x) => x.query_id === f.query_id);
+      const why = (c && (c.reason_label || (c.cause && CV_CAUSE[c.cause]))) || reasonOf(f);
+      return {
+        qid: f.query_id, title: getCheckLabel(f.query_id, f.title).title, band: b,
+        window: b === "EMPTY_WINDOW" ? "Ran; nothing in the window to judge" : b === "EMPTY_FILTERS" ? "Ran; the filters exclude every row"
+          : b === "ERROR" ? `Could not read it: ${why}` : `Could judge nothing: ${why}`,
+      };
+    }),
+    ...notOk.filter((c) => !gapIds.has(c.query_id)).map((c) => ({
+      qid: c.query_id, title: getCheckLabel(c.query_id, (allFindingsIndex && allFindingsIndex[c.query_id] && allFindingsIndex[c.query_id].title) || c.title).title,
+      band: "NOT_ASSESSED", window: `Ran; ${c.reason_label || (c.cause && CV_CAUSE[c.cause]) || "no row could be assessed"}`,
+    })),
+  ];
+  const nNa = merged.filter((m) => m.band === "NOT_ASSESSED" || m.band === "ERROR").length;
+  const nRanNa = merged.length - gaps.length;
+  const listTitle = nNa === merged.length ? `The ${plural(merged.length, "check")} not assessed` : `The ${plural(merged.length, "check")} that judged nothing`;
+  const listSub = [gaps.length ? `${fmtInt(gaps.length)} could judge nothing this window` : null, nRanNa ? `${fmtInt(nRanNa)} ran but could not assess any row` : null].filter(Boolean).join("; ");
 
   return (
-    <div>
+    <div className="cxd cv-page">
       <div className="cv-tiles">
         <SummaryTileRow compact>
-          <IssueTile label="Not in this export" loading={!cov} headline={cov ? fmtInt(notOk.length) : null} unit={` of ${fmtInt(total)} checks`}
-            status={notOk.length ? "not_assessed" : "ok"} pill={notOk.length ? undefined : null}
-            base={`${fmtShare(pctOf(notOk.length, total))} · ${groups.length === 1 ? "one reason" : `${fmtInt(groups.length)} reasons`}${grants.length ? ` · ${grants.length === 1 ? "one grant opens them" : `${fmtInt(grants.length)} grants`}` : ""}`}
-            cause={notOk.slice(0, 2).map((c) => getCheckLabel(c.query_id, c.title).title).join(", ") || "Every check ran."} />
-          <IssueTile label="Could judge nothing this window" headline={fmtInt(gaps.length)} unit={` of ${fmtInt(all.length)} checks`} pill={<KindChip>Context</KindChip>}
-            base={`${fmtInt(counts.NOT_ASSESSED)} not assessed · ${fmtInt(counts.ERROR)} read errors · ${fmtInt(counts.EMPTY_WINDOW)} nothing in window · ${fmtInt(counts.EMPTY_FILTERS)} excluded by filters`}
-            cause="Not assessed reads –; nothing in the window reads No data. Neither is a pass." />
+          <IssueTile label="Not in this export" loading={!cov} headline={cov ? fmtInt(notOk.length) : null} unit={` of ${fmtInt(total)} checks · ${fmtShare(pctOf(notOk.length, total))}`}
+            status={notOk.length ? "not_assessed" : "neutral"} pill={notOk.length ? undefined : null}
+            base={notOk.length ? `${groups.length === 1 ? "One reason" : `${fmtInt(groups.length)} reasons`}${grants.length ? `, fixed by ${grants.length === 1 ? "one grant" : `${fmtInt(grants.length)} grants`}` : ""}.` : "Every check ran."}
+            onOpen={grants.length ? () => { const el = document.getElementById("cv-grants"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); } : undefined} openLabel="What to grant ↓" />
+          <IssueTile label="Could judge nothing this window" headline={fmtInt(gaps.length)} unit={` of ${fmtInt(all.length)} checks`} pill={null}
+            base={`${fmtInt(counts.NOT_ASSESSED)} not assessed · ${fmtInt(counts.ERROR)} read errors · ${fmtInt(counts.EMPTY_WINDOW)} nothing in window · ${fmtInt(counts.EMPTY_FILTERS)} excluded by filters.`}
+            cause={`Not assessed reads "–"; nothing in the window reads No data. Neither is a pass.`} />
         </SummaryTileRow>
       </div>
-      {error && <div className="honest-card error"><div className="h-title">Could not read coverage</div><div className="h-note mono">{error}</div></div>}
-      {notOk.length > 0 && (
-        <HomeChecksList goTo={goTo} title={`${fmtInt(notOk.length)} check${notOk.length === 1 ? " is" : "s are"} not in this export, by reason`}
-          rows={groups.flatMap((g) => g.checks.map((c) => notOkFindings.find((f) => f.query_id === c.query_id)!)).map((f) => ({ row: f as Row, band: "NOT_ASSESSED" }))}
-          foot={grants.length ? (
-            <div className="gov-sub" style={{ marginTop: 0, width: "100%" }}>
-              <div className="fx-head">
-                <div className="gov-sub-title">What to grant · run as ACCOUNTADMIN, then export again</div>
-                <FixCopyButton text={grants.join("\n")} />
+      {error && <div className="honest-card error"><div className="h-title">Could not read coverage</div><div className="h-note">Couldn't read the list of checks that did not run from this export.</div></div>}
+      {merged.length > 0 && (
+        <div className="card cv-card">
+          <div className="cxd-card-head">
+            <div>
+              <div className="card-title">{listTitle}</div>
+              {listSub && <div className="cxd-card-sub">{listSub}</div>}
+            </div>
+          </div>
+          <CxTable aria="Checks that judged nothing"
+            cols={[{ label: "Status", width: "150px" }, { label: "Check" }, { label: "This window", width: "260px" }, { label: "Where", width: "250px" }]}
+            rows={merged.map((m) => ({
+              key: m.qid,
+              cells: [<span key="s" className={m.band === "NOT_ASSESSED" || m.band === "ERROR" ? "cv-na-chip" : "cv-nd-chip"}>{m.band === "NOT_ASSESSED" || m.band === "ERROR" ? "Not assessed" : "No data"}</span>,
+                m.title, <span key="w" className="cv-why">{m.window}</span>, <HomeLink key="h" qid={m.qid} goTo={goTo} />],
+            }))} />
+          {grants.length > 0 && (
+            <div className="cv-grants" id="cv-grants">
+              <div className="cv-grants-head">
+                <b>What to grant — run as ACCOUNTADMIN, then export again</b>
+                <FixCopyButton text={grants.join("\n")} label={grants.length === 1 ? "Copy" : grants.length === 2 ? "Copy both" : "Copy all"} />
               </div>
               {grants.map((g) => <pre key={g} className="dr-fix">{g}</pre>)}
-              {groups[0] && groups[0].fix && <div className="chart-note-oneline">{groups[0].fix}</div>}
+              {groups[0] && groups[0].fix && <div className="cxd-foot">{groups[0].fix}</div>}
             </div>
-          ) : null} />
+          )}
+        </div>
       )}
-      <div className="cj-charts-2">
-        <ChartCard title="Where the gaps sit" subtitle="checks per area · the hatched part did not run" takeaway={null}>
+      <div className="cj-charts-2 cv-row cv-row-even">
+        <ChartCard title="Where the gaps sit" subtitle="Checks per area · the hatched part did not run" takeaway={null}>
           {hit.length ? (
-            <DrillTable aria="Not-run checks by area" n={12}
-              cols={[{ label: "Area" }, { label: "Ran", width: "minmax(60px, 1fr)" }, { label: "Checks", num: true, width: "auto" }]}
+            <CxTable aria="Not-run checks by area"
+              cols={[{ label: "Area" }, { label: "Ran", cls: "c-bar" }, { label: "", num: true }, { label: "Not run", num: true }, { label: "Checks", num: true }]}
               rows={[...hit.map(([k, v]) => ({
-                key: k, status: "NOT_ASSESSED", onOpen: () => goTo({ tab: k }),
-                cells: [AREA_REGISTRY[k] ? AREA_REGISTRY[k].label : k, <MiniBar key="b" value={v.n - v.na} max={v.n} />, `${fmtInt(v.n - v.na)} ran · ${fmtInt(v.na)} not run of ${fmtInt(v.n)}`],
-              })), { key: "__rest", status: "OK", onOpen: null, cells: ["Everywhere else", <MiniBar key="b" value={rest} max={rest} />, `${fmtInt(rest)} ran of ${fmtInt(rest)}`] }]} />
+                key: k, onOpen: () => goTo({ tab: k }),
+                cells: [AREA_REGISTRY[k] ? AREA_REGISTRY[k].label : k, <span key="b" className="cv-ranbar" style={{ width: `${(100 * v.n) / maxHome}%` }}><CxCellBar value={v.n - v.na} max={v.n} /></span>,
+                  fmtInt(v.n - v.na), <b key="na">{fmtInt(v.na)}</b>, fmtInt(v.n)],
+              })), { key: "__rest", cells: ["Everywhere else", <span key="b" className="cv-ranbar" style={{ width: `${(100 * rest) / maxHome}%` }}><CxCellBar value={rest} max={rest} /></span>, fmtInt(rest), "0", fmtInt(rest)] }]} />
           ) : <div className="chart-note-oneline">Every area's checks ran.</div>}
         </ChartCard>
-        <ChartCard title="An empty panel means could not look, or nothing yet" subtitle="never a verified zero · how to read the kinds of empty" takeaway={null}>
-          <DrillTable aria="Kinds of empty" n={3}
-            cols={[{ label: "On screen" }, { label: "Means", width: "minmax(100px, 2fr)" }, { label: "Checks", num: true, width: "auto" }]}
+        <ChartCard title="What an empty panel means" subtitle="Could not look, or nothing yet — never a verified zero" takeaway={null}>
+          <CxTable aria="Kinds of empty"
+            cols={[{ label: "On screen", width: "90px" }, { label: "Means" }, { label: "Checks", num: true }]}
             rows={[
-              { key: "na", status: "NOT_ASSESSED", cells: ["–", "the check could not look: a grant, an edition or the export", fmtInt(counts.NOT_ASSESSED + counts.ERROR)] },
-              { key: "nd", status: "OK", cells: ["No data", "it ran and the window held nothing to judge", fmtInt(counts.EMPTY_WINDOW + counts.EMPTY_FILTERS)] },
-              { key: "zero", status: "OK", cells: ["0 of N", "it ran, looked and found none: the only true zero", "–"] },
+              { key: "na", cells: [<b key="d">–</b>, "Not assessed. The check could not look: a grant is missing or its source is not in this export.", fmtInt(counts.NOT_ASSESSED + counts.ERROR)] },
+              { key: "nd", cells: [<b key="d">No data</b>, "The check ran, but the window held nothing to judge, or your filters exclude every row.", fmtInt(counts.EMPTY_WINDOW + counts.EMPTY_FILTERS)] },
+              { key: "zero", cells: [<b key="d">0 of N</b>, "The check ran, looked at every row and found none. This is a verified zero.", "–"] },
             ]} />
-          <div className="chart-note-oneline">Money follows the same rule: a check that did not run shows "–", not $0, and is never added to spend, waste or saving.</div>
+          <div className="cxd-foot">Money follows the same rule: a check that did not run shows "–", not $0, and is never added to spend, waste or saving.</div>
         </ChartCard>
       </div>
-      {gaps.length > 0 && (
-        <HomeChecksList goTo={goTo} title={`Could judge nothing this window · ${fmtInt(gaps.length)} checks`} rows={asRows(gaps)} n={8} />
-      )}
     </div>
   );
 }
@@ -424,7 +526,7 @@ export const CV_LIMITATIONS: { title: string; note: string; where: { tab: string
   },
   {
     title: "Data lags",
-    note: "ACCOUNT_USAGE views lag up to a few hours, query attribution up to 8 hours, and the organization billing views up to 72 hours. Today is shown partial: its figures are not final.",
+    note: "ACCOUNT_USAGE views lag up to a few hours, query attribution up to 8 hours, and the organization billing views up to 72 hours. When an export includes today, today is shown partial: its figures are not final.",
     where: [],
   },
   {
@@ -440,7 +542,7 @@ export const CV_LIMITATIONS: { title: string; note: string; where: { tab: string
 ];
 
 function WhereLinks({ where, goTo }: { where: { tab: string; subtab?: string; label: string; focus?: string }[]; goTo: GoToFn }) {
-  if (!where.length) return <span className="muted">Every page</span>;
+  if (!where.length) return <span>Every page</span>;
   return (
     <span>
       {where.map((w, i) => (
@@ -449,6 +551,7 @@ function WhereLinks({ where, goTo }: { where: { tab: string; subtab?: string; la
           <button type="button" className="ck-link" onClick={() => goTo({ tab: w.tab, subtab: w.subtab || null, focusQueryId: w.focus || null })}>{w.label}</button>
         </React.Fragment>
       ))}
+      {" →"}
     </span>
   );
 }
@@ -463,62 +566,100 @@ export function CoverageLimitsPanel({ goTo, allFindingsIndex, filters, meta, onV
   const partialToday = !!(direct && direct.includes_today);
   const n = CV_LIMITATIONS.length + (truncated.length ? 1 : 0);
   useCvLede(onVerdict, !cov ? "…"
-    : `${fmtInt(n)} things still limit these numbers: ${fmtInt(CV_LIMITATIONS.length)} are how Snowflake records usage${truncated.length ? ", 1 is an export row cap" : ""}. Each page says where one applies.`);
+    : `${fmtInt(n)} things still limit these numbers, ${truncated.length ? `${fmtInt(CV_LIMITATIONS.length)} in how Snowflake records usage and 1 an export row cap` : "all of them in how Snowflake records usage"}. Each page says where one applies.`);
   const homeOf = (qid: string) => {
     const h = homeForQuery({ query_id: qid });
     const area = AREA_REGISTRY[h.tab];
     const sub = area && (area.subtabs || []).find((s) => s.key === h.subtab);
     return { tab: h.tab, subtab: h.subtab || undefined, focus: qid, label: area ? `${area.label}${sub ? ` › ${sub.label}` : ""}` : h.tab };
   };
-  const rows = [
+  const rows: CxRow[] = [
     ...(truncated.length ? [{
       key: "cap", status: "WARN",
-      cells: ["Export row cap hit", `Only the first rows per window were kept for ${truncated.map((q) => getCheckLabel(q, allFindingsIndex && allFindingsIndex[q] ? allFindingsIndex[q].title : q).title).join(", ")}: shares hold, totals are low.`,
-        <WhereLinks key="w" goTo={goTo} where={truncated.map(homeOf)} />, `${fmtInt(truncated.length)} check${truncated.length === 1 ? "" : "s"}`],
+      cells: [<b key="t">Export row cap hit</b>, `Only the first rows per window were kept for ${truncated.map((q) => getCheckLabel(q, allFindingsIndex && allFindingsIndex[q] ? allFindingsIndex[q].title : q).title).join(", ")}: shares hold, totals are low.`,
+        <WhereLinks key="w" goTo={goTo} where={truncated.map(homeOf)} />],
     }] : []),
     ...CV_LIMITATIONS.map((l) => ({
-      key: l.title, status: "OK",
-      cells: [l.title, l.note, <WhereLinks key="w" goTo={goTo} where={l.where} />,
-        l.title.startsWith("Views show") && wh && wh.missing > 0 ? `– ${fmtInt(wh.missing)} of ${fmtInt(wh.billed)} ${wh.unit || "warehouses"}`
-          : l.title === "Data lags" && partialToday ? "today partial" : ""],
+      key: l.title,
+      cells: [<b key="t">{l.title}</b>,
+        <span key="n">{l.note}{l.title.startsWith("Views show") && wh && wh.missing > 0 && <b>{` Here: ${fmtInt(wh.missing)} of ${fmtInt(wh.billed)} ${wh.unit || "warehouses"} are not visible.`}</b>}
+          {l.title === "Data lags" && direct && <b>{partialToday ? " Here: today is in this export and shown partial." : " Here: this export stops before today."}</b>}</span>,
+        <WhereLinks key="w" goTo={goTo} where={l.where} />],
     })),
   ];
+  const delays = (fresh.rows || []).filter((r) => r.expected_latency_hours != null)
+    .sort((a, b) => numOrZero(b.expected_latency_hours) - numOrZero(a.expected_latency_hours) || String(a.source_view).localeCompare(String(b.source_view)));
+  const maxDelay = Math.max(0, ...delays.map((r) => numOrZero(r.expected_latency_hours)));
+  const edition = cov && cov.edition && cov.edition.edition ? (CV_EDITION_WORDS[cov.edition.edition] || cov.edition.edition) : null;
+  const scrollTo = (id: string) => () => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
   return (
-    <div>
-      {error && <div className="honest-card error"><div className="h-title">Could not read coverage</div><div className="h-note mono">{error}</div></div>}
+    <div className="cxd cv-page">
+      {error && <div className="honest-card error"><div className="h-title">Could not read coverage</div><div className="h-note">Couldn't read the coverage summary from this export.</div></div>}
       <div className="cv-tiles">
-        <StatStrip ariaLabel="What limits these numbers" cells={[
-          { key: "notes", label: "General notes", value: fmtInt(CV_LIMITATIONS.length), base: "how Snowflake records usage" },
-          { key: "cap", label: "Row cap hit", value: cov ? fmtInt(truncated.length) : null, unit: ran ? ` of ${fmtInt(ran.total)} checks` : undefined, base: truncated.length ? "first rows per window kept" : "no check cut short", missing: cov ? undefined : "…", pill: truncated.length ? "warn" : null },
-          { key: "wh", label: "Warehouses visible", value: wh ? fmtInt(wh.visible) : null, unit: wh ? ` of ${fmtInt(wh.billed)}` : undefined, base: wh ? "SHOW lists what the role can see" : undefined, missing: cov ? "not probed in this export" : "…", pill: wh && wh.missing > 0 ? "not_assessed" : null },
-          { key: "today", label: "Today", value: direct ? (partialToday ? "½" : "complete") : null, base: partialToday ? "shown partial everywhere" : undefined, missing: "not recorded in this export" },
-          { key: "ed", label: "Edition", value: cov && cov.edition && cov.edition.edition ? (CV_EDITION_WORDS[cov.edition.edition] || cov.edition.edition) : null, base: cov && cov.edition && cov.edition.source === "feature_evidence" ? "or higher, from features used" : "from the organization accounts view", missing: "not detected: none assumed" },
-        ]} />
+        <SummaryTileRow compact>
+          <IssueTile label="Known limitations" headline={fmtInt(CV_LIMITATIONS.length)} unit="general notes" pill={null}
+            base={truncated.length ? "How Snowflake records usage, plus the export row cap." : `All ${CV_LIMITATIONS.length === 6 ? "six" : fmtInt(CV_LIMITATIONS.length)} come from how Snowflake records usage.`}
+            onOpen={scrollTo("cv-limits")} openLabel="Read them ↓" />
+          <IssueTile label="Row cap hit" loading={!cov} headline={cov ? fmtInt(truncated.length) : null} unit={ran ? `of ${fmtInt(ran.total)} checks` : undefined}
+            status={truncated.length ? "warn" : "neutral"} pill={truncated.length ? undefined : null}
+            base={truncated.length ? "Only the first rows per window were kept: shares hold, totals are low." : "No check was cut short by the export row cap."} />
+          <IssueTile label="Warehouses visible" loading={!cov} headline={wh ? fmtInt(wh.visible) : null} unit={wh ? `of ${fmtInt(wh.billed)}` : undefined}
+            missingReason="not probed in this export" status={wh && wh.missing > 0 ? "not_assessed" : "neutral"} pill={wh && wh.missing > 0 ? undefined : null}
+            base={wh ? (wh.missing > 0 ? `SHOW lists only what the role can see; the other ${fmtInt(wh.missing)} are not assessed.` : "SHOW lists every warehouse that billed.") : null}
+            onOpen={wh && wh.missing > 0 ? () => goTo({ tab: "coverage", subtab: "couldnt" }) : undefined} openLabel="Not assessed →" />
+        </SummaryTileRow>
       </div>
-      <ChartCard title="What the audit cannot see, and why" subtitle={`${plural(rows.length, "limitation")} · what each does to the numbers · where it bites`} takeaway={null}>
-        <div className="cv-limits">
-          <DrillTable aria="Known limitations" n={rows.length}
-            cols={[{ label: "Limitation" }, { label: "What it does to the numbers", width: "minmax(140px, 3fr)" }, { label: "Where it bites", width: "minmax(90px, 1.4fr)" }, { label: "Here", num: true, width: "auto" }]}
-            rows={rows} />
+      <div className="cv-strip" role="list" aria-label="Today and edition">
+        <div className="cv-strip-cell" role="listitem">
+          <div className="cv-strip-label">Today</div>
+          <div className="cv-strip-value">{direct ? (partialToday ? "Partial" : "Not included") : "–"}</div>
+          <div className="cv-strip-base">{direct
+            ? (partialToday ? "Today is in this export: its figures are shown partial everywhere." : `The export stops at ${direct.last_complete_day ? fmtDayShort(direct.last_complete_day) : "the last complete day"}, so every day shown is complete.`)
+            : "Not recorded in this export."}</div>
         </div>
-      </ChartCard>
-      <div className="cj-charts-2">
-        <ChartCard title="Normal delay, by source" subtitle="Snowflake's documented delay per view, as the export recorded it · today is shown partial for this reason" takeaway={null}>
-          {fresh.rows ? (
-            <StatusBars n={12} ariaLabel="Normal delay per view"
-              items={fresh.rows.filter((r) => r.expected_latency_hours != null).map((r): StatusBarItem => ({
-                key: String(r.source_view), name: String(r.source_view || "(unknown view)"), value: numOrZero(r.expected_latency_hours), status: "OK",
-                valueText: fmtDuration(numOrZero(r.expected_latency_hours) * 3600),
-              }))} />
-          ) : <div className="chart-note-oneline">{fresh.loading ? "…" : `– ${fresh.why}`}</div>}
-        </ChartCard>
+        <div className="cv-strip-cell" role="listitem">
+          <div className="cv-strip-label">Edition</div>
+          <div className="cv-strip-value">{edition || "–"}</div>
+          <div className="cv-strip-base">{!edition ? "Not detected: none assumed." : cov && cov.edition && cov.edition.source === "feature_evidence" ? "Or higher, from the features used." : "From the organization accounts view."}</div>
+        </div>
+      </div>
+      <div className="card cv-card" id="cv-limits">
+        <div className="cxd-card-head">
+          <div>
+            <div className="card-title">What the audit cannot see, and why</div>
+            <div className="cxd-card-sub">{`${plural(rows.length, "limitation")} · what each does to the numbers · where it bites`}</div>
+          </div>
+        </div>
+        <CxTable aria="Known limitations" rows={rows}
+          cols={[{ label: "Limitation", width: "22%" }, { label: "What it does to the numbers" }, { label: "Where it bites", width: "20%" }]} />
+      </div>
+      <div className="card cv-card">
+        <div className="cxd-card-head">
+          <div>
+            <div className="card-title">Normal delay, by source</div>
+            <div className="cxd-card-sub">Snowflake's documented delay per view, as the export recorded it · the reason a day in progress is shown partial</div>
+          </div>
+          <div className="cxd-card-right"><button type="button" className="ck-link" onClick={() => goTo({ tab: "coverage", subtab: "sources" })}>Data sources →</button></div>
+        </div>
+        {fresh.rows ? (
+          delays.length ? (
+            <div className="cv-delay" role="list" aria-label="Normal delay per view">
+              {delays.map((r) => (
+                <div key={String(r.source_view)} className="cv-delay-row" role="listitem">
+                  <span className="cxd-mono cv-delay-name">{String(r.source_view || "(unknown view)")}</span>
+                  <CxCellBar value={numOrZero(r.expected_latency_hours)} max={maxDelay} />
+                  <b className="cv-delay-val">{fmtDur(numOrZero(r.expected_latency_hours) * 3600)}</b>
+                </div>
+              ))}
+            </div>
+          ) : <div className="chart-note-oneline">The export recorded no normal delay per view.</div>
+        ) : <div className="chart-note-oneline">{fresh.loading ? "…" : `– ${fresh.why}`}</div>}
       </div>
     </div>
   );
 }
 
 const CV_EDITION_WORDS: Record<string, string> = { STANDARD: "Standard", ENTERPRISE: "Enterprise", BUSINESS_CRITICAL: "Business Critical" };
-const plural = (n: number, one: string) => `${fmtInt(n)} ${n === 1 ? one : `${one}s`}`;
 
 AreaContent.register("coverage", "sources", CoverageSourcesPanel);
 AreaContent.register("coverage", "couldnt", CoverageCouldntPanel);
