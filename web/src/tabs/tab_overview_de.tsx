@@ -3,13 +3,15 @@
 // exists), warehouse load over the window and the top query patterns. Every figure is a check's own;
 // a check that did not run reads "–" and why, "…" while loading. Spend is context, never added to waste.
 import React from "react";
-import { fmtDayShort, fmtDuration, fmtInt, fmtMoney } from "../format";
+import { fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { IgnoredFilterTracker, fillDays, numOrZero, totalSpikeDays, useFindingAgg, useFindingData } from "../components/hooks";
 import { FreshnessLine, PageFooter, PageIntro, PatternCard, StatusPill, bandOf, pageEyebrow } from "../components/primitives";
 import { useNames } from "../components/names";
 import { IssueTile, fmtShare, pctOf } from "../components/blocks";
-import { QueryPatternTable, WarehouseLoadBands, aggNote, useQueryPatterns, useWarehouseLoad, whNameId } from "../components/de_blocks";
-import { TaskStateBands, useTaskRunDays, windowDayList } from "../components/run_blocks";
+import { QueryPatternTable, aggNote, useQueryPatterns, useWarehouseLoad, whNameId } from "../components/de_blocks";
+import { useTaskRunDays, windowDayList } from "../components/run_blocks";
+import { NameId } from "../components/blocks_2";
+import { CxCellBar, CxTable, fmtDur } from "../components/cx_d";
 import { withoutTotalRows } from "./tab_area";
 import { ChecksRanStrip, OV_CREDITS, OV_TOTAL_CREDITS, OV_USD, fillGaps, pickNum, sumPick } from "./tab_overview";
 import type { FetchState, Filters, Finding, GoToFn, Meta, Row } from "../types";
@@ -112,60 +114,64 @@ export function DeOverview({ filters, meta, findingsById, goTo, role }: {
   const changePct = cur != null && prev != null && prev > 0 ? ((cur - prev) / prev) * 100 : null;
 
   const allSettled = findingsReady && settled(failState) && settled(slowState) && settled(qDay);
-  const lede = !allSettled ? "…" : [
+  const tasksPart = [
     runs > 0 ? `${fmtShare(pctOf(failed, runs))} of task runs failed` : null,
     taskBase ? `${fmtInt(slower.length)} of ${fmtInt(taskBase)} tasks got slower` : null,
-    qTotal != null && qTotal > 0 ? `queries waited ${fmtDuration(qTotal)} for a warehouse slot${qTop ? `, most on ${whNameId(qTop.id).name}` : ""}` : null,
-  ].filter(Boolean).join("; ").replace(/^./, (c) => c.toUpperCase()).concat(".").replace(/^\.$/, "Pipelines and queries could not be assessed for this export.");
+  ].filter(Boolean).join(" and ");
+  const queuePart = qTotal != null && qTotal > 0 ? `Queries waited ${fmtDur(qTotal)} for a warehouse slot${qTop ? `, most of it on ${whNameId(qTop.id).name}` : ""}.` : null;
+  const lede = !allSettled ? "…" : [tasksPart ? `${tasksPart.replace(/^./, (c) => c.toUpperCase())}.` : null, queuePart].filter(Boolean).join(" ")
+    || "Pipelines and queries could not be assessed for this export.";
 
   const goTasks = (sub: string) => () => goTo({ tab: "tasks", subtab: sub });
   const sparkOf = (days: { day: string; value: number }[] | null, spikes: Set<string>) =>
     days && days.length >= 2 ? { spark: days.map((d) => d.value), sparkAnomalies: days.map((d, i) => (spikes.has(d.day) ? i : -1)).filter((i) => i >= 0) } : {};
 
   return (
-    <div>
-      <PageIntro overline={pageEyebrow(role, "Overview", meta, win)} title="Overview" verdict={lede} />
+    <div className="cxd de-ov">
+      <PageIntro overline={pageEyebrow(role, "Overview", meta, win)} title="Overview" verdict={lede}
+        scope="Task and query history from the export · credits × your effective $ per credit" />
       <FreshnessLine findingsById={byId} goTo={goTo} />
       <div className="summary-tile-row cto-tiles">
         <IssueTile label="Failed task runs" loading={!findingsReady || failState.phase === "loading"} status={sevOf(byId.sf_task_failures)}
           headline={runs > 0 ? fmtShare(pctOf(failed, runs)) : null} unit="of runs"
           missingReason={why("sf_task_failures", failState, "no task ran in this window")}
-          base={runs > 0 ? `${fmtInt(failed)} of ${fmtInt(runs)} runs${tfAff && tfAff.total ? ` · ${fmtInt(tfAff.flagged)} of ${fmtInt(tfAff.total)} ${tfAff.noun}` : ""}` : null}
+          base={runs > 0 ? `${fmtInt(failed)} of ${fmtInt(runs)} runs${tfAff && tfAff.total ? `, across ${fmtInt(tfAff.flagged)} of ${fmtInt(tfAff.total)} ${tfAff.noun}` : ""}.` : null}
           cause={runs > 0 ? `About ${fmtInt(Math.round(failed / Math.max(1, win)))} failed runs a day${fWorst && fWorst.value > 0 ? `; worst ${fmtDayShort(fWorst.day)}: ${fmtInt(fWorst.value)}` : ""}.` : null}
           {...sparkOf(fDays, fSpikes)}
           onOpen={goTasks("failures")} openLabel="Tasks › Failures →" />
         <IssueTile label="Median task duration" loading={!findingsReady || slowState.phase === "loading"} status={sevOf(byId.sf_task_duration_regression)}
           headline={medianGrowth != null ? signed(medianGrowth) : null} unit={`vs previous ${fmtInt(win)} days`}
           missingReason={why("sf_task_duration_regression", slowState, "no task ran in both periods")}
-          base={taskBase ? `${fmtInt(slower.length)} of ${fmtInt(taskBase)} tasks slower · ${fmtInt(twice)} by more than 2×` : null}
+          base={taskBase ? `${fmtInt(slower.length)} of ${fmtInt(taskBase)} tasks got slower; ${fmtInt(twice)} of them by more than 2×.` : null}
           onOpen={goTasks("cost")} openLabel="Tasks › Cost & timing →" />
         <IssueTile label="Queued for a slot" loading={!findingsReady || qDay.phase === "loading"} status={sevOf(byId.query_queuing_waits)}
-          headline={qTotal != null ? fmtDuration(qTotal) : null} unit={`in ${fmtInt(win)} days`}
+          headline={qTotal != null ? fmtDur(qTotal) : null} unit={`in ${fmtInt(win)} days`}
           missingReason={why("query_queuing_waits", qDay, "no queries in this window")}
-          base={qTotal != null ? `${fmtDuration(qTotal / Math.max(1, win))} / day${qTop && qTotal > 0 ? ` · ${whNameId(qTop.id).name} (${qTop.id}) ${fmtShare(pctOf(qTop.s, qTotal))}` : ""}` : null}
+          base={qTotal != null ? `About ${fmtDur(qTotal / Math.max(1, win))} a day.` : null}
+          cause={qTop && qTotal != null && qTotal > 0 ? `${whNameId(qTop.id).name} (${qTop.id}) has ${fmtShare(pctOf(qTop.s, qTotal))} of it.` : null}
           {...sparkOf(qDays, qSpikes)}
           onOpen={() => goTo({ tab: "queries", subtab: "waiting" })} openLabel="Queries › Waiting →" />
         <IssueTile label="Credits per day" loading={trendState.phase === "loading" || spendState.phase === "loading"} status="neutral" pill={<StatusPill kind="neutral" />}
           headline={perDay != null ? fmtInt(Math.round(perDay)) : null} unit="credits / day"
           missingReason={why(null, trendState, "no usage in this window")}
           base={perDay != null ? [credits != null ? `${fmtInt(Math.round(credits))} credits` : null, usd != null ? fmtMoney(usd, 0) : null,
-            changePct != null ? `${signed(changePct)} $ vs previous` : null].filter(Boolean).join(" · ") : null}
+            changePct != null ? `${signed(changePct)} vs previous ${fmtInt(win)} days` : null].filter(Boolean).join(" · ") : null}
           cause={cSpikes.size ? `${fmtInt(cSpikes.size)} day${cSpikes.size === 1 ? "" : "s"} above the week before (dots).` : partialDay ? "Today is partial and left out." : null}
           {...sparkOf(fullDays, cSpikes)}
           onOpen={() => goTo({ tab: "cost" })} openLabel="Cost →" />
       </div>
 
-      <PatternCard title={`Pipelines · state over ${fmtInt(win)} days`} sub="Each task's days: ran OK, failed, ran slow or no run · most failed runs first"
+      <PatternCard title="Pipelines that fail" sub={`Share of each task's runs that failed · last ${fmtInt(win)} days · most failed first`}
         link="Tasks › Failures →" onLink={goTasks("failures")}>
-        <TaskStateBands load={taskDays} meta={meta} filters={filters} n={6} onRow={goTasks("failures")} />
+        <TaskFailShares load={taskDays} meta={meta} filters={filters} n={6} onRow={goTasks("failures")} />
       </PatternCard>
 
-      <PatternCard title={`Warehouses · load over ${fmtInt(win)} days`} sub="Each day split busy, busy with queries queued, idle but billed, and not running · most queued first"
+      <PatternCard title="Warehouses where queries queue" sub={`Time queries spent queued, idle share of billed time, compute spend · last ${fmtInt(win)} days · most queued first`}
         link="Warehouses › Load & scaling →" onLink={() => goTo({ tab: "warehouses", subtab: "load" })}>
-        <WarehouseLoadBands load={load} meta={meta} filters={filters} n={6} onRow={() => goTo({ tab: "warehouses", subtab: "load" })} />
+        <WarehouseQueueTable load={load} meta={meta} filters={filters} n={6} onRow={() => goTo({ tab: "warehouses", subtab: "load" })} />
       </PatternCard>
 
-      <PatternCard title={`Query patterns · last ${fmtInt(win)} days`} sub="Statements grouped by shape; the SQL text is never shown · sort any column"
+      <PatternCard title="Query patterns" sub={`Statements grouped by shape; the SQL text is never shown · most spend first · last ${fmtInt(win)} days`}
         link={pat.shapes != null ? `All ${fmtInt(pat.shapes)} shapes →` : "Queries › Heavy →"} onLink={() => goTo({ tab: "queries", subtab: "heavy" })}>
         {pat.rows && pat.rows.length
           ? <QueryPatternTable rows={pat.rows} n={8} onOpen={() => goTo({ tab: "queries", subtab: "heavy", focusQueryId: "query_top_by_cost" })} />
@@ -175,5 +181,53 @@ export function DeOverview({ filters, meta, findingsById, goTo, role }: {
       <ChecksRanStrip meta={meta} byId={byId} goTo={goTo} />
       <PageFooter meta={meta} />
     </div>
+  );
+}
+
+/** Each task's share of runs that failed over the whole window, so a task that fails once a month never looks like one that fails most runs. */
+function TaskFailShares({ load, meta, filters, n = 6, onRow }: {
+  load: ReturnType<typeof useTaskRunDays>; meta: Meta | null; filters: Filters; n?: number; onRow?: () => void;
+}) {
+  const note = aggNote(load.state, meta, filters.window);
+  if (note) return <div className="chart-note-oneline">{note}</div>;
+  const ran = (load.data ? load.data.list : []).filter((t) => t.runs > 0);
+  const failing = ran.filter((t) => t.failed > 0).sort((a, b) => b.failed / b.runs - a.failed / a.runs || b.failed - a.failed);
+  if (!ran.length) return <div className="chart-note-oneline">{aggNote({ phase: "ready", outcome: "ok_empty_window", data: null, error: null }, meta, filters.window)}</div>;
+  if (!failing.length) return <div className="chart-note-oneline">{`No run failed among the ${fmtInt(ran.length)} tasks that ran.`}</div>;
+  const short = (full: string) => full.split(".").pop() || full;
+  return (
+    <CxTable aria="Share of each task's runs that failed" n={n} noun="failing tasks"
+      cols={[{ label: "Task", width: "28%" }, { label: "Runs that failed", cls: "c-bar" }, { label: "Failed", num: true }, { label: "Runs", num: true }]}
+      rows={failing.map((t) => ({
+        key: t.name, title: t.name, onOpen: onRow,
+        cells: [<NameId key="n" name={short(t.name)} id={t.id} />, <CxCellBar key="b" value={(100 * t.failed) / t.runs} max={100} />,
+          <b key="p">{fmtShare(pctOf(t.failed, t.runs))}</b>, fmtInt(t.runs)],
+      }))}
+      foot={<span>{`${fmtInt(failing.length)} of ${fmtInt(ran.length)} tasks that ran had a failed run. Each bar is the whole ${fmtInt(filters.window)} days, so a task that fails once a month no longer looks as bad as one that fails most runs.`}</span>} />
+  );
+}
+
+/** Warehouses ranked by time queued, with the idle share of billed time and compute spend (context). */
+function WarehouseQueueTable({ load, meta, filters, n = 6, onRow }: {
+  load: ReturnType<typeof useWarehouseLoad>; meta: Meta | null; filters: Filters; n?: number; onRow?: () => void;
+}) {
+  const note = aggNote(load.day, meta, filters.window);
+  if (note) return <div className="chart-note-oneline">{note}</div>;
+  const d = load.data;
+  if (!d || !d.list.length) return <div className="chart-note-oneline">{aggNote({ phase: "ready", outcome: "ok_empty_window", data: null, error: null }, meta, filters.window)}</div>;
+  const queueKnown = load.queue.phase === "ready" && load.queue.outcome === "ok_rows";
+  const queued = d.list.filter((w) => w.queuedMs > 0).sort((a, b) => b.queuedMs - a.queuedMs);
+  const list = queueKnown && queued.length ? queued : d.list;
+  const maxQ = Math.max(0, ...list.map((w) => w.queuedMs));
+  return (
+    <CxTable aria="Warehouses where queries queue" n={n} noun="warehouses"
+      cols={[{ label: "Warehouse", width: "24%" }, { label: "Time queued", cls: "c-bar" }, { label: "Queued", num: true }, { label: "Idle", num: true }, { label: "Compute $", num: true }]}
+      rows={list.map((w) => ({
+        key: w.id, onOpen: onRow,
+        cells: [<NameId key="n" name={w.name} id={w.id} />, <CxCellBar key="b" value={w.queuedMs} max={maxQ} color="var(--c4)" />,
+          <b key="q">{queueKnown ? (w.queuedMs > 0 ? fmtDur(w.queuedMs / 1000) : "none") : "–"}</b>,
+          fmtShare(pctOf(w.idle, w.billed)), d.priced && w.spend != null ? fmtMoney(w.spend, 0) : "–"],
+      }))}
+      foot={<span>{`${fmtInt(list.length)} of ${fmtInt(d.list.length + d.unsized)} warehouses that billed${queueKnown && queued.length ? " had queries queue" : ""}.${d.unsized ? ` ${fmtInt(d.unsized)} of unknown size are left out.` : ""} Compute spend is context, not waste.`}</span>} />
   );
 }

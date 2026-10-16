@@ -86,6 +86,8 @@
   display: inline-block; font-family: var(--f-mono); font-size: 11.5px; line-height: 1.5; color: var(--text-2);
   background: var(--surface-3); border-radius: 4px; padding: 0 6px; overflow-wrap: anywhere; text-decoration: none;
 }
+/* View names in chips stay whole: the chip wraps to the next line, never mid-name. */
+.gd-tables .gd-code{ white-space: nowrap; overflow-wrap: normal; max-width: 100%; overflow: hidden; text-overflow: clip; }
 a.gd-code:hover{ color: var(--link); text-decoration: underline; }
 .gd-tables{ display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .gd-chip{
@@ -113,22 +115,25 @@ a.gd-code:hover{ color: var(--link); text-decoration: underline; }
 
 /* Home */
 .gd-home{ display: flex; flex-direction: column; gap: 26px; }
-.gd-home-top{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 330px); gap: 28px; align-items: end; }
+.gd-home-top{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 330px); gap: 28px; align-items: center; }
 .gd-home-intro{ display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .gd-eyebrow-row{ display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-.gd-display{ margin: 0; font-family: var(--f-serif); font-weight: 500; font-size: 40px; line-height: 1.15; letter-spacing: -.01em; max-width: 780px; text-wrap: balance; }
+.gd-display{ margin: 0; font-family: var(--f-serif); font-weight: 400; font-size: 52px; line-height: 1.05; letter-spacing: -.01em; max-width: 780px; text-wrap: balance; }
+.gd-lede{ margin: 0; font-family: var(--f-serif); font-size: 23px; line-height: 1.4; color: var(--text); max-width: 760px; }
+.gd-intro{ margin: 0; font-size: 13px; line-height: 1.5; max-width: 760px; }
+.gd-card-link{ margin-top: auto; padding-top: 6px; font-size: 13px; color: var(--link); }
+.gd-link-card:hover .gd-card-link{ text-decoration: underline; }
 .gd-qchips{ display: flex; flex-wrap: wrap; gap: 8px; }
 .gd-qchip{
   display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 13px;
   background: var(--surface); border: 1px solid var(--border); color: var(--text-2); text-decoration: none;
 }
 .gd-qchip:hover{ border-color: var(--border-strong); color: var(--text); }
-.gd-rules{ background: #1c1b18; color: #f4f1ea; border-radius: var(--radius-lg); padding: 20px 22px; }
-:root[data-theme="dark"] .gd-rules{ background: var(--surface-2); border: 1px solid var(--border-strong); }
-.gd-rules-h{ font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase; color: #b9b3a5; margin-bottom: 12px; }
+.gd-rules{ background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; }
+.gd-rules-h{ font-family: var(--f-serif); font-size: 22px; line-height: 1.25; color: var(--text); margin-bottom: 14px; }
 .gd-rules ol{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .gd-rules li{ display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; font-size: 13.5px; line-height: 1.45; }
-.gd-rules-n{ color: #f2b872; font-family: var(--f-mono); }
+.gd-rules-n{ color: var(--st-warn-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .gd-glance-row{ cursor: pointer; }
 .gd-glance-row:hover td{ background: var(--surface-2); }
 .gd-glance td:first-child{ width: 170px; }
@@ -280,7 +285,8 @@ a.gd-code:hover{ color: var(--link); text-decoration: underline; }
   .gd-nav{ position: static; max-height: none; }
   .gd-layout.has-rail .gd-rail{ grid-column: 1; }
   .gd-anat{ grid-template-columns: minmax(0, 1fr); }
-  .gd-display{ font-size: 30px; }
+  .gd-display{ font-size: 38px; }
+  .gd-lede{ font-size: 19px; }
   .gd-title{ font-size: 30px; }
 }
 

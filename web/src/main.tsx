@@ -21,6 +21,7 @@ import "./styles/css/c_landing.css";
 import "./styles/css/cx_a.css";
 import "./styles/css/cx_b.css";
 import "./styles/css/cx_c.css";
+import "./styles/css/cx_d.css";
 import { App } from "./App";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(<App />);

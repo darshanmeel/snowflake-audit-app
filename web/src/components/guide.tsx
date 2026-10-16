@@ -64,7 +64,7 @@ interface GuideTabInfo {
 export const GUIDE_SECTIONS = [
   { slug: "flow", title: "Where the data comes from", teaser: "Your own credentials ran every check on Snowflake, read-only; only the result rows are saved here. Nothing is sent anywhere else." },
   { slug: "window", title: "Windows and exports", teaser: "Most checks cover the last 7, 30 or 90 days up to the export, today partial. A snapshot check shows today's settings, not a period." },
-  { slug: "status", title: "What each status means", teaser: "Critical and Warn are flagged. OK is a verified pass. Not assessed and Nothing to judge are never a pass." },
+  { slug: "status", title: "What each status means", teaser: "Critical and Warning are flagged. OK is a verified pass. Not assessed and No data are never a pass." },
   { slug: "floors", title: "Materiality floors", teaser: "A row under its floor (\"Under $50\") is too small to matter: it reads OK instead of Critical or Warn and is left out of every count." },
   { slug: "money", title: "How dollars are worked out", teaser: "Credits × your effective $ per credit, from your rate sheet or invoice where the role can see it. Storage at your $ per TB." },
   { slug: "pricing", title: "Price basis", teaser: "The label next to a $ says where the price came from: invoice, export option, settings, or none. A discount never stacks on an invoice rate." },
@@ -1443,13 +1443,11 @@ export function guideConceptBody(slug: string, app: GuideApp, meta: Meta | null 
 
 export const STATUS_MEANING_ROWS = [
   { kind: "critical", word: "Critical", d: "Flagged as the worst kind of problem this check looks for." },
-  { kind: "warn", word: "Warn", d: "Flagged, but not the worst kind this check has." },
+  { kind: "warn", word: "Warning", d: "Flagged, but not the worst kind this check has." },
   { kind: "ok", word: "OK", d: "Ran on real data in this window and found nothing. A verified pass." },
-  { kind: "ranked", word: "Ranked", d: "Sorted by size only. Big isn't the same as wrong." },
-  { kind: "not_assessed", word: "Not assessed", d: "Did not run in this export: the role can't see a view, the edition is too low, or it failed. Never a pass; the row says why." },
-  { kind: "reference", word: "No data", d: "Ran, but nothing happened in this window. Not a verified zero -- the checks table's own \"No data\" tab." },
-  { kind: "reference", word: "No data (filtered)", d: "Rows exist, but your Account or tag filters exclude them all -- also the \"No data\" tab." },
-  { kind: "reference", word: "Reference", d: "A list to look things up in -- no pass or fail." },
+  { kind: "reference", word: "Reference", d: "A list to look things up in, sorted by size only — no pass or fail. Big isn't the same as wrong." },
+  { kind: "not_assessed", word: "Not assessed", d: "Did not run in this export: the role can't see a view, the edition is too low, or it failed. Never a pass; the row says why. Shown as \"–\"." },
+  { kind: "reference", word: "No data", d: "Ran, but nothing happened in this window, or your Account or tag filters exclude every row. Not a verified zero — the checks table keeps these on its own \"No data\" tab." },
 ];
 export function StatusMeaningsGrid() {
   return (
@@ -1733,7 +1731,7 @@ export const HOME_QUESTIONS = [
 
 export const SCREEN_ANATOMY = [
   { h: "The headline", d: "is the finding, written from the data. Start there." },
-  { h: "Every number has a baseline", d: "-- a total or the period before. No baseline, no conclusion." },
+  { h: "Every number has a baseline", d: "— a total or the period before. No baseline, no conclusion." },
   { h: "How is this worked out?", d: "opens the check's page here: the formula and the views behind it." },
   { h: "Status is a word", d: "as well as a colour. See the legend." },
   { h: "The scope note", d: "says which checks the Account filter does not narrow." },
@@ -1770,8 +1768,9 @@ export function GuideHome({ data, guideIndex, meta }: { data: GuideData; guideIn
           <div className="gd-eyebrow-row">
             <span className="gd-eyebrow">{`How it works · ${data.findings.length} checks · ${allTables.length} Snowflake views and commands · ${ranCountsText(meta)}`}</span>
           </div>
-          <h1 className="gd-display">What every tab shows, where its numbers come from, and what to do when they look wrong.</h1>
-          <p className="muted">This app reads your Snowflake usage views and shows what you spend, what is wasted and what is risky, at your price per credit. New here? Start on Overview, then Fix these first. Pick the lens for your role at the top left.</p>
+          <h1 className="gd-display">How it works</h1>
+          <p className="gd-lede">What every tab shows, where its numbers come from, and what to do when they look wrong.</p>
+          <p className="muted gd-intro">This app reads your Snowflake usage views and shows what you spend, what is wasted and what is risky, at your price per credit. New here? Start on Overview, then Fix these first. Pick the lens for your role at the top left.</p>
           <label className="guide2-search">
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="9" cy="9" r="6"></circle><path d="M13.5 13.5L18 18"></path></svg>
             <input
@@ -1803,7 +1802,7 @@ export function GuideHome({ data, guideIndex, meta }: { data: GuideData; guideIn
                 return (
                   <li key={f.query_id}>
                     <a {...guideLinkProps(f.query_id)}>{label.title}</a>
-                    {label.why && <span className="muted">{` -- ${label.why}`}</span>}
+                    {label.why && <span className="muted">{` — ${label.why}`}</span>}
                   </li>
                 );
               })}
@@ -1876,11 +1875,13 @@ export function GuideHome({ data, guideIndex, meta }: { data: GuideData; guideIn
           <span className="gd-eyebrow">Troubleshooting</span>
           <span className="gd-link-card-h">A number looks wrong or a panel is empty</span>
           <span className="muted">Follow the status word to the cause and the fix.</span>
+          <span className="gd-card-link">{"Troubleshoot a panel →"}</span>
         </a>
         <a className="gd-card gd-link-card" {...guideLinkProps("how-checks")}>
           <span className="gd-eyebrow">{`Check reference · ${data.findings.length}`}</span>
           <span className="gd-link-card-h">Every check, one page each</span>
           <span className="muted">What it flags, how it's worked out, thresholds, fixes, and when it misreads.</span>
+          <span className="gd-card-link">{`Browse all ${data.findings.length} checks →`}</span>
         </a>
         <a className="gd-card gd-link-card" {...guideLinkProps("how-glossary")}>
           <span className="gd-eyebrow">Glossary</span>
@@ -2010,7 +2011,7 @@ export function GuideTabPage({ areaKey, data, guideIndex, findingsById, meta }: 
               {s.sub
                 ? <a className="gd-strong-link" {...appTabLinkProps(areaKey, s.sub)}>{subLabel(s.sub)}</a>
                 : <b>{s.t}</b>}
-              {` -- ${s.d}`}
+              {` — ${s.d}`}
             </span>
           </li>
         ))}
@@ -2052,9 +2053,9 @@ export function GuideTabPage({ areaKey, data, guideIndex, findingsById, meta }: 
                       <a {...guideLinkProps(id)}>{getCheckLabel(id, f.title).title}</a>
                       <div className="mono muted gd-small">{id}</div>
                     </td>
-                    <td className="gd-small">{f.is_finding ? codeifyProse(cleanFlagPrefix(f.investigate_if || "")) || "--" : <span className="muted">Reference list, no pass or fail.</span>}</td>
+                    <td className="gd-small">{f.is_finding ? codeifyProse(cleanFlagPrefix(f.investigate_if || "")) || "—" : <span className="muted">Reference list, no pass or fail.</span>}</td>
                     <td>{money ? <span className={`gd-chip ${isPricedWaste(id) ? "ok" : ""}`}>{isPricedWaste(id) ? "In Waste" : "Priced"}</span> : <span className="muted">--</span>}</td>
-                    <td className="gd-small">{!s ? <span className="muted">--</span> : checkFlagged(s) ? <span className="gd-flag">Flagged</span> : checkRan(s) ? <span className="muted">Ran</span> : <span className="muted">Not assessed</span>}</td>
+                    <td className="gd-small">{!s ? <span className="muted">—</span> : checkFlagged(s) ? <span className="gd-flag">Flagged</span> : checkRan(s) ? <span className="muted">Ran</span> : <span className="muted">Not assessed</span>}</td>
                   </tr>
                 );
               })}
@@ -2407,7 +2408,7 @@ export function ExampleRow({ f, filters }: { f: GuideCheck; filters: Filters }) 
       {status && (
         <div className="gd-example-cell">
           <span className="muted gd-small">Status</span>
-          <Badge kind={String(status).toLowerCase()}>{status === "WARN" ? "Warn" : status === "CRITICAL" ? "Critical" : status === "OK" ? "OK" : status}</Badge>
+          <Badge kind={String(status).toLowerCase()}>{status === "WARN" ? "Warning" : status === "CRITICAL" ? "Critical" : status === "OK" ? "OK" : status}</Badge>
         </div>
       )}
     </div>

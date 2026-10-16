@@ -4,7 +4,7 @@
 // waste and saving figures sit side by side and are never added together.
 import React from "react";
 import "../styles/css/p_area_compute.css";
-import { fmtCredits, fmtDate, fmtDayShort, fmtDuration, fmtInt, fmtMoney } from "../format";
+import { fmtCredits, fmtDate, fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { GrainSwitch, GrainLines, partialMonths, fmtMonth } from "./grain";
 import type { Grain } from "./grain";
 import { FLAGGED_STATUSES, groupsToRows, aggTotal, numOrZero, useFindingAgg, useFindingData } from "./hooks";
@@ -29,6 +29,8 @@ import type { Offender } from "./wh_idle_detail";
 import { QueryPatternTable, WarehouseLoadBands, aggNote, useQueryPatterns, useWarehouseLoad } from "./de_blocks";
 import { WarehouseSpendMonths, windowDayList } from "./run_blocks";
 import { QTrend } from "./query_trend";
+import { CxBars, CxCellBar, CxTable, Dot, dotOf, fmtDur } from "./cx_d";
+import type { CxBarItem } from "./cx_d";
 import type { ApPageProps } from "./area_pages";
 import type { FetchState, Finding, Row } from "../types";
 
@@ -1308,29 +1310,41 @@ function QHeavy(p: ApPageProps) {
   const repDisc = discOf(repSrc);
   const repUsd = (r: Row) => numOrZero(r.est_usd_list) * (1 - repDisc);
   const repSpend = repRows ? repRows.reduce((s, r) => s + repUsd(r), 0) : null;
-  const repItems: StatusBarItem[] = (repRows || []).map((r) => ({
-    key: `${whKey(r)}|${r.query_parameterized_hash}`, name: `${String(r.query_type || "statement").replace(/_/g, " ")} #${String(r.query_parameterized_hash || "").slice(0, 8)} · ${whLabel(r, p)}`,
-    value: repUsd(r), status: r.status,
-    valueText: `${fmtMoney(repUsd(r), 0)} · ${fmtInt(r.runs)} runs${r.runs_per_day != null ? ` · ${Number(r.runs_per_day).toFixed(0)} / day` : ""}`,
-  }));
+  const repItems: CxBarItem[] = (repRows || []).map((r) => ({
+    key: `${whKey(r)}|${r.query_parameterized_hash}`,
+    name: <><span className="cxd-chip">{`${String(r.query_type || "statement").replace(/_/g, " ")} #${String(r.query_parameterized_hash || "").slice(0, 8)}`}</span>{` · ${whLabel(r, p)}`}</>,
+    value: repUsd(r), status: r.status, valueText: fmtMoney(repUsd(r), 0),
+    sub: `${fmtInt(r.runs)} runs${r.runs_per_day != null ? ` · ${Number(r.runs_per_day).toFixed(0)} a day` : ""}`,
+  })).sort((a, b) => b.value - a.value);
+  // Statement types as ranked bars in one colour; past the top six, one "Other types" bar.
+  const typeFmt = typePriced ? usdFmt : (v: number) => `${fmtInt(Math.round(v))} credits`;
+  const typeSorted = segs.filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
+  const typeAll = typeSorted.reduce((s, x) => s + x.value, 0);
+  const typeTop = typeSorted.slice(0, 6), typeRest = typeSorted.slice(6);
+  const typeItems: CxBarItem[] = [
+    ...typeTop.map((s) => ({ key: String(s.key), name: s.label, value: s.value, valueText: typeFmt(s.value), extra: fmtShare(pctOf(s.value, typeAll)) })),
+    ...(typeRest.length ? [{ key: "__other", name: `Other types (${fmtInt(typeRest.length)})`, color: "var(--c-other)",
+      value: typeRest.reduce((s, x) => s + x.value, 0), valueText: typeFmt(typeRest.reduce((s, x) => s + x.value, 0)), extra: fmtShare(pctOf(typeRest.reduce((s, x) => s + x.value, 0), typeAll)) }] : []),
+  ];
+  const top3 = typeSorted.slice(0, 3).reduce((s, x) => s + x.value, 0);
 
   // The lede: the top shapes' share, then the statement type most of them are.
   const byKind = new Map<string, number>();
   shapes.forEach((s) => { const k = s.shape.split(" ")[0]; byKind.set(k, (byKind.get(k) || 0) + s.usd); });
   const topKind = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
   const lede = pat.state.phase === "loading" || loading(byType) ? "…" : share != null
-    ? `The top ${fmtInt(Math.min(10, shapes.length))} statement shapes are ${fmtShare(share)} of attributed compute${topKind ? `; ${fmtShare(pctOf(topKind[1], top10))} of that is ${topKind[0]}` : ""}.`
+    ? `The ${fmtInt(Math.min(10, shapes.length))} heaviest statement shapes use ${fmtShare(share)} of attributed compute${topKind ? `, and ${fmtShare(pctOf(topKind[1], top10))} of that is ${topKind[0]}` : ""}.`
     : null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="ac-page">
+    <div className="ac-page cxd">
       <Tiles>
         <IssueTile label="Top 10 statement shapes" loading={pat.state.phase === "loading" || loading(byType)}
           headline={share != null ? fmtShare(share) : null} unit="of attributed compute"
           missingReason={(patNote || "").replace(/^– /, "") || missingOf(byType, p) || "no $/credit price in this export"}
           base={share != null ? `${fmtMoney(top10, 0)} of ${fmtMoney(attributed, 0)} · ${fmtInt(Math.min(10, shapes.length))} of ${fmtInt(pat.shapes ?? shapes.length)} shapes` : null}
-          cause={shapes[0] ? `Most: ${shapes[0].shape}, ${fmtMoney(shapes[0].usd, 0)} in ${fmtInt(shapes[0].runs)} runs.` : null}
+          cause={shapes[0] ? `The largest is ${shapes[0].shape}: ${fmtMoney(shapes[0].usd, 0)} in ${fmtInt(shapes[0].runs)} runs.` : null}
           status={statusOf(topF)} onOpen={() => scrollToAnchor("ac-patterns")} openLabel="Query patterns ↓" />
         <CountTile p={p} f={rep} label="Expensive statements run again and again"
           extra={repSpend != null && repSpend > 0 ? `${fmtMoney(repSpend, 0)} spend on the ${fmtInt((repRows || []).length)} flagged shapes · context` : null}
@@ -1339,16 +1353,17 @@ function QHeavy(p: ApPageProps) {
           cause="Set STATEMENT_TIMEOUT_IN_SECONDS; the default is two days." />
       </Tiles>
       <Row2>
-        <Panel p={p} src={byType} title="Attributed compute, by statement type" subtitle="idle time and queries under about 100 ms are not in it">
-          <StackedShareBar segments={segs} pareto valueFmt={typePriced ? usdFmt : (v) => `${fmtInt(Math.round(v))} credits`} ariaLabel="Attributed compute by statement type" />
+        <Panel p={p} src={byType} title="Compute by statement type" subtitle="Attributed compute · idle time and queries under about 100 ms are not in it">
+          <CxBars items={typeItems} n={7} ariaLabel="Attributed compute by statement type" emptyText="No attributed compute in this window." />
+          {typeSorted.length > 3 && typeAll > 0 && <div className="cxd-foot">{`The top 3 of ${fmtInt(typeSorted.length)} types are ${fmtShare(pctOf(top3, typeAll))} of it.`}</div>}
         </Panel>
-        <Panel p={p} src={repSrc} title="Repeats: the same expensive shape, run again" subtitle="flagged shapes · $ · runs · runs a day · spend is context">
-          <RankedOrLine items={repItems} n={6} valueFmt={usdFmt} unitLabel="$" ariaLabel="Repeated expensive shapes" emptyText="No expensive shape repeats in this window."
-            onBarClick={() => DrawerBus.open({ id: "sf_query_repeated_expensive" })} />
+        <Panel p={p} src={repSrc} title="Expensive shapes run again" subtitle="Spend per flagged shape, shown for context · runs and runs a day">
+          <CxBars items={repItems} n={6} noun="flagged shapes" ariaLabel="Repeated expensive shapes" emptyText="No expensive shape repeats in this window."
+            onClick={() => DrawerBus.open({ id: "sf_query_repeated_expensive" })} />
         </Panel>
       </Row2>
       <div id="ac-patterns">
-        <ChartCard title="Query patterns" subtitle={`grouped by shape; the SQL text is never shown · sort any column${pat.shapes != null ? ` · top ${fmtInt(Math.min(10, shapes.length))} of ${fmtInt(pat.shapes)} shapes` : ""}`} onOpenCheck={openCheck(p, "query_top_by_cost")} takeaway={null}>
+        <ChartCard title="Query patterns" subtitle={`Grouped by shape; the SQL text is never shown${pat.shapes != null ? ` · top ${fmtInt(Math.min(10, shapes.length))} of ${fmtInt(pat.shapes)} shapes, most spend first` : ""}`} onOpenCheck={openCheck(p, "query_top_by_cost")} takeaway={null}>
           {patNote ? <div className="chart-note-oneline">{patNote}</div>
             : shapes.length ? <QueryPatternTable rows={shapes} n={10} onOpen={(r) => DrawerBus.open({ id: "query_top_by_cost", col: "group_id", val: r.groupId, label: r.shape })} />
               : <div className="chart-note-oneline">{`No statement cost in ${rangeOf(p) || "this window"}.`}</div>}
@@ -1473,54 +1488,81 @@ function QEfficiency(p: ApPageProps) {
         cause={ok ? why[k] : null} status={statusOf(m.src.f)} onOpen={() => scrollToAnchor(`ac-eff-${k}`)} openLabel="By warehouse ↓" />
     );
   };
-  const whItems = (k: EffKey): ShareItem[] => (M[k].whs || []).filter((w) => w.part > 0).map((w) => ({ key: w.key, name: w.name, value: w.part, total: w.whole, status: w.status }));
-  const shapeItems = (k: EffKey): StatusBarItem[] => M[k].shapes().sort((a, b) => b.usd - a.usd)
-    .map((s, i) => ({ key: `${s.wh}-${s.name}-${i}`, name: s.name, value: s.usd, status: s.status, valueText: `${fmtMoney(s.usd, 0)} · ${s.text}` }));
+  // Flagged warehouses, highest share first; a dot only where the check flagged the row.
+  const whFlagged = (k: EffKey) => (M[k].whs || []).filter((w) => w.part > 0).sort((a, b) => b.part / b.whole - a.part / a.whole || b.part - a.part);
+  const flagDot = (s: string) => (s === "CRITICAL" || s === "WARN" ? s : undefined);
+  const shapeItems = (k: EffKey): CxBarItem[] => M[k].shapes().sort((a, b) => b.usd - a.usd)
+    .map((s, i) => ({ key: `${s.wh}-${s.name}-${i}`, name: <span className="cxd-chip">{s.name}</span>, value: s.usd, status: s.status, valueText: fmtMoney(s.usd, 0), extra: s.text }));
+  const cacheWh = whFlagged("cache");
+  // Same when they read the same on screen: bars that are all one length say nothing.
+  const pctKey = (w: EffWh) => fmtShare(pctOf(w.part, w.whole));
+  const cacheSame = cacheWh.length > 1 && cacheWh.every((w) => pctKey(w) === pctKey(cacheWh[0]));
+  const statusWord = (s: string) => (s === "CRITICAL" ? "Critical" : s === "WARN" ? "Warning" : "Not flagged");
 
   const cacheT = tot("cache"), pruneT = tot("prune");
   const lede = loading(cache) || loading(prune) ? "…" : [
     cacheT.whole > 0 ? `Repeat queries missed the result cache ${fmtShare(pctOf(cacheT.part, cacheT.whole))} of the time` : null,
-    pruneT.whole > 0 ? `${fmtShare(pctOf(pruneT.part, pruneT.whole))} of queries pruned poorly` : null,
-  ].filter(Boolean).join("; ") || null;
+    pruneT.whole > 0 ? `${fmtShare(pctOf(pruneT.part, pruneT.whole))} of queries read most of a table instead of pruning it` : null,
+  ].filter(Boolean).join(", and ") || null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede ? (lede === "…" ? lede : `${lede}.`) : null); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
+  const slowRows = (rowsOf(slow) || []).slice().sort((a, b) => numOrZero(b.growth_pct) - numOrZero(a.growth_pct));
+  const compWh = whFlagged("compile");
 
   return (
-    <div className="ac-page">
+    <div className="ac-page cxd">
       <Tiles>{(Object.keys(M) as EffKey[]).map(tile)}</Tiles>
       <Row2>
         <div id="ac-eff-prune">
-          <Panel p={p} src={scans} title="Poor pruning, by statement shape" subtitle="flagged shapes · share of partitions scanned · $ is spend, context">
-            <RankedOrLine items={shapeItems("prune")} n={6} valueFmt={usdFmt} unitLabel="$" ariaLabel="Statement shapes that scan most of the table" emptyText="No shape scans most of its table in this window." onBarClick={() => DrawerBus.open({ id: scans.id })} />
+          <Panel p={p} src={scans} title="Poor pruning, by statement shape" subtitle="Spend per flagged shape, shown for context · share of partitions scanned">
+            <CxBars items={shapeItems("prune")} n={6} noun="flagged shapes" ariaLabel="Statement shapes that scan most of the table" emptyText="No shape scans most of its table in this window." onClick={() => DrawerBus.open({ id: scans.id })} />
           </Panel>
         </div>
         <div id="ac-eff-cache">
-          <Panel p={p} src={cache} title="Cache misses, by warehouse" subtitle="repeat runs that re-ran instead of being served from the result cache">
-            <ShareBarList items={whItems("cache")} noun="repeat runs" emptyText={`None in ${rangeOf(p) || "this window"}.`} />
+          <Panel p={p} src={cache} title="Cache misses" subtitle="Repeat runs that re-ran instead of being served from the result cache, by warehouse">
+            {!cacheWh.length ? <div className="chart-note-oneline">{`None in ${rangeOf(p) || "this window"}.`}</div> : cacheSame ? (
+              <>
+                <div className="ac-one-sentence">{"On every warehouse shown, "}<b>{fmtShare(pctOf(cacheWh[0].part, cacheWh[0].whole))}</b>{" of repeat runs re-ran instead of being served from the result cache."}</div>
+                <CxTable aria="Warehouses with cache misses" n={10} noun="warehouses"
+                  cols={[{ label: "Warehouse" }, { label: "Repeat runs missed", num: true }, { label: "Status" }]}
+                  rows={cacheWh.map((w) => ({ key: w.key, cells: [w.name, fmtInt(w.part), <span key="s" className={`cxd-sev ${dotOf(w.status)}`}><Dot status={flagDot(w.status) || ""} />{statusWord(w.status)}</span>] }))} />
+              </>
+            ) : (
+              <CxBars n={10} max={100} noun="warehouses" ariaLabel="Cache misses by warehouse"
+                items={cacheWh.map((w) => ({ key: w.key, name: w.name, value: (100 * w.part) / w.whole, status: flagDot(w.status) || "", valueText: fmtShare(pctOf(w.part, w.whole)), extra: `${fmtInt(w.part)} of ${fmtInt(w.whole)} repeat runs` }))} />
+            )}
           </Panel>
         </div>
       </Row2>
       <Row2>
         <div id="ac-eff-compile">
-          <Panel p={p} src={comp} title="Compile time dominates, by warehouse" subtitle="runs where compiling took longer than running">
-            <ShareBarList items={whItems("compile")} noun="runs" emptyText={`None in ${rangeOf(p) || "this window"}.`} />
+          <Panel p={p} src={comp} title="Compile time dominates" subtitle="Share of each warehouse's runs where compiling took longer than running">
+            {compWh.length ? (
+              <CxTable aria="Compile time dominates, by warehouse" n={8} noun="warehouses"
+                cols={[{ label: "Warehouse", width: "38%" }, { label: "Share of runs", cls: "c-bar" }, { label: "", num: true }, { label: "Runs", num: true }]}
+                rows={compWh.map((w) => ({ key: w.key, status: flagDot(w.status) || "", cells: [w.name, <CxCellBar key="b" value={w.part} max={w.whole} />, <b key="p">{fmtShare(pctOf(w.part, w.whole))}</b>, `${fmtInt(w.part)} of ${fmtInt(w.whole)}`] }))}
+                foot={<span>Many small statements: batch them, or move them off the warehouse.</span>} />
+            ) : <div className="chart-note-oneline">{`None in ${rangeOf(p) || "this window"}.`}</div>}
           </Panel>
         </div>
         <div id="ac-eff-spill">
-          <Panel p={p} src={remote} title="Statement shapes that spill" subtitle="spilled to remote storage · $ is spend, context">
-            <RankedOrLine items={shapeItems("spill")} n={6} valueFmt={usdFmt} unitLabel="$" ariaLabel="Statement shapes that spill to remote storage" emptyText="No shape spilled to remote storage in this window." onBarClick={() => DrawerBus.open({ id: remote.id })} />
+          <Panel p={p} src={remote} title="Statement shapes that spill" subtitle="Spilled to remote storage · spend shown for context">
+            <CxBars items={shapeItems("spill")} n={6} noun="shapes" ariaLabel="Statement shapes that spill to remote storage" emptyText="No shape spilled to remote storage in this window." onClick={() => DrawerBus.open({ id: remote.id })} />
           </Panel>
         </div>
       </Row2>
-      <Panel p={p} src={slow} title="Statement shapes that got slower" subtitle="median run time, last week vs the days before · compile + execution, no queueing · $ is a change, not waste">
-        <RankedOrLine items={(rowsOf(slow) || []).map((r) => {
-          const usd = numOrZero(r.est_change_usd_list) * (1 - discOf(slow));
-          return {
-            key: `${r.account_id}|${r.warehouse_id}|${r.query_parameterized_hash}`, name: `${shapeOf(r)} · ${whLabel(r, p)}`, value: numOrZero(r.growth_pct), status: r.status,
-            valueText: [`${fmtDuration(numOrZero(r.base_p50_s))} → ${fmtDuration(numOrZero(r.recent_p50_s))}`, SLOW_CAUSE[String(r.likely_cause)] || null,
-              usd > 0 ? `+${fmtMoney(usd, 0)}` : null].filter(Boolean).join(" · "),
-          };
-        })} n={8} valueFmt={(v) => `+${fmtShare(v)}`} unitLabel="% slower" ariaLabel="Statement shapes that got slower"
-          emptyText={`No statement shape got slower in ${rangeOf(p) || "this window"}.`} onBarClick={() => DrawerBus.open({ id: slow.id })} />
+      <Panel p={p} src={slow} title="Statement shapes that got slower" subtitle="Median run time, last week vs the days before · compile + execution, no queueing · $ is a change, not waste">
+        {slowRows.length ? (
+          <CxTable aria="Statement shapes that got slower" n={8} noun="shapes"
+            cols={[{ label: "Shape · warehouse" }, { label: "Before", num: true }, { label: "Last week", num: true }, { label: "Why" }, { label: "$ change", num: true }]}
+            rows={slowRows.map((r) => {
+              const usd = numOrZero(r.est_change_usd_list) * (1 - discOf(slow));
+              return {
+                key: `${r.account_id}|${r.warehouse_id}|${r.query_parameterized_hash}`, status: r.status, onOpen: () => DrawerBus.open({ id: slow.id }),
+                cells: [<span key="n"><span className="cxd-chip">{shapeOf(r)}</span>{` · ${whLabel(r, p)}`}</span>, fmtDur(numOrZero(r.base_p50_s)),
+                  <b key="l" className="ac-up">{fmtDur(numOrZero(r.recent_p50_s))}</b>, SLOW_CAUSE[String(r.likely_cause)] || "–", usd > 0 ? `+${fmtMoney(usd, 0)}` : "–"],
+              };
+            })} />
+        ) : <div className="chart-note-oneline">{`No statement shape got slower in ${rangeOf(p) || "this window"}.`}</div>}
       </Panel>
     </div>
   );
@@ -1577,11 +1619,11 @@ function QFailures(p: ApPageProps) {
   const errRows = rowsOf(errs);
   const byCode = errRows ? sumBy(errRows, (r) => String(r.error_code ?? "?"), (r) => `Error ${r.error_code ?? "?"}`, { n: (r) => r.failures }) : [];
   const codeAll = byCode.reduce((s, x) => s + x.n, 0);
-  const codeItems: StatusBarItem[] = byCode.map((c) => {
+  const codeItems: CxBarItem[] = byCode.map((c) => {
     const lead = [...c.rows].sort((a, b) => numOrZero(b.failures) - numOrZero(a.failures))[0];
-    const pattern = lead && lead.error_pattern ? `: ${String(lead.error_pattern).slice(0, 40)}` : "";
-    return { key: c.name, name: `${c.name}${pattern}`, value: c.n, status: worstStatus(c.rows), valueText: `${fmtInt(c.n)} · ${fmtShare(pctOf(c.n, codeAll))}` };
-  });
+    const pattern = lead && lead.error_pattern ? `: ${String(lead.error_pattern)}` : "";
+    return { key: c.name, name: `${c.name}${pattern}`, value: c.n, status: worstStatus(c.rows), valueText: fmtInt(c.n), extra: fmtShare(pctOf(c.n, codeAll)) };
+  }).sort((a, b) => b.value - a.value);
   const topCode = [...byCode].sort((a, b) => b.n - a.n)[0];
   const topPattern = topCode ? [...topCode.rows].sort((a, b) => numOrZero(b.failures) - numOrZero(a.failures))[0] : null;
 
@@ -1611,11 +1653,11 @@ function QFailures(p: ApPageProps) {
   const wA = affectedOf(waste), rA = affectedOf(retries);
   const partial = days.length ? partialBarKeys(days, false)[0] || null : null;
   const lede = loading(failDays) || loading(allDays) ? "…" : share != null
-    ? `${fmtInt(sumF)} of ${fmtInt(sumT)} queries failed or were cancelled${spikes.size ? `; the worst rate was ${fmtShare(worst.pct)} on ${fmtDayShort(worst.d)}` : ""}.${topCode && codeAll > 0 ? ` One error code is ${fmtShare(pctOf(topCode.n, codeAll))} of them.` : ""}`
+    ? `${fmtInt(sumF)} of ${fmtInt(sumT)} queries failed or were cancelled${spikes.size ? `; the worst day was ${fmtDayShort(worst.d)} at ${fmtShare(worst.pct)}` : ""}.${topCode && codeAll > 0 ? ` One error code is ${fmtShare(pctOf(topCode.n, codeAll))} of the failures.` : ""}`
     : null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="ac-page">
+    <div className="ac-page cxd">
       <Tiles>
         <IssueTile label="Failed or cancelled" loading={loading(failDays) || loading(allDays)}
           headline={share != null ? fmtShare(share) : null} unit="of queries"
@@ -1632,7 +1674,7 @@ function QFailures(p: ApPageProps) {
         <IssueTile label="Top error" loading={loading(errs)} headline={topCode && codeAll > 0 ? fmtShare(pctOf(topCode.n, codeAll)) : null} unit="of failures"
           missingReason={missingOf(errs, p) || "No failure with an error code."}
           base={topCode ? `${fmtInt(topCode.n)} of ${fmtInt(codeAll)} with an error code · ${fmtInt(byCode.filter((c) => isFlagged({ status: worstStatus(c.rows) })).length)} of ${fmtInt(byCode.length)} codes flagged` : undefined}
-          cause={topPattern ? `${String(topCode!.name).replace(/^Error /, "")}: ${String(topPattern.error_pattern || "").slice(0, 60)}` : null}
+          cause={topPattern ? `${String(topCode!.name).replace(/^Error /, "")}: ${String(topPattern.error_pattern || "")}` : null}
           status={statusOf(errs.f)} onOpen={() => DrawerBus.open({ id: "sf_query_failed_by_error", col: "error_code", val: topCode ? String(topCode.rows[0].error_code) : null, label: topCode ? topCode.name : null })} />
       </Tiles>
       <Row2>
@@ -1654,25 +1696,23 @@ function QFailures(p: ApPageProps) {
             )}
           </Panel>
         </div>
-        <Panel p={p} src={errs} title="Failures by error code" subtitle={`${fmtInt(codeAll)} failed with a code (cancelled ones have none) · share of coded failures · dot = the code's status`}>
-          <RankedOrLine items={codeItems} valueFmt={(v) => fmtInt(v)} unitLabel="failures" ariaLabel="Failures by error code" emptyText="No failures in this window."
-            onBarClick={(it) => { const c = byCode.find((x) => x.name === it.key); DrawerBus.open({ id: "sf_query_failed_by_error", col: "error_code", val: c ? String(c.rows[0].error_code) : null, label: c ? c.name : null }); }} />
+        <Panel p={p} src={errs} title="Failures by error" subtitle={`${fmtInt(codeAll)} failures with an error code (cancelled queries have none) · share of those · dot = status`}>
+          <CxBars items={codeItems} n={8} noun="codes" ariaLabel="Failures by error code" emptyText="No failures in this window."
+            onClick={(it) => { const c = byCode.find((x) => x.name === it.key); DrawerBus.open({ id: "sf_query_failed_by_error", col: "error_code", val: c ? String(c.rows[0].error_code) : null, label: c ? c.name : null }); }} />
         </Panel>
       </Row2>
       <div id="qf-where">
-        <Panel p={p} src={whFail} title="Where failures land · by warehouse" subtitle="failed and cancelled statements on warehouses, retried ones under retries · share of the warehouse's own · top error message and user · failed-SQL $ is possible waste">
+        <Panel p={p} src={whFail} title="Where failures land, by warehouse" subtitle={`${fmtInt(whAll)} failed or cancelled statements on warehouses; retried ones are under retries · failed-SQL $ is possible waste${whList.length > 6 ? ` · the top 6 of ${fmtInt(whList.length)} warehouses hold ${fmtShare(pctOf(whList.slice(0, 6).reduce((s, w) => s + w.n, 0), whAll))}` : ""}`}>
           {whRows && (whList.length ? (
-            <div className="pl-stack">
-              <StackedShareBar pareto valueFmt={(v) => `${fmtInt(v)} statements`} ariaLabel="Failed statements by warehouse"
-                segments={whList.map((w) => ({ key: w.name, label: w.name, value: w.n }))} totalLabel={`${fmtInt(whAll)} failed or cancelled on warehouses`} />
-              <DrillTable aria="Failures by warehouse" n={8}
-                cols={[{ label: "Warehouse" }, { label: "Failed", num: true, width: "auto" }, { label: "Of its", num: true, width: "auto" }, { label: "Top error", width: "auto" }, { label: "Top user", width: "minmax(80px, 1fr)" }, { label: "Failed $", num: true, width: "auto" }]}
-                rows={whList.map((w) => ({
-                  key: whKey(w.r), status: w.r.status,
-                  onOpen: () => DrawerBus.open({ id: "cost_failed_statement_waste", col: "warehouse_id", val: w.r.warehouse_id != null ? String(w.r.warehouse_id) : null, label: w.name }),
-                  cells: [w.name, fmtInt(w.n), fmtShare(w.of), w.err ? w.err.slice(0, 40) : "–", w.user || "–", w.usd != null ? fmtMoney(w.usd, 0) : "–"],
-                }))} />
-            </div>
+            <CxTable aria="Failures by warehouse" n={8} noun="warehouses"
+              cols={[{ label: "Warehouse · top error", width: "34%" }, { label: "Failed or cancelled", cls: "c-bar" }, { label: "", num: true }, { label: "% of warehouse's queries", num: true }, { label: "Top user" }, { label: "Failed SQL $", num: true }]}
+              rows={whList.map((w) => ({
+                key: whKey(w.r), status: w.r.status,
+                onOpen: () => DrawerBus.open({ id: "cost_failed_statement_waste", col: "warehouse_id", val: w.r.warehouse_id != null ? String(w.r.warehouse_id) : null, label: w.name }),
+                cells: [<span key="n">{w.name}{w.err && <span className="cxd-sub">{w.err}</span>}</span>,
+                  <CxCellBar key="b" value={w.n} max={whList[0].n} />, <span key="c"><b>{fmtInt(w.n)}</b>{` ${fmtShare(pctOf(w.n, whAll))}`}</span>,
+                  fmtShare(w.of), <span key="u" className="cxd-mono">{w.user || "–"}</span>, w.usd != null ? fmtMoney(w.usd, 0) : "–"],
+              }))} />
           ) : <div className="chart-note-oneline">No failed statement in this window.</div>)}
         </Panel>
       </div>
@@ -1731,7 +1771,6 @@ function QWaiting(p: ApPageProps) {
   const qg = alsoGroups(all, "queued_at_capacity_count"), ag = groupsOf(all), pg = groupsOf(prov);
   const key = (wh: any, d: any) => `${wh}|${String(d).slice(0, 10)}`;
   const qMap = new Map<string, number>((qg || []).map((g) => [key(g.key[0], g.key[1]), numOrZero(g.value)]));
-  const aMap = new Map<string, number>((ag || []).map((g) => [key(g.key[0], g.key[1]), numOrZero(g.value)]));
   // Every day of the window keeps its column; a day with no queries is hatched, not skipped.
   const days = windowDayList(p.meta, p.filters.window, (ag || []).map((g) => String(g.key[1]).slice(0, 10)));
   const whs = new Map<string, { q: number; a: number }>();
@@ -1748,44 +1787,44 @@ function QWaiting(p: ApPageProps) {
   const lockRows = rowsOf(locks);
   const lockMin = lockRows ? lockRows.reduce((s, r) => s + numOrZero(r.blocked_minutes), 0) : 0;
   const lockTop = lockRows ? [...lockRows].sort((a, b) => numOrZero(b.blocked_minutes) - numOrZero(a.blocked_minutes))[0] : null;
-  const lockItems: StatusBarItem[] = (lockRows || []).map((r) => ({
+  const lockItems: CxBarItem[] = (lockRows || []).map((r) => ({
     key: `${r.account_id}|${r.object_id}`, name: chartLabel(r.object_name, r.object_id), value: numOrZero(r.blocked_minutes), status: r.status,
-    valueText: `${minFmt(numOrZero(r.blocked_minutes))} · ${fmtInt(r.blocked_statements)} statements`,
-  }));
+    valueText: fmtDur(numOrZero(r.blocked_minutes) * 60), extra: `${fmtInt(r.blocked_statements)} statement${numOrZero(r.blocked_statements) === 1 ? "" : "s"}`,
+  })).sort((a, b) => b.value - a.value);
   const topW = rowsW[0];
   // Queue and start-up time in seconds, and start-up waits per warehouse.
   const qSec = (ag ? (all.state.data!.groups || []).reduce((s: number, g: any) => s + numOrZero(g.also && g.also.waiting_at_capacity_ms_sum), 0) : 0) / 1000;
   const topQSec = topW ? (all.state.data!.groups || []).filter((g: any) => String(g.key[0]) === topW[0]).reduce((s: number, g: any) => s + numOrZero(g.also && g.also.waiting_at_capacity_ms_sum), 0) / 1000 : 0;
   const pSec = (pg ? (prov.state.data!.groups || []).reduce((s: number, g: any) => s + numOrZero(g.also && g.also.waiting_for_compute_ms_sum), 0) : 0) / 1000;
-  const provItems: StatusBarItem[] = (pg ? prov.state.data!.groups || [] : []).filter((g: any) => g.key && g.key[0] != null)
-    .map((g: any) => ({ key: String(g.key[0]), name: whName(String(g.key[0])), value: numOrZero(g.also && g.also.waiting_for_compute_ms_sum) / 1000, status: "OK",
-      valueText: `${fmtDuration(numOrZero(g.also && g.also.waiting_for_compute_ms_sum) / 1000)} · ${fmtInt(g.value)} queries` }))
-    .filter((it: StatusBarItem) => it.value > 0);
+  const provItems: CxBarItem[] = (pg ? prov.state.data!.groups || [] : []).filter((g: any) => g.key && g.key[0] != null)
+    .map((g: any) => ({ key: String(g.key[0]), name: whName(String(g.key[0])), value: numOrZero(g.also && g.also.waiting_for_compute_ms_sum) / 1000,
+      valueText: fmtDur(numOrZero(g.also && g.also.waiting_for_compute_ms_sum) / 1000), extra: `${fmtInt(g.value)} queries` }))
+    .filter((it: CxBarItem) => it.value > 0).sort((a: CxBarItem, b: CxBarItem) => b.value - a.value);
   const lockAff = affectedOf(locks.f);
 
   const lede = loading(all) ? "…" : qg && ag
     ? (sumQ > 0
-      ? `${fmtShare(pctOf(sumQ, sumA))} of queries waited ${fmtDuration(qSec)} for a full warehouse${topW ? `; ${whName(topW[0])} has ${fmtShare(pctOf(topQSec, qSec))} of that time` : ""}.`
+      ? `${fmtShare(pctOf(sumQ, sumA))} of queries waited ${fmtDur(qSec)} in total for a full warehouse.${topW ? ` ${whName(topW[0])} queues most: ${fmtShare(pctOf(topW[1].q, topW[1].a))} of its queries, and ${fmtShare(pctOf(topQSec, qSec))} of all the waiting.` : ""}`
       : `No query queued for a full warehouse in ${rangeOf(p) || "this window"}.`)
     : null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="ac-page">
+    <div className="ac-page cxd">
       <Tiles>
-        <IssueTile label="Queued: warehouse at capacity" loading={loading(queued) || loading(all)}
+        <IssueTile label="Queued: warehouse full" loading={loading(queued) || loading(all)}
           headline={qg && ag ? fmtShare(pctOf(sumQ, sumA)) : null} unit="of queries" missingReason={missingOf(queued, p)}
-          base={qg && ag ? `${fmtInt(sumQ)} of ${fmtInt(sumA)} queries · ${fmtDuration(qSec)} in total` : null}
-          cause={topW ? `${whName(topW[0])}: ${fmtShare(pctOf(topW[1].q, topW[1].a))} of its queries queue, ${fmtShare(pctOf(topQSec, qSec))} of all queue time.` : null}
+          base={qg && ag ? `${fmtInt(sumQ)} of ${fmtInt(sumA)} queries · ${fmtDur(qSec)} in total.` : null}
+          cause={topW ? `${whName(topW[0])}: ${fmtShare(pctOf(topW[1].q, topW[1].a))} of its queries queue; it has ${fmtShare(pctOf(topQSec, qSec))} of the queued time.` : null}
           status={statusOf(queued.f)} onOpen={() => scrollToAnchor("ac-wait-hour")} openLabel="By weekday and hour ↓" />
         <IssueTile label="Waited for compute to start" loading={loading(prov) || loading(all)} pill={<StatusPill kind="neutral" />}
           headline={pg && ag ? fmtShare(pctOf(sumP, sumA)) : null} unit="of queries" missingReason={missingOf(prov, p)}
-          base={pg && ag ? `${fmtInt(sumP)} of ${fmtInt(sumA)} queries · ${fmtDuration(pSec)} in total` : null}
+          base={pg && ag ? `${fmtInt(sumP)} of ${fmtInt(sumA)} queries · ${fmtDur(pSec)} in total.` : null}
           cause="Resume after auto-suspend, or scale-out: a few seconds here pays for the idle saved." status="neutral" onOpen={() => scrollToAnchor("ac-wait-start")} openLabel="By warehouse ↓" />
         <IssueTile label="Blocked on locks" loading={loading(locks)}
-          headline={lockRows ? fmtInt(Math.round(lockMin)) : null} unit="min waiting on a lock" missingReason={missingOf(locks, p)}
-          base={lockRows ? [lockAff ? `${fmtInt(lockAff.flagged)} of ${fmtInt(lockAff.total)} ${lockAff.noun}` : null,
-            lockTop && lockMin > 0 ? `${fmtShare(pctOf(numOrZero(lockTop.blocked_minutes), lockMin))} on ${chartLabel(lockTop.object_name, lockTop.object_id)}` : null].filter(Boolean).join(" · ") : null}
+          headline={lockRows ? fmtDur(lockMin * 60) : null} unit="waiting on a lock" missingReason={missingOf(locks, p)}
+          base={lockRows && lockAff ? `${fmtInt(lockAff.flagged)} of ${fmtInt(lockAff.total)} ${lockAff.noun}.` : null}
+          cause={lockTop && lockMin > 0 ? `${fmtShare(pctOf(numOrZero(lockTop.blocked_minutes), lockMin))} of it on ${chartLabel(lockTop.object_name, lockTop.object_id)}.` : null}
           status={statusOf(locks.f)} onOpen={() => scrollToAnchor("ac-wait-locks")} openLabel="By object ↓" />
       </Tiles>
       <div id="ac-wait-hour">
@@ -1794,30 +1833,45 @@ function QWaiting(p: ApPageProps) {
             const qh = alsoGroups(aHour, "queued_at_capacity_count"), ah = groupsOf(aHour);
             if (!qh || !ah) return null;
             const grid = weekHourGrid(ah, qh, (q, a) => (a > 0 ? (pctOf(q, a) ?? 0) : null));
+            const gMax = Math.max(0, ...grid.flat().filter((v): v is number => v != null && Number.isFinite(v)));
             return grid.some((r) => r.some((v) => v != null && v > 0))
-              ? <WeekHourHeatmap grid={grid} ariaLabel="Queued share by weekday and hour" legendLow="few queued" legendHigh="most queued"
+              ? <>
+                <WeekHourHeatmap grid={grid} ariaLabel="Queued share by weekday and hour"
                   tip={(wd, h, v) => `${wd} ${String(h).padStart(2, "0")}:00 UTC: ${v == null ? "no queries" : `${fmtShare(v)} queued`}`} />
+                <div className="cxd-scale" aria-label={`Scale: 0% to ${fmtShare(gMax)} of queries queued`}>
+                  <span className="cxd-scale-sw" style={{ background: "var(--seq-0)" }} />0%
+                  <span className="cxd-scale-ramp" aria-hidden="true">{[1, 2, 3, 4, 5].map((i) => <span key={i} style={{ background: `var(--seq-${i})` }} />)}</span>
+                  {`up to ${fmtShare(gMax)} queued`}
+                  <span className="cxd-scale-sw nodata" />No queries
+                </div>
+              </>
               : <div className="chart-note-oneline">{`No query queued at capacity in ${rangeOf(p) || "this window"}.`}</div>;
           })()}
         </HourPanel>
       </div>
       <Row2>
-        <Panel p={p} src={qg ? all : queued} title="Queued %, warehouse by day" subtitle="share of each warehouse's queries that queued · darker is worse">
+        <Panel p={p} src={qg ? all : queued} title="Queued %, by warehouse" subtitle={`Share of each warehouse's queries that queued · all ${fmtInt(days.length || p.filters.window)} days · most queued first`}>
           {qg && ag && (rowsW.length
-            ? <QueueHeat rows={rowsW.map(([id, w]) => ({ id, name: whName(id), total: pctOf(w.q, w.a) }))} days={days}
-                cell={(id, d) => { const a = aMap.get(key(id, d)) || 0; return a ? pctOf(qMap.get(key(id, d)) || 0, a) : null; }} />
+            ? (() => {
+              const ranked = rowsW.map(([id, w]) => ({ id, name: whName(id), pct: pctOf(w.q, w.a) ?? 0, q: w.q, a: w.a })).sort((x, y) => y.pct - x.pct);
+              return (
+                <CxTable aria="Queued share by warehouse" n={10} noun="warehouses"
+                  cols={[{ label: "Warehouse", width: "40%" }, { label: "Queued", cls: "c-bar" }, { label: "", num: true }]}
+                  rows={ranked.map((r) => ({ key: r.id, title: `${fmtInt(r.q)} of ${fmtInt(r.a)} queries queued`, cells: [r.name, <CxCellBar key="b" value={r.pct} max={ranked[0].pct} />, <b key="p">{fmtShare(r.pct)}</b>] }))} />
+              );
+            })()
             : <div className="chart-note-oneline">{`No query queued at capacity in ${rangeOf(p) || "this window"}.`}</div>)}
         </Panel>
         <div id="ac-wait-locks">
-          <Panel p={p} src={locks} title="Blocked on locks, by object" subtitle="minutes statements waited on a lock">
-            <RankedOrLine items={lockItems} valueFmt={minFmt} unitLabel="minutes" ariaLabel="Lock waits by object" emptyText="No lock waits in this window." onBarClick={() => DrawerBus.open({ id: "sf_query_blocked_lock_waits" })} />
+          <Panel p={p} src={locks} title="Blocked on locks, by object" subtitle="Time statements waited on a lock · dot = status">
+            <CxBars items={lockItems} n={8} noun="objects" ariaLabel="Lock waits by object" emptyText="No lock waits in this window." onClick={() => DrawerBus.open({ id: "sf_query_blocked_lock_waits" })} />
           </Panel>
         </div>
       </Row2>
       <div id="ac-wait-start">
-        <Panel p={p} src={prov} title="Waited for compute to start" subtitle={`${pg ? `${fmtDuration(pSec)} · ` : ""}by warehouse · resume after auto-suspend, or scale-out`}>
-          <RankedOrLine items={provItems} n={6} valueFmt={(v) => fmtDuration(v)} unitLabel="waiting to start" ariaLabel="Time waiting for compute to start, by warehouse"
-            emptyText={`No query waited for compute to start in ${rangeOf(p) || "this window"}.`} onBarClick={openCheck(p, "query_queuing_waits")} />
+        <Panel p={p} src={prov} title="Waited for compute to start" subtitle={`${pg ? `${fmtDur(pSec)} in total, ` : ""}by warehouse · resume after auto-suspend, or scale-out · context`}>
+          <CxBars items={provItems} n={6} noun="warehouses" ariaLabel="Time waiting for compute to start, by warehouse"
+            emptyText={`No query waited for compute to start in ${rangeOf(p) || "this window"}.`} onClick={openCheck(p, "query_queuing_waits")} />
         </Panel>
       </div>
     </div>
@@ -1852,32 +1906,6 @@ function HourPanel({ p, src, title, subtitle, children }: { p: ApPageProps; src:
   return <Panel p={p} src={src} title={title} subtitle={subtitle}>{children}</Panel>;
 }
 
-/** A warehouse × day grid of a % in one hue; the weekday × hour view sits below it. */
-function QueueHeat({ rows, days, cell }: { rows: { id: string; name: string; total: number | null }[]; days: string[]; cell: (id: string, d: string) => number | null }) {
-  const vals = rows.flatMap((r) => days.map((d) => cell(r.id, d))).filter((v): v is number => v != null && v > 0);
-  const max = vals.length ? Math.max(...vals) : 1;
-  const level = (v: number | null) => (v == null ? -1 : v <= 0 ? 0 : Math.min(5, Math.max(1, Math.ceil((v / max) * 5))));
-  const stride = Math.max(1, Math.ceil(days.length / 8));
-  return (
-    <div className="ac-heat" style={{ gridTemplateColumns: `minmax(90px, 180px) repeat(${days.length}, minmax(6px, 1fr)) 52px` }} role="table" aria-label="Queued share by warehouse and day">
-      {rows.map((r) => (
-        <React.Fragment key={r.id}>
-          <span className="ac-heat-label" title={r.name}>{truncateLeft(r.name, 170)}</span>
-          {days.map((d) => {
-            const v = cell(r.id, d), l = level(v);
-            return <span key={d} className={`ac-heat-cell${l < 0 ? " blk-hatch" : ""}`} style={l >= 0 ? { background: `var(--seq-${l})` } : undefined}
-              title={`${r.name} · ${fmtDayShort(d)}: ${v == null ? "no queries" : `${fmtShare(v)} queued`}`} />;
-          })}
-          <span className="ac-heat-total">{fmtShare(r.total)}</span>
-        </React.Fragment>
-      ))}
-      <span />
-      {days.map((d, i) => <span key={d} className="ac-heat-x">{i % stride === 0 ? fmtDayShort(d) : ""}</span>)}
-      <span className="ac-heat-x">all</span>
-    </div>
-  );
-}
-
 // ═══════════════════════ Queries > By source & team ═══════════════════════
 
 function QTeam(p: ApPageProps) {
@@ -1899,7 +1927,6 @@ function QTeam(p: ApPageProps) {
   const named = byClient.filter((c) => !/^\(.*\)$/.test(c.name));
   const qAll = byClient.reduce((s, c) => s + c.q, 0), qUntagged = byClient.reduce((s, c) => s + c.untagged, 0);
   const fmtV = priced ? usdFmt : (v: number) => `${fmtInt(Math.round(v))} credits`;
-  const segs: ShareSegment[] = byClient.map((c) => ({ key: c.name, label: c.name, value: c.v, unknown: c.name === NO_REC }));
   const pRows = rowsOf(prov);
   const bySource = pRows ? sumBy(pRows, (r) => String(r.source_kind || "(unknown)"), (r) => String(r.source_kind || "(unknown)").replace(/_/g, " "), {
     q: (r) => r.query_count, ms: (r) => r.total_duration_ms_sum,
@@ -1909,13 +1936,6 @@ function QTeam(p: ApPageProps) {
     const v = rows.map((r) => r.source_p95_total_duration_ms).find((x) => x != null && Number.isFinite(Number(x)));
     return v != null ? Number(v) : null;
   };
-  const srcItems: StatusBarItem[] = bySource.map((s) => {
-    const p95 = p95Of(s.rows);
-    return {
-      key: s.name, name: s.name, value: s.q, status: "OK",
-      valueText: `${fmtInt(s.q)} queries · avg ${secFmt(s.q ? s.ms / s.q / 1000 : 0)} · p95 ${p95 != null ? secFmt(p95 / 1000) : "–"}`,
-    };
-  });
   const p95Items: StatusBarItem[] = bySource.map((s) => ({ key: s.name, name: s.name, value: p95Of(s.rows) ?? NaN, status: "OK" }))
     .filter((it) => Number.isFinite(it.value)).map((it) => ({ ...it, value: it.value / 1000, valueText: secFmt(it.value / 1000) }));
   const qSrcAll = bySource.reduce((s, x) => s + x.q, 0);
@@ -1924,15 +1944,17 @@ function QTeam(p: ApPageProps) {
   const mixRows = rowsOf(mix);
 
   const lede = loading(client) ? "…" : cRows && all > 0
-    ? `${fmtShare(pctOf(unk ? unk.v : 0, all))} of warehouse compute has no session record, so its client is unknown; ${fmtShare(pctOf(qUntagged, qAll))} of warehouse queries carry no query tag.`
+    ? `${fmtShare(pctOf(unk ? unk.v : 0, all))} of warehouse compute has no session record, so its client tool is unknown, and ${fmtShare(pctOf(qUntagged, qAll))} of warehouse queries carry no query tag.`
     : null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clientRows = [...byClient].sort((a, b) => b.v - a.v);
   const clientMax = clientRows.length ? clientRows[0].v : 1;
   const MIX: [string, string, string][] = [["read_pct", "read", "var(--c1)"], ["dml_pct", "write", "var(--c2)"], ["ddl_pct", "DDL", "var(--c3)"], ["metadata_pct", "metadata", "var(--c4)"], ["procedural_pct", "procedures", "var(--c5)"], ["other_pct", "other", "var(--c-other)"]];
+  // The main kind in the legend's own words ("dml" reads "write").
+  const MIX_WORD: Record<string, string> = { read: "read", dml: "write", ddl: "DDL", metadata: "metadata", procedural: "procedures", other: "other" };
   return (
-    <div className="ac-page">
+    <div className="ac-page cxd">
       <Tiles>
         <IssueTile label="Compute with no client record" loading={loading(client)}
           headline={cRows ? fmtShare(pctOf(unk ? unk.v : 0, all)) : null} unit={priced ? "of client $" : "of client credits"}
@@ -1943,53 +1965,59 @@ function QTeam(p: ApPageProps) {
         <IssueTile label="Queries with no query tag" loading={loading(client)}
           headline={cRows ? fmtShare(pctOf(qUntagged, qAll)) : null} unit="of queries" missingReason={missingOf(client, p)}
           base={cRows ? `${fmtInt(Math.round(qUntagged))} of ${fmtInt(qAll)} queries on warehouses · ${fmtInt(p.filters.window)} d` : undefined}
-          cause="A query tag lets chargeback name the team." status="neutral" pill={<KindChip>Context</KindChip>} onOpen={() => scrollToAnchor("qt-clients")} openLabel="By client ↓" />
+          cause="A query tag lets chargeback name the team." status="neutral" pill={<KindChip>Context</KindChip>} onOpen={() => scrollToAnchor("qt-client")} openLabel="By client tool ↓" />
         <IssueTile label="Queries by source" loading={loading(prov)} pill={<KindChip>Context</KindChip>} status="neutral"
           headline={srcSorted[0] && qSrcAll > 0 ? fmtShare(pctOf(srcSorted[0].q, qSrcAll)) : null} unit={srcSorted[0] ? `of statements from ${srcSorted[0].name}` : undefined}
           missingReason={missingOf(prov, p)}
           base={srcSorted.length ? `${fmtInt(srcSorted[0].q)} of ${fmtInt(qSrcAll)}${srcSorted.slice(1, 3).map((s) => ` · ${s.name} ${fmtShare(pctOf(s.q, qSrcAll))}`).join("")}` : undefined}
           onOpen={() => scrollToAnchor("qt-source")} openLabel="By source ↓" />
       </Tiles>
-      <Row2>
-        <div id="qt-client">
-          <Panel p={p} src={client} title="Compute by client tool" subtitle={`${priced ? "$" : "credits"} · hatched: no client name`}>
-            <StackedShareBar segments={segs} pareto valueFmt={fmtV} ariaLabel="Compute by client tool" />
-          </Panel>
-        </div>
-        <div id="qt-source">
-          <Panel p={p} src={prov} title="Queries by source" subtitle="queries · average and p95 run time, start to end, queue included">
-            <RankedOrLine items={srcItems} valueFmt={(v) => fmtInt(v)} unitLabel="queries" ariaLabel="Queries by source" emptyText="No queries in this window." onBarClick={openCheck(p, "query_provenance_by_source")} />
-            {pRows && !p95Items.length && <div className="chart-note-oneline">– This export has no p95 for this check: run the export again.</div>}
-          </Panel>
-        </div>
-      </Row2>
-      <div id="qt-clients">
-        <Panel p={p} src={client} title="Clients" subtitle={`${fmtInt(named.length)} client tools${unk ? " + no session record" : ""} · ${priced ? "$" : "credits"} · share of queries with no tag · share that failed · click a row`}>
-          <DrillTable aria="Client tools" n={10}
-            cols={[{ label: "Client" }, { label: "Queries", num: true, width: "auto" }, { label: priced ? "Spend" : "Credits", num: true, width: "auto" }, { label: "Share", width: "minmax(50px, 0.8fr)" }, { label: "No tag", num: true, width: "auto" }, { label: "Failed", num: true, width: "auto" }]}
+      <div id="qt-client">
+        <Panel p={p} src={client} title="Compute by client tool" subtitle={`${fmtV(all)} across ${fmtInt(named.length)} client tools${unk ? " and compute with no session record" : ""} · share of queries with no tag · share that failed · click a row`}>
+          <CxTable aria="Compute by client tool" n={10} noun="rows"
+            cols={[{ label: "Client" }, { label: "Queries", num: true }, { label: `${priced ? "Spend" : "Credits"} · share`, cls: "c-bar" }, { label: "", num: true }, { label: "No tag", num: true }, { label: "Failed", num: true }]}
             rows={clientRows.map((c) => {
               const failedQ = c.rows.reduce((s, r) => s + numOrZero(r.queries) * numOrZero(r.failed_pct) / 100, 0);
+              const st = worstStatus(c.rows);
               return {
-                key: c.name, status: worstStatus(c.rows),
+                key: c.name, status: st === "CRITICAL" || st === "WARN" ? st : "",
                 onOpen: () => DrawerBus.open({ id: "sf_query_by_client_application", col: "client", val: c.rows[0].client != null ? String(c.rows[0].client) : null, label: c.name }),
-                cells: [c.name, fmtInt(c.q), fmtV(c.v), <MiniBar key="b" value={c.v} max={clientMax} hatched={c.name === NO_REC} />, fmtShare(pctOf(c.untagged, c.q)), fmtShare(pctOf(failedQ, c.q))],
+                cells: [c.name, fmtInt(c.q), <CxCellBar key="b" value={c.v} max={clientMax} hatched={c.name === NO_REC} />,
+                  <span key="v"><b>{fmtV(c.v)}</b>{` · ${fmtShare(pctOf(c.v, all))}`}</span>, fmtShare(pctOf(c.untagged, c.q)), fmtShare(pctOf(failedQ, c.q))],
               };
-            })} />
+            })}
+            foot={<span className="cxd-legend"><span><Dot status="WARN" />Warning</span><span><Dot status="CRITICAL" />Critical</span><span><span className="cxd-sw-hatch" />No session record</span></span>} />
         </Panel>
       </div>
-      <Panel p={p} src={mix} title="What each warehouse is used for" subtitle="share of each warehouse's statements, by kind · dot = status">
+      <div id="qt-source">
+        <Panel p={p} src={prov} title="Queries by source" subtitle="Queries, with average and p95 run time from start to end, queueing included">
+          {srcSorted.length ? (
+            <CxTable aria="Queries by source"
+              cols={[{ label: "Source", width: "16%" }, { label: "Queries", cls: "c-bar" }, { label: "", num: true }, { label: "Avg", num: true }, { label: "p95", num: true }]}
+              rows={srcSorted.map((s) => {
+                const p95 = p95Of(s.rows);
+                return {
+                  key: s.name, onOpen: openCheck(p, "query_provenance_by_source"),
+                  cells: [s.name, <CxCellBar key="b" value={s.q} max={srcSorted[0].q} />, <b key="q">{fmtInt(s.q)}</b>, fmtDur(s.q ? s.ms / s.q / 1000 : 0), p95 != null ? fmtDur(p95 / 1000) : "–"],
+                };
+              })} />
+          ) : <div className="chart-note-oneline">No queries in this window.</div>}
+          {pRows && !p95Items.length && <div className="chart-note-oneline">– This export has no p95 for this check: run the export again.</div>}
+        </Panel>
+      </div>
+      <Panel p={p} src={mix} title="What each warehouse is used for" subtitle="Share of each warehouse's statements, by kind · most statements first · dot = status">
+        {mixRows && <div className="blk-legend ac-mix-legend">{MIX.map(([, w, color]) => <span key={w} className="blk-legend-item"><span className="blk-sw" style={{ background: color }} />{w}</span>)}</div>}
         {mixRows && (
-          <DrillTable aria="Statement kinds by warehouse" n={10}
-            cols={[{ label: "Warehouse" }, { label: "Statements", num: true, width: "auto" }, { label: "Read · write · DDL · metadata · procedures · other", width: "minmax(120px, 2fr)" }, { label: "Main", width: "auto" }]}
+          <CxTable aria="Statement kinds by warehouse" n={10} noun="rows"
+            cols={[{ label: "Warehouse", width: "30%" }, { label: "Statements", num: true }, { label: "Mix", cls: "c-bar" }, { label: "Mainly" }]}
             rows={[...mixRows].sort((a, b) => numOrZero(b.queries) - numOrZero(a.queries)).map((r) => ({
-              key: whKey(r), status: r.status,
+              key: whKey(r), status: r.status === "CRITICAL" || r.status === "WARN" ? r.status : "",
               onOpen: () => DrawerBus.open({ id: "sf_use_query_type_mix", col: r.warehouse_id != null ? "warehouse_id" : "warehouse_name", val: r.warehouse_id != null ? String(r.warehouse_id) : r.warehouse_name != null ? String(r.warehouse_name) : null, label: whLabel(r, p) }),
               cells: [r.warehouse_name && r.warehouse_name !== "(no warehouse)" ? whLabel(r, p) : "(no warehouse)", fmtInt(r.queries),
                 <SplitBar key="m" max={100} title={MIX.map(([col, w]) => `${w} ${fmtShare(numOrZero(r[col]))}`).join(" · ")} parts={MIX.map(([col, , color]) => ({ value: numOrZero(r[col]), color }))} />,
-                String(r.main_kind || "–")],
+                MIX_WORD[String(r.main_kind || "").toLowerCase()] || String(r.main_kind || "–")],
             }))} />
         )}
-        {mixRows && <div className="blk-legend">{MIX.map(([, w, color]) => <span key={w} className="blk-legend-item"><span className="blk-sw" style={{ background: color }} />{w}</span>)}</div>}
       </Panel>
     </div>
   );
