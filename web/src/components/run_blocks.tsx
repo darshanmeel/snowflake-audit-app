@@ -6,8 +6,10 @@ import React from "react";
 import { fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { fillDays, numOrZero, useFindingAgg } from "./hooks";
 import { aggNote, whNameId } from "./de_blocks";
-import { CompareToBaseline, RunGrid, StateBandList } from "./blocks_2";
-import type { BaselineRow, Health, RunCell, RunGridRow, StateBandRow } from "./blocks_2";
+import { CompareToBaseline, StateBandList } from "./blocks_2";
+import type { BaselineRow, Health, RunCell, StateBandRow } from "./blocks_2";
+import { CxRunGrid, CxRunLegend } from "./cx_e";
+import type { CxRunRow } from "./cx_e";
 import { registerDrawerBlock } from "./drawer_blocks";
 import type { DrawerBlockProps } from "./drawer";
 import { fmtShare, pctOf } from "./blocks";
@@ -94,23 +96,31 @@ const shortTask = (full: string) => full.split(".").pop() || full;
 export function TaskRunGrid({ load, meta, filters, n = 12, onTask }: {
   load: ReturnType<typeof useTaskRunDays>; meta: Meta | null; filters: Filters; n?: number; onTask?: (t: TaskRuns) => void;
 }) {
+  const [all, setAll] = React.useState(false);
   const note = aggNote(load.state, meta, filters.window);
   if (note) return <div className="chart-note-oneline">{note}</div>;
   const d = load.data!;
   const days = windowDayList(meta, filters.window, d.seen);
   const hit = d.list.filter((t) => t.failed > 0 || t.slow > 0);
   if (!hit.length) return <div className="chart-note-oneline">{`No task run failed or ran slow in the ${fmtInt(d.list.length)} tasks that ran.`}</div>;
-  const rows: RunGridRow[] = hit.slice(0, n).map((t) => ({
+  const rows: CxRunRow[] = hit.slice(0, all ? hit.length : n).map((t) => ({
     key: t.name, name: shortTask(t.name), id: t.id, health: healthOf(t),
     cells: days.map((day) => cellOf(t.days.get(day))),
-    metric: [t.runs > 0 ? `${fmtShare(pctOf(t.failed, t.runs))} failed` : null, t.slow > 0 ? `${fmtInt(t.slow)} slow` : null, t.lastErr ? `err ${t.lastErr}` : null].filter(Boolean).join(" · "),
+    failed: t.runs > 0 ? fmtShare(pctOf(t.failed, t.runs)) : "–",
+    slow: t.slow > 0 ? fmtInt(t.slow) : "–",
+    lastError: t.lastErr ? `err ${t.lastErr}` : "–",
     onClick: onTask ? () => onTask(t) : undefined,
   }));
   const partial = lastIsPartial(meta, days);
+  const more = hit.length - rows.length;
   return (
     <div>
-      <RunGrid days={days} rows={rows} perDay={days.map((day) => d.failedByDay.get(day) || 0)} partialLast={partial} ariaLabel="Task runs by task and day" />
-      <div className="de-more">{`${fmtInt(rows.length)} of ${fmtInt(hit.length)} tasks that failed or ran slow · ${fmtInt(d.list.length)} tasks ran${partial ? " · the last day is partial" : ""} · green ok, red failed, amber slow, grey skipped, hatched no run`}</div>
+      <CxRunLegend />
+      <CxRunGrid days={days} rows={rows} perDay={days.map((day) => d.failedByDay.get(day) || 0)} partialLast={partial} ariaLabel="Task runs by task and day" />
+      <div className="cx-foot">
+        <span>{`${fmtInt(rows.length)} of ${fmtInt(hit.length)} tasks that failed or ran slow · ${fmtInt(d.list.length)} tasks ran${partial ? " · the last day is partial" : ""}`}</span>
+        {(more > 0 || all) && hit.length > n && <button type="button" className="cx-linkbtn" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show ${fmtInt(more)} more`}</button>}
+      </div>
     </div>
   );
 }
