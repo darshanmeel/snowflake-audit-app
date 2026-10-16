@@ -9,9 +9,10 @@ import { FLAGGED_STATUSES, aggTotal, numOrZero, taskName, useFindingAgg, useFind
 import type { DimMaps } from "./hooks";
 import { ChartCard, KindChip, StatusPill, bandOf, bandPillKind } from "./primitives";
 import { COST_MONEY_COL } from "./tab_registry";
-import { DrillTable, MiniBar } from "./drill_table";
+import { DrillTable } from "./drill_table";
+import { CellBar, CxTable, FqnText, SevWord, ShowRows } from "./cx_b";
 import { DrawerBus } from "./drawer";
-import { DivergingBars, rowLabelWidth } from "./charts_more";
+import { rowLabelWidth } from "./charts_more";
 import { truncateLeft, useChartWidth } from "./charts";
 import { notAssessedText } from "./scope";
 import { scrollToAnchor, windowShortLabel } from "./overview_tile";
@@ -1272,7 +1273,6 @@ export function PlServerlessFeature(p: ApPageProps) {
   const clus = useOtherCheck(p, "sf_storage_clustering_value");
   const spendAgg = useFindingAgg("cost_dollarized_by_service_day", p.filters.window, p.filters.accountIds as any, ["usage_date"], "sum", COST_MONEY_COL) as FetchState;
   const acctSpend = spendAgg.phase === "ready" && spendAgg.outcome === "ok_rows" && spendAgg.data ? aggTotal(spendAgg.data) : null;
-  const win = `${fmtInt(p.filters.window)} d`;
   const nowCol = c0.priced ? "est_current_usd_list" : "current_credits";
   const prevCol = c0.priced ? "est_previous_usd_list" : "previous_credits";
   const val = (r: Row, col: string) => (c0.priced ? usd(c0, r, col) : numOrZero(r[col]));
@@ -1300,75 +1300,101 @@ export function PlServerlessFeature(p: ApPageProps) {
   const clusFlag = clus.rows ? clus.rows.filter(isFlagged).length : null;
 
   const lede = c0.loading ? "…" : now > 0
-    ? `${fmtV(now)} on ${fmtInt(feats.length)} serverless features${ch != null ? `, ${signedPct(ch)} in ${win}` : ""}. ${feats[0] ? `${feats[0][0]} is the largest.` : ""}`
+    ? `${fmtInt(feats.length)} serverless features cost ${fmtV(now)} in the last ${fmtInt(p.filters.window)} days${ch != null ? `, ${ch >= 0 ? "up" : "down"} ${fmtShare(Math.abs(ch))}` : ""}.${feats[0] ? ` ${feats[0][0]} is the largest, at ${fmtV(feats[0][1].now)}.` : ""}`
     : null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const objRows = [...objects].sort((a, b) => val(b, nowCol) - val(a, nowCol));
   const objMax = objRows.length ? val(objRows[0], nowCol) : 1;
+  const live = feats.filter(([, v]) => v.now > 0);
+  // Six features by name, the rest as one grey row; bars scale to the largest.
+  const featRows = live.slice(0, 6).map(([k, v]) => ({ k, ...v, other: false }));
+  if (live.length > 6) {
+    const rest = live.slice(6);
+    featRows.push({ k: `Other (${fmtInt(rest.length)})`, now: rest.reduce((s, [, v]) => s + v.now, 0), prev: rest.reduce((s, [, v]) => s + v.prev, 0), other: true });
+  }
+  const pcOf = (n: number, pv: number) => (pv > 0 ? ((n - pv) / pv) * 100 : null);
+  const fastest = [...live].filter(([, v]) => v.prev > 0).sort((a, b) => numOrZero(pcOf(b[1].now, b[1].prev)) - numOrZero(pcOf(a[1].now, a[1].prev)))[0];
+  const movers = c0.rows.map((r) => ({ r, d: val(r, nowCol) - val(r, prevCol) })).filter((m) => Math.abs(m.d) >= 0.5)
+    .sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 8);
+  const moveMax = Math.max(1, ...movers.map((m) => Math.abs(m.d)));
+  const signedV = (v: number) => `${v >= 0 ? "+" : "−"}${fmtV(Math.abs(v))}`;
   return (
-    <div className="sx-page">
+    <div className="sx-page ac-page">
       <Tiles4>
-        <PlTile c={c0} open={scrollTo("sv-feature")} label={`Serverless spend · ${win}`} make={() => now > 0 ? {
-          headline: fmtV(now), pill: <KindChip>Context</KindChip>, status: "neutral",
-          base: [acctSpend && c0.priced ? `${fmtShare(pctOf(now, acctSpend))} of ${usd0(acctSpend)}` : null, `${fmtInt(objects.length)} serverless objects`, `${fmtInt(feats.length)} features`].filter(Boolean).join(" · "),
-          cause: "No warehouse behind any of it: each feature bills its own credits.", openLabel: "By feature ↓",
+        <PlTile c={c0} open={scrollTo("sv-feature")} label="Serverless spend" make={() => now > 0 ? {
+          headline: fmtV(now), status: "neutral",
+          base: `${[`Last ${fmtInt(p.filters.window)} days`, acctSpend && c0.priced ? `${fmtShare(pctOf(now, acctSpend))} of ${usd0(acctSpend)} total spend` : null, `${fmtInt(objects.length)} objects across ${fmtInt(feats.length)} features`].filter(Boolean).join(" · ")}.`,
+          cause: "Billed as serverless credits, not through a warehouse.", openLabel: "By feature ↓",
         } : null} />
-        <PlTile c={c0} open={scrollTo("sv-movers")} label={`Change vs previous ${win}`} make={(c) => ch == null ? null : {
-          headline: signedPct(ch), unit: `vs previous ${win}`, status: tileStatus(c.rows.filter(isFlagged)),
-          base: `${now - prev >= 0 ? "+" : "−"}${fmtV(Math.abs(now - prev))} · ${fmtInt(risen.length)} of ${fmtInt(cn.population ?? objects.length)} objects rose · change, not waste`,
-          openLabel: "Biggest movers ↓",
+        <PlTile c={c0} open={scrollTo("sv-movers")} label="Change" make={(c) => ch == null ? null : {
+          headline: signedPct(ch), status: tileStatus(c.rows.filter(isFlagged)),
+          base: `Vs previous ${fmtInt(p.filters.window)} days: ${now - prev >= 0 ? "+" : "−"}${fmtV(Math.abs(now - prev))} · ${fmtInt(risen.length)} of ${fmtInt(cn.population ?? objects.length)} objects rose.`,
+          cause: "A change in spend, not waste.", openLabel: "Biggest movers ↓",
         }} />
         <PlTile c={c0} open={() => p.goTo({ tab: p.area, subtab: "clustering" })} label="Auto clustering" make={() => ac && now > 0 ? {
-          headline: fmtShare(pctOf(ac[1].now, now)), unit: "of serverless $", status: clus.rows ? tileStatus(clus.rows.filter(isFlagged)) : "neutral",
-          base: [fmtV(ac[1].now), clus.rows ? `${fmtInt(clusFlag)} of ${fmtInt(clus.rows.length)} clustered tables flagged` : null].filter(Boolean).join(" · "),
+          headline: fmtV(ac[1].now), status: clus.rows ? tileStatus(clus.rows.filter(isFlagged)) : "neutral",
+          base: `${fmtShare(pctOf(ac[1].now, now))} of serverless spend${clus.rows ? ` · ${fmtInt(clusFlag)} of ${fmtInt(clus.rows.length)} clustered tables flagged` : ""}.`,
           openLabel: "Clustering →",
         } : null} />
         <PlTile c={of} open={open("sf_cost_openflow_spend")} label="Openflow runtimes billing every hour" make={(c) => runtimes.length ? {
           headline: `${fmtInt(ofFlag.length)} of ${fmtInt(runtimes.length)}`, unit: "runtimes", status: tileStatus(c.rows.filter(isFlagged)),
-          base: `${c.priced ? usd0(ofUsd) : "–"} Openflow spend · context`,
+          base: `${c.priced ? usd0(ofUsd) : "–"} Openflow spend in total, as context.`,
           cause: ofFlag[0] ? `${nameId(ofFlag[0].runtime_name, ofFlag[0].runtime_key)}: ${ofFlag[0].reasons || "bills every hour"}.` : "A runtime bills while it is up, flows or not.",
         } : null} />
       </Tiles4>
-      <Grid>
+      <div className="cx-row">
         <div id="sv-feature">
-          <PlCard c={c0} open={open("sf_cost_serverless_features")} title="Spend by feature" subtitle={`share of serverless spend · change vs the previous ${win} in the legend`}>
-            {() => {
-              const live = feats.filter(([, v]) => v.now > 0);
-              if (!live.length) return null;
-              const segs = live.map(([k, v]) => {
-                const pc = v.prev > 0 ? ((v.now - v.prev) / v.prev) * 100 : null;
-                return { key: k, label: pc === null ? `${k} (new)` : `${k} ${signedPct(pc)}`, value: v.now };
-              });
-              return <StackedShareBar segments={segs} height={26} pareto valueFmt={fmtV} ariaLabel="Serverless spend by feature" />;
-            }}
+          <PlCard c={c0} open={open("sf_cost_serverless_features")} title="Spend by feature" subtitle={`${fmtV(now)} across ${fmtInt(live.length)} features · change vs previous ${fmtInt(p.filters.window)} days`}>
+            {() => !featRows.length ? null : (
+              <CxTable aria="Serverless spend by feature" phone={{ cols: [0, 2, 3, 4], widths: "minmax(0, 1fr) 64px 44px 52px" }} minWidth={420}
+                cols={[{ label: "Feature", width: "minmax(130px, 1.2fr)" }, { label: "", width: "minmax(60px, 1fr)" }, { label: "Spend", width: "72px", num: true }, { label: "Share", width: "52px", num: true }, { label: "Vs prev.", width: "64px", num: true }]}
+                rows={featRows.map((f) => {
+                  const pc = pcOf(f.now, f.prev);
+                  return {
+                    key: f.k,
+                    cells: [f.k, <CellBar key="b" value={f.now} max={featRows[0].now} color={f.other ? "var(--c-other)" : undefined} />, <b key="s">{fmtV(f.now)}</b>,
+                      <span key="h" className="cx-muted">{fmtShare(pctOf(f.now, now))}</span>,
+                      <span key="c" className={pc != null && pc > 0 ? "cx-up" : "cx-muted"}>{f.other ? "–" : pc == null ? "new" : signedPct(pc)}</span>],
+                  };
+                })}
+                foot={fastest && pcOf(fastest[1].now, fastest[1].prev) != null && numOrZero(pcOf(fastest[1].now, fastest[1].prev)) > 0
+                  ? <span className="cx-muted">{`${fastest[0]} grew fastest, ${signedPct(pcOf(fastest[1].now, fastest[1].prev))}.${live.length > 6 ? ` Other is ${fmtInt(live.length - 6)} smaller feature${live.length - 6 === 1 ? "" : "s"}.` : ""}`}</span> : undefined} />
+            )}
           </PlCard>
         </div>
         <div id="sv-movers">
-          <PlCard c={c0} open={open("sf_cost_serverless_features")} title="Biggest movers" subtitle={`objects by change vs the previous ${win}`}>
-            {(c) => {
-              const items = c.rows.map((r) => ({
-                name: `${nameId(r.object_name, r.object_id)} · ${featureWord(r.feature).toLowerCase()}`,
-                value: val(r, nowCol) - val(r, prevCol),
-              })).filter((it) => Math.abs(it.value) >= 0.5);
-              return items.length ? <DivergingBars items={items} n={8} valueFmt={(v: number) => `${v >= 0 ? "+" : "−"}${fmtV(Math.abs(v))}`} unitLabel={c.priced ? "$ change" : "credits change"} ariaLabel="Serverless spend change by object" /> : null;
-            }}
+          <PlCard c={c0} open={open("sf_cost_serverless_features")} title="Biggest movers" subtitle={`Top ${fmtInt(movers.length)} objects by change vs previous ${fmtInt(p.filters.window)} days${movers.length && movers.every((m) => m.d > 0) ? " · all rose" : ""}`}>
+            {() => !movers.length ? null : (
+              <CxTable aria="Serverless spend change by object" phone={{ cols: [0, 2], widths: "minmax(0, 1fr) 64px" }} minWidth={400}
+                cols={[{ label: "Object", width: "minmax(200px, 2.2fr)" }, { label: "", width: "minmax(50px, 1fr)" }, { label: "Change", width: "72px", num: true }]}
+                rows={movers.map(({ r, d }) => ({
+                  key: `${r.account_id}|${r.feature}|${r.object_id ?? r.object_name}`,
+                  onOpen: openRow("sf_cost_serverless_features", "object_id", r.object_id, nameId(r.object_name, r.object_id)),
+                  cells: [<span key="n"><FqnText text={nameId(r.object_name, r.object_id)} /><span className="cx-sub">{featureWord(r.feature)}</span></span>,
+                    <CellBar key="b" value={Math.abs(d)} max={moveMax} color={d >= 0 ? "var(--c2)" : "var(--c3)"} />,
+                    <b key="v" className={d >= 0 ? "cx-up" : undefined}>{signedV(d)}</b>],
+                }))} />
+            )}
           </PlCard>
         </div>
-      </Grid>
-      <PlCard c={c0} open={open("sf_cost_serverless_features")} title="Serverless objects, by spend" subtitle={`${fmtInt(objects.length)} objects · click a row for its days and the fix`}>
+      </div>
+      <PlCard c={c0} open={open("sf_cost_serverless_features")} title="Serverless objects, by spend" subtitle={`${fmtInt(objects.length)} objects · bars on one scale · open a row for its days and the fix`}>
         {() => (
-          <DrillTable aria="Serverless objects by spend" n={10}
-            cols={[{ label: "Object" }, { label: "Feature", width: "minmax(90px, auto)" }, { label: `Spend · ${win}`, num: true, width: "auto" }, { label: "vs prev.", num: true, width: "auto" }, { label: "Share", width: "minmax(50px, 0.8fr)" }]}
-            rows={objRows.map((r) => {
-              const delta = val(r, nowCol) - val(r, prevCol);
-              return {
-                key: `${r.account_id}|${r.feature}|${r.object_id ?? r.object_name}`, status: rowStatus(r),
-                onOpen: openRow("sf_cost_serverless_features", "object_id", r.object_id, nameId(r.object_name, r.object_id)),
-                cells: [nameId(r.object_name, r.object_id), featureWord(r.feature).toLowerCase(), fmtV(val(r, nowCol)), `${delta >= 0 ? "+" : "−"}${fmtV(Math.abs(delta))}`,
-                  <MiniBar key="b" value={val(r, nowCol)} max={objMax} />],
-              };
-            })} />
+          <ShowRows n={10} total={objRows.length} noun="more">{(k) => (
+            <CxTable aria="Serverless objects by spend" phone={{ cols: [1, 3], widths: "minmax(0, 1fr) 64px" }} minWidth={820}
+              cols={[{ label: "Flag", width: "92px" }, { label: "Object", width: "minmax(240px, 2fr)" }, { label: "Feature", width: "minmax(130px, 1fr)" }, { label: "Spend", width: "76px", num: true }, { label: "Vs prev.", width: "68px", num: true }, { label: "Share of top object", width: "minmax(110px, 1fr)" }]}
+              rows={objRows.slice(0, k).map((r) => {
+                const delta = val(r, nowCol) - val(r, prevCol);
+                return {
+                  key: `${r.account_id}|${r.feature}|${r.object_id ?? r.object_name}`,
+                  onOpen: openRow("sf_cost_serverless_features", "object_id", r.object_id, nameId(r.object_name, r.object_id)),
+                  cells: [<SevWord key="s" band={rowStatus(r)} />, <FqnText key="n" text={nameId(r.object_name, r.object_id)} />, featureWord(r.feature),
+                    <b key="v">{fmtV(val(r, nowCol))}</b>, <span key="d" className={delta > 0.5 ? "cx-up" : "cx-muted"}>{signedV(delta)}</span>,
+                    <CellBar key="b" value={val(r, nowCol)} max={objMax} />],
+                };
+              })} />
+          )}</ShowRows>
         )}
       </PlCard>
     </div>
@@ -1400,8 +1426,10 @@ export function PlServerlessClustering(p: ApPageProps) {
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cvMax = Math.max(1, ...cv.rows.map((r) => usd(cv, r, "est_clustering_usd_list")));
+  const cvOk = cv.rows.filter((r) => rowStatus(r) === "OK");
+  const kmOffN = km.rows.filter((r) => falsy(r.key_matches)).length;
   return (
-    <div className="sx-page">
+    <div className="sx-page ac-page">
       <Tiles>
         <PlTile c={cv} open={scrollTo("sc-reads")} label="Clustering $ on flagged tables" make={(c) => {
           if (!c.priced) return { headline: null, missingReason: "No $/credit price in this export." };
@@ -1409,7 +1437,7 @@ export function PlServerlessClustering(p: ApPageProps) {
           const n = counts(c, "clustered tables");
           return {
             headline: fmtShare(pctOf(usdSum(c, cvFlag, "est_clustering_usd_list"), cvTotal)), unit: "of clustering $",
-            base: `${usd0(usdSum(c, cvFlag, "est_clustering_usd_list"))} spend · ${fmtInt(n.flagged)}${ofPop(n)} · ${win}`,
+            base: `${usd0(usdSum(c, cvFlag, "est_clustering_usd_list"))} of ${usd0(cvTotal)} is on ${fmtInt(n.flagged)}${ofPop(n)} flagged · ${win}.`,
             cause: worst && num(worst.usd_per_read) !== null ? `Worst: ${nameId(worst.table_fqn, worst.table_id)}, ${usdRate(usd(c, worst, "usd_per_read"))} of re-sorting for each read.` : undefined,
             status: tileStatus(cvFlag), openLabel: "Cost vs reads ↓",
           };
@@ -1419,86 +1447,69 @@ export function PlServerlessClustering(p: ApPageProps) {
           if (kmTotal <= 0) return null;
           return {
             headline: fmtShare(pctOf(kmOffUsd, kmTotal)), unit: "of clustering $",
-            base: `${usd0(kmOffUsd)} of ${usd0(kmTotal)} · ${fmtInt(kmOff.length)} of ${fmtInt(c.rows.length)} tables`,
+            base: `${usd0(kmOffUsd)} of ${usd0(kmTotal)} · ${fmtInt(kmOff.length)} of ${fmtInt(c.rows.length)} tables.`,
             cause: "The key is not the column most queries filter on, so the sort prunes nothing.", status: kmOff.length ? tileStatus(c.rows.filter(isFlagged)) : "ok", openLabel: "Key vs filter ↓",
           };
         }} />
         <PlTile c={cv} open={neverRead[0] ? openRow("sf_storage_clustering_value", "table_id", neverRead[0].table_id, nameId(neverRead[0].table_fqn, neverRead[0].table_id)) : open("sf_storage_clustering_value")} label="Reclustered, never read" make={(c) => c.rows.length ? {
           headline: fmtInt(neverRead.length), unit: `of ${fmtInt(c.rows.length)} tables`, status: neverRead.length ? tileStatus(neverRead) : "ok",
-          base: neverRead.length ? [c.priced ? `${usd0(usdSum(c, neverRead, "est_clustering_usd_list"))} spend` : null, `0 reads in ${win}`, nameId(neverRead[0].table_fqn, neverRead[0].table_id)].filter(Boolean).join(" · ") : "every clustered table was read",
+          base: neverRead.length ? `${[c.priced ? `${usd0(usdSum(c, neverRead, "est_clustering_usd_list"))} spend` : null, `0 reads in ${win}`].filter(Boolean).join(", ")}: ${nameId(neverRead[0].table_fqn, neverRead[0].table_id)}.` : "Every clustered table was read.",
           cause: neverRead.length ? "Suspend reclustering today: nothing benefits." : undefined, openLabel: neverRead.length ? "The fix →" : "Open check →",
         } : null} />
       </Tiles>
-      <Grid>
-        <div id="sc-reads">
-          <PlCard c={cv} open={open("sf_storage_clustering_value")} title="Clustering $ vs the reads that benefit" subtitle="by table · clustering $ · reads · $ per read">
-            {(c) => {
-              const col = c.priced ? "est_clustering_usd_list" : "clustering_credits";
-              const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r[col]) > 0).map((r) => {
-                const v = c.priced ? usd(c, r, col) : numOrZero(r[col]);
+      <div id="sc-reads">
+        <PlCard c={cv} open={open("sf_storage_clustering_value")} title="Clustering $ vs the reads that benefit"
+          subtitle={`${fmtInt(cv.rows.length)} clustered tables, ${fmtInt(cvFlag.length)} flagged · what each pays to stay sorted, and what it gets back · open a table for its days`}>
+          {(c) => (
+            <CxTable aria="Clustering cost vs reads, by table" phone={{ cols: [1, 3, 6], widths: "minmax(0, 1fr) 56px 64px" }} minWidth={860}
+              cols={[{ label: "Status", width: "92px" }, { label: "Table", width: "minmax(240px, 2fr)" }, { label: "Rewritten", width: "84px", num: true }, { label: `$ · ${win}`, width: "72px", num: true },
+                { label: "", width: "minmax(80px, 1.2fr)" }, { label: "Reads", width: "60px", num: true }, { label: "$ per read", width: "80px", num: true }]}
+              rows={[...c.rows].sort((a, b) => usd(c, b, "est_clustering_usd_list") - usd(c, a, "est_clustering_usd_list")).map((r) => {
+                const v = usd(c, r, "est_clustering_usd_list");
+                const reads = numOrZero(r.read_queries);
                 const per = num(r.usd_per_read);
                 return {
-                  key: `${r.account_id}|${r.table_id}`, name: nameId(r.table_fqn, r.table_id), value: v, status: rowStatus(r), table_id: r.table_id,
-                  valueText: `${c.priced ? usd0(v) : `${fmtInt(v)} credits`} · ${fmtInt(r.read_queries)} reads${c.priced && per !== null ? ` · ${usdRate(per * (1 - c.disc))}/read` : ""}`,
+                  key: `${r.account_id}|${r.table_id}`,
+                  onOpen: openRow("sf_storage_clustering_value", "table_id", r.table_id, nameId(r.table_fqn, r.table_id)),
+                  cells: [<SevWord key="s" band={rowStatus(r)} />, <FqnText key="n" text={nameId(r.table_fqn, r.table_id)} />,
+                    r.bytes_reclustered != null ? fmtBytes(r.bytes_reclustered) : "–",
+                    <b key="v">{c.priced ? usd0(v) : `${fmtInt(r.clustering_credits)} cr`}</b>, <CellBar key="b" value={v} max={cvMax} />, fmtInt(reads),
+                    reads === 0 ? <span key="p" className="cx-crit">No reads</span> : per !== null && c.priced ? usdRate(per * (1 - c.disc)) : "–"],
                 };
-              });
-              return items.length ? <StatusBars items={items} n={10} ariaLabel="Clustering cost vs reads by table"
-                onBarClick={(it) => DrawerBus.open({ id: "sf_storage_clustering_value", col: "table_id", val: String(it.table_id), label: it.name })} /> : null;
-            }}
-          </PlCard>
-        </div>
-        <div id="sc-key">
-          <PlCard c={km} open={open("sf_storage_clustering_key_mismatch")} title="Clustering key vs the column queries filter on" subtitle="from the WHERE and JOIN columns of each table's queries · amber = mismatch">
-            {(c) => (
-              <DrillTable aria="Clustering key vs top filter column" n={8}
-                cols={[{ label: "Table" }, { label: "Clustering key", width: "minmax(80px, 1fr)" }, { label: "Top filter", width: "minmax(80px, 1fr)" }, { label: `$ · ${win}`, num: true, width: "auto" }]}
-                rows={[...c.rows].sort((a, b) => usd(c, b, "est_clustering_usd_list") - usd(c, a, "est_clustering_usd_list")).map((r) => ({
-                  key: `${r.account_id}|${r.table_id}`, status: rowStatus(r),
+              })}
+              foot={c.priced && cvTotal > 0 ? <span className="cx-muted">{`Total ${usd0(cvTotal)} across ${fmtInt(c.rows.length)} tables.${cvOk.length ? ` ${cvOk.length === 1 ? "Only " : ""}${cvOk.map((r) => nameId(r.table_fqn, r.table_id)).slice(0, 3).join(", ")}${cvOk.length > 3 ? ` and ${fmtInt(cvOk.length - 3)} more` : ""} ${cvOk.length === 1 ? "earns its" : "earn their"} clustering.` : ""}`}</span> : undefined} />
+          )}
+        </PlCard>
+      </div>
+      <div id="sc-key">
+        <PlCard c={km} open={open("sf_storage_clustering_key_mismatch")} title="Clustering key vs the column queries filter on"
+          subtitle={`Top filter column from the WHERE and JOIN clauses of each table's queries · ${fmtInt(kmOffN)} of ${fmtInt(km.rows.length)} tables mismatched`}>
+          {(c) => (
+            <CxTable aria="Clustering key vs top filter column" phone={{ cols: [0, 3], widths: "minmax(0, 1fr) 84px" }} minWidth={760}
+              cols={[{ label: "Table", width: "minmax(240px, 2fr)" }, { label: "Clustering key", width: "minmax(130px, 1fr)" }, { label: "Top filter", width: "minmax(120px, 1fr)" }, { label: "Key vs filter", width: "110px" }, { label: `$ · ${win}`, width: "76px", num: true }]}
+              rows={[...c.rows].sort((a, b) => usd(c, b, "est_clustering_usd_list") - usd(c, a, "est_clustering_usd_list")).map((r) => {
+                const key = keyOf.get(`${r.account_id}|${r.table_id}`);
+                const verdict = truthy(r.key_matches) ? "match" : falsy(r.key_matches) ? "mismatch" : null;
+                return {
+                  key: `${r.account_id}|${r.table_id}`,
                   onOpen: openRow("sf_storage_clustering_key_mismatch", "table_id", r.table_id, nameId(r.table_fqn, r.table_id)),
-                  cells: [nameId(r.table_fqn, r.table_id), String(keyOf.get(`${r.account_id}|${r.table_id}`) || "–"),
-                    r.top_filter_column ? chip(`${r.top_filter_column} · ${truthy(r.key_matches) ? "matches" : falsy(r.key_matches) ? "mismatch" : "?"}`, falsy(r.key_matches) ? "WARN" : "OK") : "no filter data",
-                    c.priced ? usd0(usd(c, r, "est_clustering_usd_list")) : `${fmtInt(r.clustering_credits)} credits`],
-                }))} />
-            )}
-          </PlCard>
-        </div>
-      </Grid>
-      <PlCard c={cv} open={open("sf_storage_clustering_value")} title="Clustered tables" subtitle={`${fmtInt(cvFlag.length)} of ${fmtInt(cv.rows.length)} flagged · what each pays to stay sorted, and what it gets back · click a table`}>
-        {(c) => (
-          <DrillTable aria="Clustered tables" n={10}
-            cols={[{ label: "Table" }, { label: "Rewritten", num: true, width: "auto" }, { label: `$ · ${win}`, num: true, width: "auto" }, { label: "", width: "minmax(40px, 0.8fr)" }, { label: "Reads", num: true, width: "auto" }, { label: "Status", width: "minmax(80px, auto)" }]}
-            rows={[...c.rows].sort((a, b) => usd(c, b, "est_clustering_usd_list") - usd(c, a, "est_clustering_usd_list")).map((r) => {
-              const v = usd(c, r, "est_clustering_usd_list");
-              const reads = numOrZero(r.read_queries);
-              const per = num(r.usd_per_read);
-              return {
-                key: `${r.account_id}|${r.table_id}`, status: rowStatus(r),
-                onOpen: openRow("sf_storage_clustering_value", "table_id", r.table_id, nameId(r.table_fqn, r.table_id)),
-                cells: [nameId(r.table_fqn, r.table_id), r.bytes_reclustered != null ? fmtBytes(r.bytes_reclustered) : "–", c.priced ? usd0(v) : `${fmtInt(r.clustering_credits)} credits`,
-                  <MiniBar key="b" value={v} max={cvMax} />, fmtInt(reads),
-                  chip(reads === 0 ? "0 reads" : per !== null && c.priced ? `${usdRate(per * (1 - c.disc))}/read` : rowStatus(r) === "OK" ? "pays back" : "flagged", rowStatus(r))],
-              };
-            })} />
-        )}
-      </PlCard>
+                  cells: [<FqnText key="n" text={nameId(r.table_fqn, r.table_id)} />,
+                    key ? <span key="k" className="cx-token cx-code">{String(key).replace(/^\(|\)$/g, "")}</span> : <span key="k" className="cx-muted">–</span>,
+                    r.top_filter_column ? <span key="f" className="cx-token cx-code">{String(r.top_filter_column)}</span> : <span key="f" className="cx-muted">no filter data</span>,
+                    verdict === "match" ? <span key="v" className="cx-sev cx-sev-ok"><span className="cx-sev-dot" aria-hidden="true" />Match</span>
+                      : verdict === "mismatch" ? <span key="v" className="cx-sev cx-sev-warn"><span className="cx-sev-dot" aria-hidden="true" />Mismatch</span>
+                      : <span key="v" className="cx-muted">–</span>,
+                    <b key="u">{c.priced ? usd0(usd(c, r, "est_clustering_usd_list")) : `${fmtInt(r.clustering_credits)} cr`}</b>],
+                };
+              })} />
+          )}
+        </PlCard>
+      </div>
     </div>
   );
 };
 PlServerlessClustering.ownsTiles = true;
 (PlServerlessClustering as any).ownsLede = true;
-
-/** Refresh or maintenance $ per object, with its reads and $ per read. */
-function costVsReads(c: PlCheck, rows: Row[], usdCol: string, creditCol: string, name: (r: Row) => string, extra?: (r: Row) => string): StatusBarItem[] {
-  const col = c.priced ? usdCol : creditCol;
-  return rows.filter((r) => numOrZero(r[col]) > 0).map((r) => {
-    const v = c.priced ? usd(c, r, col) : numOrZero(r[col]);
-    const reads = numOrZero(r.read_queries);
-    return {
-      key: `${r.account_id}|${name(r)}`, name: name(r), value: v, status: rowStatus(r),
-      valueText: `${c.priced ? usd0(v) : `${fmtInt(v)} credits`} · ${fmtInt(reads)} reads${c.priced && reads > 0 ? ` · ${usdRate(v / reads)}/read` : ""}${extra ? extra(r) : ""}`,
-    };
-  });
-}
 
 export function PlServerlessMvso(p: ApPageProps) {
   const d = usePlData(p, ["sf_storage_mv_value", "sf_storage_search_optimization_value"]);
@@ -1517,63 +1528,82 @@ export function PlServerlessMvso(p: ApPageProps) {
     : null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const flaggedObjs = [
-    ...mvFlag.map((r) => ({ r, kind: "MV", id: "sf_storage_mv_value", col: "mv_id", key: r.mv_id, name: nameId(r.mv_fqn || r.mv_name, r.mv_id), v: usd(mv, r, "est_refresh_usd_list"), per: perRead(mv, r, "est_refresh_usd_list"),
-      tag: numOrZero(r.read_queries) === 0 ? "0 reads" : `${fmtInt(r.refreshes)} : ${fmtInt(r.read_queries)}` })),
-    ...soFlag.map((r) => ({ r, kind: "SO", id: "sf_storage_search_optimization_value", col: "table_id", key: r.table_id, name: nameId(r.table_fqn, r.table_id), v: usd(so, r, "est_search_optimization_usd_list"), per: perRead(so, r, "est_search_optimization_usd_list"),
-      tag: numOrZero(r.read_queries) === 0 ? "0 reads" : `${fmtInt(r.scans_helped)} helped` })),
-  ].sort((a, b) => b.v - a.v);
+  const mvCol = mv.priced ? "est_refresh_usd_list" : "refresh_credits";
+  const soCol = so.priced ? "est_search_optimization_usd_list" : "search_optimization_credits";
+  const mvV = (r: Row) => (mv.priced ? usd(mv, r, mvCol) : numOrZero(r[mvCol]));
+  const soV = (r: Row) => (so.priced ? usd(so, r, soCol) : numOrZero(r[soCol]));
+  const mvSorted = mv.rows.filter((r) => numOrZero(r[mvCol]) > 0).sort((a, b) => mvV(b) - mvV(a));
+  const soSorted = so.rows.filter((r) => numOrZero(r[soCol]) > 0).sort((a, b) => soV(b) - soV(a));
+  const money = (c: PlCheck, v: number) => (c.priced ? usd0(v) : `${fmtInt(v)} cr`);
+  const perReadText = (c: PlCheck, v: number, reads: number) => (reads > 0 && c.priced ? usdRate(v / reads) : "–");
   return (
-    <div className="sx-page">
+    <div className="sx-page ac-page">
       <Tiles>
-        <PlTile c={mv} open={scrollTo("sm-mv")} label="MVs refreshed more than they are read" make={(c) => c.rows.length ? {
+        <PlTile c={mv} open={scrollTo("sm-mv")} label="MVs refreshed more than read" make={(c) => c.rows.length ? {
           headline: fmtInt(mvFlag.length), unit: `of ${fmtInt(c.rows.length)} materialized views`, status: tileStatus(mvFlag),
-          base: c.priced ? `${usd0(usdSum(c, mvFlag, "est_refresh_usd_list"))} of ${usd0(mvAll)} MV refresh $ · ${win} · spend` : `${fmtInt(mvFlag.length)} flagged`,
-          cause: worstMv ? `Worst: ${nameId(worstMv.mv_fqn || worstMv.mv_name, worstMv.mv_id)}, ${fmtInt(worstMv.refreshes)} refreshes for ${fmtInt(worstMv.read_queries)} reads.` : undefined,
-          openLabel: "MV refresh $ vs reads ↓",
+          base: c.priced ? `${usd0(usdSum(c, mvFlag, "est_refresh_usd_list"))} of the ${usd0(mvAll)} spent on MV refresh · ${win}.` : `${fmtInt(mvFlag.length)} flagged.`,
+          cause: worstMv ? `Worst: ${nameId(worstMv.mv_fqn || worstMv.mv_name, worstMv.mv_id)}, refreshed ${fmtInt(worstMv.refreshes)} times for ${fmtInt(worstMv.read_queries)} reads.` : undefined,
+          openLabel: "MV refresh vs reads ↓",
         } : null} />
-        <PlTile c={so} open={scrollTo("sm-so")} label="Search optimization with little use" make={(c) => c.rows.length ? {
+        <PlTile c={so} open={scrollTo("sm-so")} label="Search optimization, little use" make={(c) => c.rows.length ? {
           headline: fmtInt(soFlag.length), unit: `of ${fmtInt(c.rows.length)} tables`, status: tileStatus(soFlag),
-          base: c.priced ? `${usd0(usdSum(c, soFlag, "est_search_optimization_usd_list"))} of ${usd0(soAll)} search optimization $ · ${win} · spend` : `${fmtInt(soFlag.length)} flagged`,
+          base: c.priced ? `${usd0(usdSum(c, soFlag, "est_search_optimization_usd_list"))} of the ${usd0(soAll)} spent on search optimization · ${win}.` : `${fmtInt(soFlag.length)} flagged.`,
           cause: soFlag[0] ? `${nameId(soFlag[0].table_fqn, soFlag[0].table_id)}: ${fmtInt(soFlag[0].scans_helped)} scans helped in ${fmtInt(soFlag[0].read_queries)} reads.` : undefined,
-          openLabel: "Search $ vs reads ↓",
+          openLabel: "Search optimization vs reads ↓",
         } : null} />
         <PlTile c={so} open={pays[0] ? openRow("sf_storage_search_optimization_value", "table_id", pays[0].table_id, nameId(pays[0].table_fqn, pays[0].table_id)) : open("sf_storage_search_optimization_value")} label="Search optimization that pays" make={(c) => c.rows.length ? {
-          headline: fmtInt(pays.length), unit: `of ${fmtInt(c.rows.length)} tables`, pill: <KindChip>Context</KindChip>, status: "neutral",
-          base: pays[0] ? [nameId(pays[0].table_fqn, pays[0].table_id), `${fmtInt(pays[0].scans_helped)} scans helped`, c.priced && perRead(c, pays[0], "est_search_optimization_usd_list") != null ? `${usdRate(perRead(c, pays[0], "est_search_optimization_usd_list")!)} a read` : null].filter(Boolean).join(" · ") : "no table had a scan helped",
+          headline: fmtInt(pays.length), unit: `of ${fmtInt(c.rows.length)} tables`, status: "neutral",
+          base: pays[0] ? `${nameId(pays[0].table_fqn, pays[0].table_id)}: ${fmtInt(pays[0].scans_helped)} scans helped.` : "No table had a scan helped.",
+          cause: pays[0] && c.priced && perRead(c, pays[0], "est_search_optimization_usd_list") != null ? `${usd0(usd(c, pays[0], "est_search_optimization_usd_list"))} in ${win}, or ${usdRate(perRead(c, pays[0], "est_search_optimization_usd_list")!)} a read.` : undefined,
           openLabel: "Compare →",
         } : null} />
       </Tiles>
-      <Grid>
-        <div id="sm-mv">
-          <PlCard c={mv} open={open("sf_storage_mv_value")} title="MV refresh $ vs reads" subtitle="by materialized view · refresh $ · reads · $ per read">
-            {(c) => {
-              const items = costVsReads(c, c.rows, "est_refresh_usd_list", "refresh_credits", (r) => nameId(r.mv_fqn || r.mv_name, r.mv_id));
-              return items.length ? <StatusBars items={items} n={10} ariaLabel="MV refresh cost vs reads" /> : null;
-            }}
-          </PlCard>
-        </div>
-        <div id="sm-so">
-          <PlCard c={so} open={open("sf_storage_search_optimization_value")} title="Search optimization $ vs reads" subtitle="by table · maintenance $ · reads · scans it actually helped">
-            {(c) => {
-              const items = costVsReads(c, c.rows, "est_search_optimization_usd_list", "search_optimization_credits", (r) => nameId(r.table_fqn, r.table_id),
-                (r) => ` · ${fmtInt(r.scans_helped)} helped`);
-              return items.length ? <StatusBars items={items} n={10} ariaLabel="Search optimization cost vs reads" /> : null;
-            }}
-          </PlCard>
-        </div>
-      </Grid>
-      <PlCard c={{ ...mv, loading: mv.loading || so.loading, note: mv.note && so.note ? mv.note : null }} open={open("sf_storage_mv_value")} title="Flagged objects"
-        subtitle={`${fmtInt(flaggedObjs.length)} flagged · ${fmtInt(mvFlag.length)} materialized views (MV), ${fmtInt(soFlag.length)} search-optimized tables (SO) · click a row`}>
-        {() => (
-          <DrillTable aria="Flagged materialized views and search-optimized tables" n={10} empty="Nothing flagged in this window."
-            cols={[{ label: "Object" }, { label: "Kind", width: "auto" }, { label: `$ · ${win}`, num: true, width: "auto" }, { label: "Reads", num: true, width: "auto" }, { label: "$ / read", num: true, width: "auto" }, { label: "Status", width: "minmax(80px, auto)" }]}
-            rows={flaggedObjs.map((o) => ({
-              key: `${o.kind}|${o.r.account_id}|${o.key ?? o.name}`, status: rowStatus(o.r), onOpen: openRow(o.id, o.col, o.key, o.name),
-              cells: [o.name, o.kind, usd0(o.v), fmtInt(o.r.read_queries), o.per != null ? usdRate(o.per) : "–", chip(o.tag, rowStatus(o.r))],
-            }))} />
-        )}
-      </PlCard>
+      <div id="sm-mv">
+        <PlCard c={mv} open={open("sf_storage_mv_value")} title="MV refresh $ vs reads"
+          subtitle={`${mvSorted.length > 10 ? `Top 10 of ${fmtInt(mvSorted.length)}` : `All ${fmtInt(mvSorted.length)}`} materialized views by refresh $ · ${fmtInt(mvFlag.length)} flagged · open a row for its days and the fix`}>
+          {(c) => !mvSorted.length ? null : (
+            <ShowRows n={10} total={mvSorted.length}>{(k) => (
+              <CxTable aria="MV refresh cost vs reads" phone={{ cols: [1, 2, 5], widths: "minmax(0, 1fr) 52px 56px" }} minWidth={880}
+                cols={[{ label: "Status", width: "92px" }, { label: "Materialized view", width: "minmax(240px, 2fr)" }, { label: `$ · ${win}`, width: "72px", num: true }, { label: "", width: "minmax(80px, 1fr)" },
+                  { label: "Reads", width: "60px", num: true }, { label: "$ per read", width: "80px", num: true }, { label: "Why", width: "minmax(170px, 1.2fr)" }]}
+                rows={mvSorted.slice(0, k).map((r) => {
+                  const v = mvV(r), reads = numOrZero(r.read_queries);
+                  const name = nameId(r.mv_fqn || r.mv_name, r.mv_id);
+                  return {
+                    key: `${r.account_id}|${r.mv_id ?? name}`,
+                    onOpen: openRow("sf_storage_mv_value", "mv_id", r.mv_id, name),
+                    cells: [<SevWord key="s" band={rowStatus(r)} />, <FqnText key="n" text={name} />, <b key="v">{money(c, v)}</b>, <CellBar key="b" value={v} max={mvV(mvSorted[0])} />,
+                      fmtInt(reads), perReadText(c, v, reads),
+                      <span key="w" className="cx-muted">{!isFlagged(r) ? "–" : reads === 0 ? "Never read" : `Refreshed ${fmtInt(r.refreshes)} times, read ${fmtInt(reads)}`}</span>],
+                  };
+                })} />
+            )}</ShowRows>
+          )}
+        </PlCard>
+      </div>
+      <div id="sm-so">
+        <PlCard c={so} open={open("sf_storage_search_optimization_value")} title="Search optimization $ vs reads"
+          subtitle={`${soSorted.length > 10 ? `Top 10 of ${fmtInt(soSorted.length)}` : `All ${fmtInt(soSorted.length)}`} search-optimized tables by maintenance $ · ${fmtInt(soFlag.length)} flagged · scans helped = scans search optimization actually sped up`}>
+          {(c) => !soSorted.length ? null : (
+            <ShowRows n={10} total={soSorted.length}>{(k) => (
+              <CxTable aria="Search optimization cost vs reads" phone={{ cols: [1, 2, 6], widths: "minmax(0, 1fr) 52px 84px" }} minWidth={880}
+                cols={[{ label: "Status", width: "92px" }, { label: "Table", width: "minmax(240px, 2fr)" }, { label: `$ · ${win}`, width: "72px", num: true }, { label: "", width: "minmax(80px, 1fr)" },
+                  { label: "Reads", width: "60px", num: true }, { label: "$ per read", width: "80px", num: true }, { label: "Scans helped", width: "minmax(130px, 1fr)" }]}
+                rows={soSorted.slice(0, k).map((r) => {
+                  const v = soV(r), reads = numOrZero(r.read_queries), helped = numOrZero(r.scans_helped);
+                  const name = nameId(r.table_fqn, r.table_id);
+                  return {
+                    key: `${r.account_id}|${r.table_id ?? name}`,
+                    onOpen: openRow("sf_storage_search_optimization_value", "table_id", r.table_id, name),
+                    cells: [<SevWord key="s" band={rowStatus(r)} />, <FqnText key="n" text={name} />, <b key="v">{money(c, v)}</b>, <CellBar key="b" value={v} max={soV(soSorted[0])} />,
+                      fmtInt(reads), perReadText(c, v, reads),
+                      <span key="h" className={helped > 0 ? undefined : "cx-muted"}>{helped > 0 ? fmtInt(helped) : reads === 0 ? "None · never read" : "None"}</span>],
+                  };
+                })} />
+            )}</ShowRows>
+          )}
+        </PlCard>
+      </div>
     </div>
   );
 };

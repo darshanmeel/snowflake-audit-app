@@ -18,6 +18,7 @@ import "./styles/css/c_blocks.css";
 import "./styles/css/c_redesign.css";
 import "./styles/css/c_pattern.css";
 import "./styles/css/c_landing.css";
+import "./styles/css/cx_b.css";
 import { App } from "./App";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(<App />);

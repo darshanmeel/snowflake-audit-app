@@ -7,15 +7,15 @@ import "../styles/css/p_area_compute.css";
 import { fmtCredits, fmtDate, fmtDayShort, fmtDuration, fmtInt, fmtMoney } from "../format";
 import { GrainSwitch, GrainLines, partialMonths, fmtMonth } from "./grain";
 import type { Grain } from "./grain";
-import { MultiLine } from "./charts";
 import { FLAGGED_STATUSES, groupsToRows, aggTotal, numOrZero, useFindingAgg, useFindingData } from "./hooks";
 import type { AggOpts } from "./hooks";
 import { ChartCard, KindChip, StatusPill, bandOf } from "./primitives";
 import { COST_MONEY_COL, WASTE_ITEMS } from "./tab_registry";
 import { buildWasteEntry, wasteTotal } from "./waste_total";
 import { DrillTable, MiniBar, SplitBar } from "./drill_table";
-import { Columns, rowLabelWidth } from "./charts_more";
-import { chartLabel, truncateLeft, useChartWidth } from "./charts";
+import { CellBar, CxTable, EmptyStrip, HourLine, NameBars, NameIdText, SevWord } from "./cx_b";
+import { Columns } from "./charts_more";
+import { chartLabel, truncateLeft } from "./charts";
 import { notAssessedText } from "./scope";
 import { REASON_INFO } from "./labels";
 import { partialBarKeys, scrollToAnchor, windowShortLabel } from "./overview_tile";
@@ -317,11 +317,15 @@ function WhIdle(p: ApPageProps) {
 
   // The lede, from this page's own numbers.
   const lede = loading(idle) ? "…" : sharePct != null
-    ? `${fmtShare(sharePct)} of warehouse ${priced ? "spend" : "up time"} ran no query${top ? `; ${top.name} is the largest share` : ""}.`
+    ? `${fmtShare(sharePct)} of warehouse ${priced ? `spend, ${fmtMoney(wasteUsd ?? idleUsdAll, 0)},` : "up time"} ran no query.${top ? ` ${top.name} is the largest share${topIdlePct != null ? `: ${fmtShare(topIdlePct)} idle${priced ? `, ${fmtMoney(top.idleUsd, 0)}` : ""}` : ""}.` : ""}`
     : null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const usdOrDash = (r: Row) => { const v = spendOf.get(whKey(r)); return v != null && priced ? fmtMoney(v, 0) : ""; };
+  // Off and over 10 min keep a warehouse running: those two bands are orange, the rest one blue.
+  const riskyBands = new Set(["off", "long"]);
+  const bandMax = bands ? Math.max(1, ...bands.map((b) => b.value)) : 1;
+  const tuneByKey = new Map((tuneRows || []).map((r) => [whKey(r), r]));
   return (
     <div className="ac-page">
       <Tiles>
@@ -329,60 +333,41 @@ function WhIdle(p: ApPageProps) {
           label="Idle share of warehouse spend" loading={loading(idle)}
           headline={sharePct != null ? fmtShare(sharePct) : null} unit={priced ? "of warehouse $" : "of up time"}
           missingReason={missingOf(idle, p)}
-          base={sharePct != null ? `${priced ? `${fmtMoney(wasteUsd ?? idleUsdAll, 0)} possible waste` : `${minFmt(idleMinAll)} idle`}${idleAff ? ` · ${fmtInt(idleAff.flagged)} of ${fmtInt(idleAff.total)} warehouses` : ""}` : null}
-          cause={top ? `Most: ${top.name}${topIdlePct != null ? `, ${fmtShare(topIdlePct)} idle` : ""}${priced ? `, ${fmtMoney(top.idleUsd, 0)}` : ""}.` : null}
-          status={statusOf(idle.f)} onOpen={() => DrawerBus.open({ id: "sf_wh_idle_minutes" })} openLabel="Open →" />
+          base={sharePct != null ? `${priced ? `${fmtMoney(wasteUsd ?? idleUsdAll, 0)} possible waste` : `${minFmt(idleMinAll)} idle`}${idleAff ? ` · ${fmtInt(idleAff.flagged)} of ${fmtInt(idleAff.total)} warehouses` : ""}.` : null}
+          cause={top ? `Largest: ${top.name}${topIdlePct != null ? `, ${fmtShare(topIdlePct)} idle` : ""}${priced ? `, ${fmtMoney(top.idleUsd, 0)}` : ""}.` : null}
+          status={statusOf(idle.f)} onOpen={() => scrollToAnchor("ac-offenders")} openLabel="Top offenders ↓" />
         <IssueTile
           label="Shorter auto-suspend would save" loading={loading(tune)}
-          headline={tuneSaving.headline} missingReason={tuneSaving.why || missingOf(tune, p)}
-          base={affectedOf(tune.f) ? `possible saving · ${p.filters.window} d · ${fmtInt(affectedOf(tune.f)!.flagged)} of ${fmtInt(affectedOf(tune.f)!.total)} warehouses` : null}
+          headline={tuneSaving.headline} unit={tuneSaving.headline && tuneSaving.headline !== "None" ? `possible saving · ${p.filters.window} days` : undefined}
+          missingReason={tuneSaving.why || missingOf(tune, p)}
+          base={affectedOf(tune.f) ? `${fmtInt(affectedOf(tune.f)!.flagged)} of ${fmtInt(affectedOf(tune.f)!.total)} warehouses.` : null}
           cause="Part of the idle $, not added to it. 60 s, or 5 min where the cache is reused."
-          status={statusOf(tune.f)} onOpen={() => DrawerBus.open({ id: "sf_wh_auto_suspend_tuning" })} openLabel="Open →" />
+          status={statusOf(tune.f)} onOpen={() => scrollToAnchor("ac-set-changes")} openLabel="Change these settings ↓" />
         <IssueTile
           label="Auto-suspend off or over 10 min" loading={loading(cfg)}
           headline={risky != null && cfgPop ? fmtShare(pctOf(risky, cfgPop)) : null} unit="of warehouses"
           missingReason={missingOf(cfg, p)}
-          base={risky != null && cfgPop ? `${fmtInt(risky)} of ${fmtInt(cfgPop)} warehouses${suspendOff && suspendLong ? ` · ${fmtInt(suspendOff.length)} off · ${fmtInt(suspendLong.length)} over 10 min` : ""}` : null}
+          base={risky != null && cfgPop ? `${fmtInt(risky)} of ${fmtInt(cfgPop)} warehouses${suspendOff && suspendLong ? ` · ${fmtInt(suspendOff.length)} off · ${fmtInt(suspendLong.length)} over 10 min` : ""}.` : null}
           cause={adaptiveN ? `${fmtInt(adaptiveN)} adaptive left out: Snowflake suspends ${adaptiveN === 1 ? "it" : "them"}.` : null}
           // The tile's own counts, not the posture check's worst row (which also covers other settings).
           status={risky == null ? statusOf(findingOf(p, "sf_wh_config_posture")) : suspendOff!.length ? "critical" : risky ? "warn" : "ok"}
           onOpen={() => scrollToAnchor("ac-setup-risk")} openLabel="Setup risk ↓" />
       </Tiles>
 
-      <Panel p={p} src={idle} title="Busy vs idle, by warehouse" subtitle={`${priced ? "ranked by idle $" : "ranked by idle minutes"} · each bar is that warehouse's own up time, split busy / idle · click a row for its rows`}>
-        {perWh && (
-          <BusyIdleBars
-            items={ranked.map((w) => ({
-              key: w.rows[0] ? whKey(w.rows[0]) : w.name, id: w.rows[0] ? w.rows[0].warehouse_id : null, name: w.name, busy: w.busy, idle: w.idle,
-              money: priced ? w.idleUsd : null, spend: priced ? w.spend : null, status: worstStatus(w.rows),
-            }))} />
-        )}
-      </Panel>
+      <div id="ac-offenders">
+        <WPanel p={p} src={idle} title="Top 5 offenders" subtitle={`${priced ? "By idle cost" : "By idle time"} · each bar is that warehouse's own running hours, split busy / idle · auto-suspend options are estimates over ${fmtInt(p.filters.window)} days, each on its own`}>
+          {perWh && <TopOffenders items={offenders} disc={tDisc} windowDays={p.filters.window} />}
+          {perWh && (
+            <BusyIdleBars skip={5} n={5} priced={priced}
+              items={ranked.map((w) => ({
+                key: w.rows[0] ? whKey(w.rows[0]) : w.name, id: w.rows[0] ? w.rows[0].warehouse_id : null, name: w.name, busy: w.busy, idle: w.idle,
+                money: priced ? w.idleUsd : null, spend: priced ? w.spend : null, status: worstStatus(w.rows),
+              }))} />
+          )}
+        </WPanel>
+      </div>
 
-      <Panel p={p} src={idle} title="Top 5 offenders" subtitle={`${priced ? "sorted by idle cost" : "sorted by idle time"} · auto-suspend options are estimates, each on its own · click a name for the detail`}>
-        {perWh && <TopOffenders items={offenders} disc={tDisc} windowDays={p.filters.window} />}
-      </Panel>
-
-      <Row2>
-        <Panel p={p} src={cfg} title="Warehouses by auto-suspend" subtitle={`${cfgPop != null ? `${fmtInt(cfgPop)} warehouses in scope` : "warehouses in scope: –"}${adaptiveN ? ` · ${fmtInt(adaptiveN)} adaptive left out` : ""} · current setting`}>
-          {bands && <StackedShareBar segments={bands} valueFmt={(v) => `${fmtInt(v)} of ${fmtInt(cfgRows!.length)} warehouses`} ariaLabel="Warehouses by auto-suspend setting" />}
-        </Panel>
-        <Panel p={p} src={tune} title="Resumes and resume time" subtitle={`resumes in ${fmtInt(p.filters.window)} days · time to resume and query wait, p95 · a shorter auto-suspend adds resumes`}>
-          <RankedOrLine items={resumeItems} unitLabel="resumes" ariaLabel="Resumes by warehouse" emptyText={`No resumes in ${rangeOf(p) || "this window"}.`}
-            onBarClick={(it) => { const r = (tuneRows || []).find((x) => whKey(x) === it.key); if (r) DrawerBus.open({ id: "sf_wh_idle_minutes", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }); }} />
-        </Panel>
-      </Row2>
-
-      <Row2>
-        <Panel p={p} src={keep} title="Kept awake by repeated polls" subtitle="a tiny statement that repeats sooner than the auto-suspend · $ is part of the idle $ above, not added to it">
-          <RankedOrLine items={keepItems} valueFmt={usdFmt} unitLabel="$" ariaLabel="Warehouses kept awake by polls" emptyText={`No warehouse kept awake by polls in ${rangeOf(p) || "this window"}.`}
-            onBarClick={(it) => { const r = (rowsOf(keep) || []).find((x) => whKey(x) === it.key); if (r) DrawerBus.open({ id: "sf_wh_keepalive_pollers", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }); }} />
-        </Panel>
-        <Panel p={p} src={churn} title="Runs under the 60 s minimum" subtitle="each resume bills at least 60 s · runs that ended sooner, and what ended them · $ is part of the idle $">
-          <RankedOrLine items={churnItems} unitLabel="short runs" ariaLabel="Warehouses with runs under 60 seconds" emptyText={`No run under 60 s in ${rangeOf(p) || "this window"}.`}
-            onBarClick={(it) => { const r = (rowsOf(churn) || []).find((x) => whKey(x) === it.key); if (r) DrawerBus.open({ id: "sf_wh_resume_churn", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }); }} />
-        </Panel>
-      </Row2>
+      <SettingChanges p={p} tune={tune} cfg={cfg} over={over} under={under} mc={mcs} pop={cfgAll ? cfgAll.length : null} />
 
       <div id="ac-setup-risk">
         <ChartCard title="Setup risk" subtitle={`${cfgPop != null ? `${fmtInt(cfgPop)} warehouses in scope` : "warehouses in scope: –"} · three settings that keep a warehouse running`} onOpenCheck={() => DrawerBus.open({ id: "sf_wh_config_posture" })} takeaway={null}>
@@ -397,52 +382,151 @@ function WhIdle(p: ApPageProps) {
         </ChartCard>
       </div>
 
-      <SettingChanges p={p} tune={tune} cfg={cfg} over={over} under={under} mc={mcs} pop={cfgAll ? cfgAll.length : null} />
+      <div className="cx-row">
+        <WPanel p={p} src={cfg} title="Warehouses by auto-suspend" subtitle={`Current setting · ${cfgPop != null ? `${fmtInt(cfgPop)} warehouses in scope` : "warehouses in scope: –"}${adaptiveN ? ` · ${fmtInt(adaptiveN)} adaptive left out` : ""}`}>
+          {bands && cfgRows && (
+            <>
+              <NameBars ariaLabel="Warehouses by auto-suspend setting" max={bandMax} nameCol="minmax(96px, 120px)" valueCol="minmax(96px, auto)"
+                rows={bands.map((b) => ({
+                  key: String(b.key), label: b.label, value: b.value, color: riskyBands.has(String(b.key)) ? "var(--c2)" : "var(--c1)",
+                  valueText: `${fmtInt(b.value)} of ${fmtInt(cfgRows.length)}`, aside: ` · ${fmtShare(pctOf(b.value, cfgRows.length))}`,
+                }))} />
+              {risky != null && cfgPop ? (
+                <div className="cx-legend-line"><span className="cx-sw" style={{ background: "var(--c2)" }} />{`Off and over 10 min are the setup risks: ${fmtInt(risky)} of ${fmtInt(cfgPop)} warehouses, ${fmtShare(pctOf(risky, cfgPop))}.`}</div>
+              ) : null}
+            </>
+          )}
+        </WPanel>
+        <WPanel p={p} src={tune} title="Resumes and resume time" subtitle={`Resumes in ${fmtInt(p.filters.window)} days · p95 time to resume and query wait · a shorter auto-suspend adds resumes`}>
+          {resumeItems.length === 0 ? <div className="chart-note-oneline">{`No resumes in ${rangeOf(p) || "this window"}.`}</div> : (
+            <ShowMore n={8} total={resumeItems.length} noun="warehouses">{(k) => (
+              <CxTable aria="Resumes by warehouse" phone={{ cols: [0, 2, 4], widths: "minmax(0, 1fr) 60px 56px" }} minWidth={460}
+                cols={[{ label: "Warehouse", width: "minmax(150px, 1.3fr)" }, { label: "", width: "minmax(50px, 1fr)" }, { label: "Resumes", width: "72px", num: true }, { label: "p95 resume", width: "84px", num: true }, { label: "p95 wait", width: "72px", num: true }]}
+                rows={resumeItems.slice(0, k).map((it) => {
+                  const r = tuneByKey.get(String(it.key));
+                  return {
+                    key: String(it.key),
+                    onOpen: r ? () => DrawerBus.open({ id: "sf_wh_idle_minutes", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }) : null,
+                    cells: [<span key="n" className="cx-dotname"><span className="blk-dot" style={{ background: statusBarColor(it.status) }} aria-hidden="true" /><span><NameIdText text={it.name} /></span></span>,
+                      <CellBar key="b" value={it.value} max={resumeItems[0].value} />, fmtInt(it.value),
+                      r && r.resume_p95_s != null ? secFmt(numOrZero(r.resume_p95_s)) : "–",
+                      r && r.resume_wait_p95_s != null ? secFmt(numOrZero(r.resume_wait_p95_s)) : "–"],
+                  };
+                })} />
+            )}</ShowMore>
+          )}
+        </WPanel>
+      </div>
+
+      <div className="cx-row">
+        <WPanel p={p} src={keep} title="Kept awake by repeated polls" subtitle="A tiny statement that repeats sooner than the auto-suspend · $ is part of the idle $ above, not added to it">
+          {keepItems.length === 0 ? <div className="chart-note-oneline">{`No warehouse kept awake by polls in ${rangeOf(p) || "this window"}.`}</div> : (
+            <CxTable aria="Warehouses kept awake by polls" phone={{ cols: [0, 1, 2], widths: "minmax(0, 1fr) 64px 64px" }} minWidth={420}
+              cols={[{ label: "Warehouse · polling user", width: "minmax(180px, 1fr)" }, { label: "Idle $", width: "84px", num: true }, { label: "Poll every", width: "84px", num: true }]}
+              rows={keepItems.map((it) => {
+                const r = (rowsOf(keep) || []).find((x) => whKey(x) === it.key) || {};
+                const usd = r.est_idle_context_usd_list != null ? numOrZero(r.est_idle_context_usd_list) * (1 - kDisc) : null;
+                return {
+                  key: String(it.key), title: it.title,
+                  onOpen: r.warehouse_id != null ? () => DrawerBus.open({ id: "sf_wh_keepalive_pollers", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }) : null,
+                  cells: [<span key="n"><span className="cx-dotname"><span className="blk-dot" style={{ background: statusBarColor(it.status) }} aria-hidden="true" /><span><NameIdText text={it.name} /></span></span>{r.top_poll_user_name ? <span className="cx-sub">{String(r.top_poll_user_name)}</span> : null}</span>,
+                    <b key="u">{usd != null ? fmtMoney(usd, 0) : `${fmtInt(Math.round(numOrZero(r.keepalive_credits)))} cr`}</b>,
+                    r.top_poll_every_s != null ? suspendText(numOrZero(r.top_poll_every_s)) : "–"],
+                };
+              })} />
+          )}
+        </WPanel>
+        <WPanel p={p} src={churn} title="Runs under the 60 s minimum" subtitle="Each resume bills at least 60 s · runs that ended sooner, and what ended them · $ is part of the idle $">
+          {churnItems.length === 0 ? <div className="chart-note-oneline">{`No run under 60 s in ${rangeOf(p) || "this window"}.`}</div> : (
+            <CxTable aria="Warehouses with runs under 60 seconds" phone={{ cols: [0, 1, 2], widths: "minmax(0, 1fr) 96px 64px" }} minWidth={420}
+              cols={[{ label: "Warehouse · ended by", width: "minmax(170px, 1fr)" }, { label: "Short runs", width: "120px", num: true }, { label: "Minimum $", width: "84px", num: true }]}
+              rows={churnItems.map((it) => {
+                const r = (rowsOf(churn) || []).find((x) => whKey(x) === it.key) || {};
+                const usd = r.est_idle_context_usd_list != null ? numOrZero(r.est_idle_context_usd_list) * (1 - cDisc) : null;
+                return {
+                  key: String(it.key),
+                  onOpen: r.warehouse_id != null ? () => DrawerBus.open({ id: "sf_wh_resume_churn", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }) : null,
+                  cells: [<span key="n"><span className="cx-dotname"><span className="blk-dot" style={{ background: statusBarColor(it.status) }} aria-hidden="true" /><span><NameIdText text={it.name} /></span></span><span className="cx-sub">{endedBy(r)}</span></span>,
+                    `${fmtInt(r.short_runs)} of ${fmtInt(r.runs)} runs`, <b key="u">{usd != null ? fmtMoney(usd, 0) : "–"}</b>],
+                };
+              })} />
+          )}
+        </WPanel>
+      </div>
+
       <LastActivity p={p} src={last} />
     </div>
   );
 }
 (WhIdle as any).ownsLede = true;
 
-/** One 100% bar per warehouse: busy (blue) then idle (sand); the status rides on the dot, not the bar. */
-function BusyIdleBars({ items, n = 10 }: {
-  items: { key: string; id: any; name: string; busy: number; idle: number; money: number | null; spend: number | null; status: string }[]; n?: number;
-}) {
-  const [ref, W] = useChartWidth(560);
-  const labelW = rowLabelWidth(W);
-  const open = useDrawer();
-  const list = items.filter((it) => it.busy + it.idle > 0);
-  if (!list.length) return <div className="chart-note-oneline">Every warehouse was busy whenever it ran.</div>;
-  const shown = list.slice(0, n);
+/** What ended a warehouse's short runs, from the check's own counts. */
+function endedBy(r: Row): string {
+  const n = numOrZero(r.short_runs) / 2;
+  return numOrZero(r.by_manual) >= n ? `suspended by ${r.top_suspend_user_name || "a script"}`
+    : numOrZero(r.by_cluster) >= n ? "extra clusters" : numOrZero(r.by_monitor) >= n ? "resource monitor" : "auto-suspend";
+}
+
+/** A card, or a dashed one-line strip with its title when the source has no rows to draw. */
+function WPanel({ p, src, title, subtitle, children }: { p: ApPageProps; src: Src; title: string; subtitle?: string; children?: React.ReactNode }) {
+  const note = noteOf(src, p);
+  if (note && note !== "…") return <div className="cx-strip-wrap"><EmptyStrip title={title}>{note.replace(/^– /, "")}</EmptyStrip></div>;
   return (
-    <div className="ac-busy" ref={ref}>
-      <div className="blk-legend">
-        <span className="blk-legend-item"><span className="blk-sw" style={{ background: "var(--c1)" }} />busy</span>
-        <span className="blk-legend-item"><span className="blk-sw" style={{ background: "var(--c-other)" }} />idle</span>
-        <span className="blk-legend-item"><span className="blk-dot" style={{ background: "var(--st-crit)" }} />critical</span>
-        <span className="blk-legend-item"><span className="blk-dot" style={{ background: "var(--st-warn)" }} />warning</span>
-      </div>
+    <ChartCard title={title} subtitle={subtitle} onOpenCheck={src.f ? openCheck(p, src.id) : null} takeaway={null}>
+      {note ? <div className="chart-note-oneline">{note}</div> : children}
+    </ChartCard>
+  );
+}
+
+/** The first `n` rows, then a "Show all N" toggle under them. */
+function ShowMore({ n, total, noun, children }: { n: number; total: number; noun: string; children: (k: number) => React.ReactNode }) {
+  const [all, setAll] = React.useState(false);
+  return (
+    <>
+      {children(all ? total : n)}
+      {total > n && <button type="button" className="cx-show-all" onClick={() => setAll(!all)}>{all ? `Show the first ${fmtInt(n)}` : `Show all ${fmtInt(total)} ${noun}`}</button>}
+    </>
+  );
+}
+
+/** The warehouses after the Top 5: one busy / idle bar each; the status rides on the dot, not the bar. */
+function BusyIdleBars({ items, skip = 0, n = 5, priced }: {
+  items: { key: string; id: any; name: string; busy: number; idle: number; money: number | null; spend: number | null; status: string }[]; skip?: number; n?: number; priced: boolean;
+}) {
+  const open = useDrawer();
+  const [all, setAll] = React.useState(false);
+  const withIdle = items.filter((it) => it.busy + it.idle > 0 && it.idle > 0);
+  const list = withIdle.slice(skip);
+  if (!list.length) return null;
+  const shown = all ? list : list.slice(0, n);
+  return (
+    <div className="ac-busy cx-next">
+      <div className="cx-next-head">{`Next ${fmtInt(shown.length)} by ${priced ? "idle cost" : "idle time"}`}</div>
       {shown.map((it) => {
         const total = it.busy + it.idle;
         const ip = (it.idle / total) * 100;
-        const val = it.money != null ? `${fmtMoney(it.money, 0)} · ${fmtShare(ip)} idle${it.spend != null ? ` of ${fmtMoney(it.spend, 0)}` : ""}` : `${fmtShare(ip)} idle`;
         const isOpen = !!open && open.id === "sf_wh_idle_minutes" && open.val === String(it.id);
         return (
-          <button type="button" key={it.key} className={`ac-busy-row blk-row-btn${isOpen ? " selected" : ""}`}
+          <button type="button" key={it.key} className={`cx-next-row${isOpen ? " selected" : ""}`}
             title={`${it.name}: ${minFmt(it.busy)} busy, ${minFmt(it.idle)} idle`} aria-pressed={isOpen}
             onClick={() => DrawerBus.open({ id: "sf_wh_idle_minutes", col: it.id != null ? "warehouse_id" : null, val: it.id != null ? String(it.id) : null, label: it.name })}>
-            <span className="ac-busy-label" style={{ flexBasis: labelW }}>
-              <span className="blk-dot" style={{ background: statusBarColor(it.status) }} aria-hidden="true" />{truncateLeft(it.name, labelW - 22)}
-            </span>
-            <span className="ac-busy-track">
+            <span className="cx-dotname"><span className="blk-dot" style={{ background: statusBarColor(it.status) }} aria-hidden="true" /><span><NameIdText text={it.name} /></span></span>
+            <span className="ac-busy-track" aria-hidden="true">
               <span style={{ width: `${100 - ip}%`, background: "var(--c1)" }} />
               <span style={{ width: `${ip}%`, background: "var(--c-other)" }} />
             </span>
-            <span className="ac-busy-val">{val}</span>
+            <span className="cx-next-val">
+              {it.money != null ? <b>{fmtMoney(it.money, 0)}</b> : null}
+              <span className="cx-muted">{`${it.money != null ? " · " : ""}${fmtShare(ip)} idle${it.spend != null ? ` of ${fmtMoney(it.spend, 0)}` : ""}`}</span>
+            </span>
           </button>
         );
       })}
-      {list.length > shown.length && <div className="blk-more">{`+${fmtInt(list.length - shown.length)} more not shown`}</div>}
+      {list.length > n && (
+        <button type="button" className="cx-show-all" onClick={() => setAll(!all)}>
+          {all ? `Show the next ${fmtInt(n)}` : `Show all ${fmtInt(withIdle.length)} warehouses with idle time`}
+        </button>
+      )}
     </div>
   );
 }
@@ -519,6 +603,8 @@ function RiskMultiple({ title, src, p, list, pop, status }: {
   title: string; src: Src; p: ApPageProps; list: { name: string; val: string }[] | null; pop: number | null; status: string;
 }) {
   const note = noteOf(src, p);
+  const [all, setAll] = React.useState(false);
+  const shown = list ? (all ? list : list.slice(0, 3)) : [];
   return (
     <div className="ac-multiple">
       <div className="ac-multiple-title">{title}</div>
@@ -529,11 +615,11 @@ function RiskMultiple({ title, src, p, list, pop, status }: {
             <span style={{ width: `${pop ? Math.min(100, (100 * list.length) / pop) : 0}%`, background: list.length ? "var(--c1)" : "var(--c-other)" }} />
           </div>
           {list.length > 0 && (
-            <ul className="ac-multiple-list">
-              {list.slice(0, 3).map((it) => <li key={it.name} title={it.name}><span className="ac-ml-name">{it.name}</span><span className="ac-ml-val">{it.val}</span></li>)}
-              {list.length > 3 && <li className="blk-more">{`+${fmtInt(list.length - 3)} more`}</li>}
+            <ul className="ac-multiple-list cx-mlist">
+              {shown.map((it) => <li key={it.name}><span className="ac-ml-name"><NameIdText text={it.name} /></span><span className="ac-ml-val">{it.val}</span></li>)}
             </ul>
           )}
+          {list.length > 3 && <button type="button" className="cx-show-all" data-status={status} onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show ${fmtInt(list.length - 3)} more`}</button>}
         </>
       )}
     </div>
@@ -544,8 +630,8 @@ function RiskMultiple({ title, src, p, list, pop, status }: {
 
 /** A check's possible saving in $ when priced, else in credits; one figure per change, never summed. */
 function savingText(r: Row, disc: number): string | null {
-  if (r.price_basis !== "unpriced" && r.est_saving_usd_list != null && Number(r.est_saving_usd_list) > 0) return `${fmtMoney(numOrZero(r.est_saving_usd_list) * (1 - disc), 0)} possible saving`;
-  if (r.est_saving_credits != null && Number(r.est_saving_credits) > 0) return `${fmtCredits(r.est_saving_credits, 1)} possible saving`;
+  if (r.price_basis !== "unpriced" && r.est_saving_usd_list != null && Number(r.est_saving_usd_list) > 0) return fmtMoney(numOrZero(r.est_saving_usd_list) * (1 - disc), 0);
+  if (r.est_saving_credits != null && Number(r.est_saving_credits) > 0) return `${fmtCredits(r.est_saving_credits, 1)}`;
   return null;
 }
 
@@ -578,6 +664,7 @@ function judgedOf(s: Src) {
 
 /** One line per warehouse: the settings its checks' flagged rows point at; warehouses with none are left out. */
 function SettingChanges({ p, tune, cfg, over, under, mc, pop }: { p: ApPageProps; tune: Src; cfg: Src; over: Src; under: Src; mc: Src; pop: number | null }) {
+  const [all, setAll] = React.useState(false);
   const srcs: [Src, string][] = [[tune, "auto-suspend"], [cfg, "settings"], [over, "size (too big)"], [under, "size (too small)"], [mc, "clusters"]];
   const notes = srcs.map(([s, label]) => {
     const j = judgedOf(s);
@@ -588,11 +675,12 @@ function SettingChanges({ p, tune, cfg, over, under, mc, pop }: { p: ApPageProps
   const anyLoading = notes.some((n) => n.note === "…");
   const notRun = notes.filter((n) => n.note && n.note.startsWith("–"));
   const partial = notes.map((n) => n.partial).filter(Boolean) as string[];
-  const by = new Map<string, { name: string; rows: Row[]; ids: string[]; changes: { what: string; why: string }[] }>();
-  const add = (id: string, r: Row, what: string, why: string) => {
+  type Change = { what: string; why: string; saving: string | null };
+  const by = new Map<string, { name: string; rows: Row[]; ids: string[]; changes: Change[] }>();
+  const add = (id: string, r: Row, what: string, why: string, saving: string | null = null) => {
     const k = whKey(r);
     const cur = by.get(k) || { name: whLabel(r, p), rows: [], ids: [], changes: [] };
-    cur.rows.push(r); cur.ids.push(id); cur.changes.push({ what, why });
+    cur.rows.push(r); cur.ids.push(id); cur.changes.push({ what, why, saving });
     by.set(k, cur);
   };
   const tDisc = discOf(tune), oDisc = discOf(over);
@@ -600,39 +688,47 @@ function SettingChanges({ p, tune, cfg, over, under, mc, pop }: { p: ApPageProps
   (rowsOf(tune) || []).filter((r) => isFlagged(r) && r.recommended_auto_suspend_s != null).forEach((r) => {
     tuned.add(whKey(r));
     add(tune.id, r, `AUTO_SUSPEND ${suspendText(r.auto_suspend_s == null ? null : numOrZero(r.auto_suspend_s))} → ${suspendText(numOrZero(r.recommended_auto_suspend_s))}`,
-      [r.keep_warm === "keep_warm" ? "cache is reused, so 5 min" : null, savingText(r, tDisc)].filter(Boolean).join(" · ") || "idle gaps bill until it suspends");
+      r.keep_warm === "keep_warm" ? "Cache is reused, so 5 min" : savingText(r, tDisc) ? "" : "Idle gaps bill until it suspends", savingText(r, tDisc));
   });
   // Auto-suspend off where the replay gave no setting; adaptive warehouses suspend themselves.
   (rowsOf(cfg) || []).filter((r) => String(r.warehouse_type || "").toUpperCase() !== "ADAPTIVE" && (r.auto_stop_minutes == null || numOrZero(r.auto_stop_minutes) <= 0) && !tuned.has(whKey(r)))
-    .forEach((r) => add(cfg.id, { ...r, status: "CRITICAL" }, "AUTO_SUSPEND off → 60 s", "never suspends: every idle minute bills"));
+    .forEach((r) => add(cfg.id, { ...r, status: "CRITICAL" }, "AUTO_SUSPEND off → 60 s", "Never suspends: every idle minute bills"));
   (rowsOf(over) || []).filter((r) => isFlagged(r) && r.suggested_size).forEach((r) =>
-    add(over.id, r, `SIZE ${r.warehouse_size || "?"} → ${r.suggested_size}`, [`${fmtShare(numOrZero(r.small_query_pct))} of queries small`, savingText(r, oDisc)].filter(Boolean).join(" · ")));
+    add(over.id, r, `SIZE ${r.warehouse_size || "?"} → ${r.suggested_size}`, `${fmtShare(numOrZero(r.small_query_pct))} of queries small`, savingText(r, oDisc)));
   (rowsOf(under) || []).filter((r) => isFlagged(r) && r.suggested_size).forEach((r) =>
-    add(under.id, r, `SIZE ${r.warehouse_size || "?"} → ${r.suggested_size}`, "queries spill to remote storage; tune the top spillers first"));
+    add(under.id, r, `SIZE ${r.warehouse_size || "?"} → ${r.suggested_size}`, "Queries spill to remote storage; tune the top spillers first"));
   (rowsOf(mc) || []).filter((r) => isFlagged(r) && CLUSTER_CHANGE[String(r.scaling_hint)]).forEach((r) => {
     const c = CLUSTER_CHANGE[String(r.scaling_hint)](r);
-    add(mc.id, r, c.what, c.why);
+    add(mc.id, r, c.what, c.why.charAt(0).toUpperCase() + c.why.slice(1));
   });
   const list = [...by.values()].sort((a, b) => b.changes.length - a.changes.length || a.name.localeCompare(b.name));
+  const shown = all ? list : list.slice(0, 12);
   const ran = srcs.length - notRun.length;
   const notRunText = notRun.map((n) => `${n.label} (${n.note!.replace(/^– /, "")})`).join("; ");
   const body = anyLoading ? <div className="chart-note-oneline">…</div>
     : !ran ? <div className="chart-note-oneline">{`– None of the checks could judge a warehouse: ${notRunText}`}</div>
+      : !list.length ? <div className="chart-note-oneline">{`No setting to change in ${rangeOf(p) || "this window"}, from the ${fmtInt(ran)} of ${fmtInt(srcs.length)} checks that judged at least one warehouse.`}</div>
       : (
         <>
-          <DrillTable aria="Settings to change, by warehouse" n={12}
-            empty={`No setting to change in ${rangeOf(p) || "this window"}, from the ${fmtInt(ran)} of ${fmtInt(srcs.length)} checks that judged at least one warehouse.`}
-            cols={[{ label: "Warehouse" }, { label: "Change", width: "minmax(140px, 1.4fr)" }, { label: "Why", width: "minmax(140px, 1.6fr)" }]}
-            rows={list.map((w) => ({
-              key: whKey(w.rows[0]), status: worstStatus(w.rows),
+          <CxTable aria="Settings to change, by warehouse" minWidth={860}
+            cols={[{ label: "Severity", width: "92px" }, { label: "Warehouse", width: "minmax(170px, 1fr)" }, { label: "Change · now → to", width: "250px" }, { label: "Saving", width: "84px", num: true }, { label: "Why", width: "minmax(200px, 1.3fr)" }]}
+            rows={shown.map((w) => ({
+              key: whKey(w.rows[0]),
               // The drawer opens on the check behind the row's first change.
               onOpen: () => DrawerBus.open({ id: w.ids[0], col: w.rows[0].warehouse_id != null ? "warehouse_id" : null, val: w.rows[0].warehouse_id != null ? String(w.rows[0].warehouse_id) : null, label: w.name }),
-              cells: [w.name,
-                <span key="c" className="ac-set-chips">{w.changes.map((c) => <span key={c.what} className="dt-chip">{c.what}</span>)}</span>,
-                w.changes.map((c) => c.why).join(" · ")],
+              // One line per change across Change, Saving and Why, so a wrapped reason keeps its line.
+              cells: [<SevWord key="s" band={worstStatus(w.rows)} />, <NameIdText key="n" text={w.name} />,
+                <span key="c" className="cx-change-lines">{w.changes.map((c) => (
+                  <span key={c.what} className="cx-change-line">
+                    <span><span className="dt-chip">{c.what}</span></span>
+                    {c.saving ? <b className="cx-num">{c.saving}</b> : <span className="cx-muted cx-num">–</span>}
+                    <span className="cx-muted">{c.why}</span>
+                  </span>
+                ))}</span>],
             }))} />
+          {list.length > 12 && <button type="button" className="cx-show-all" onClick={() => setAll(!all)}>{all ? "Show the first 12" : `Show ${fmtInt(list.length - 12)} more`}</button>}
           {notRun.length > 0 && <div className="chart-note-oneline">{`– Not judged: ${notRunText}`}</div>}
-          {partial.length > 0 && <div className="chart-note-oneline">{`Judged only in part: ${partial.join("; ")}`}</div>}
+          {partial.length > 0 && <div className="cx-foot-note">{`Judged only in part: ${partial.join("; ")}.`}</div>}
         </>
       );
   return (
@@ -666,7 +762,7 @@ function LastActivity({ p, src }: { p: ApPageProps; src: Src }) {
   const segs: ShareSegment[] | null = listed ? ACTIVITY_BANDS.map((b) => ({ key: b.key, label: b.label, color: b.color, value: listed.filter((r) => String(r.activity_band) === b.key).length })) : null;
   const n = listed ? listed.length : 0;
   return (
-    <Panel p={p} src={src} title="Warehouses by last activity"
+    <WPanel p={p} src={src} title="Warehouses by last activity"
       subtitle={`days since the last query, resume or billed hour, up to a year back${listed ? ` · ${fmtInt(flagged.length)} of ${fmtInt(n)} warehouses flagged (90+ days idle, or never used and not new)` : ""}${dropped.length ? ` · ${fmtInt(dropped.length)} dropped or not listed: in the table, not counted` : ""}`}>
       {segs && (
         <div className="pl-stack">
@@ -685,7 +781,7 @@ function LastActivity({ p, src }: { p: ApPageProps; src: Src }) {
             }))} />
         </div>
       )}
-    </Panel>
+    </WPanel>
   );
 }
 
@@ -741,104 +837,154 @@ function WhSizing(p: ApPageProps) {
     : entries.reduce((s, e) => s + e.flaggedCount, 0);
   // One denominator for the combined tile: the most warehouses any of the three checks saw.
   const sizePop = Math.max(0, ...[over, cons, sof].map((s) => affectedOf(s.f)?.total ?? 0)) || pop;
-  const biggest = [{ u: cUsd ?? 0, t: "mostly warehouses lightly loaded at the same hours that could share one" },
-    { u: oUsd ?? 0, t: "mostly large warehouses that run small queries" },
-    { u: sUsd ?? 0, t: "mostly Snowpark-optimized warehouses that run plain SQL" }].sort((a, b) => b.u - a.u)[0];
+  const biggest = [{ u: cUsd ?? 0, t: "warehouses lightly loaded at the same hours that could share one" },
+    { u: oUsd ?? 0, t: "large warehouses that run small queries" },
+    { u: sUsd ?? 0, t: "Snowpark-optimized warehouses that run plain SQL" }].sort((a, b) => b.u - a.u)[0];
 
   const lede = loading(over) || loading(cons) || loading(sof) ? "…" : saving != null && saving > 0
-    ? `Resizing would save ${savingPct != null ? `${fmtShare(savingPct)} of spend` : fmtMoney(saving, 0)}: ${biggest.t}.`
+    ? `Resizing could save ${savingPct != null ? `${fmtShare(savingPct)} of spend, ${fmtMoney(saving, 0)}` : fmtMoney(saving, 0)}. Most of it, ${fmtMoney(biggest.u, 0)}, is ${biggest.t}.`
     : null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const maxSave = resize.length ? resize[0].usd : 1;
   // Snowpark-optimized warehouses: what their work is, and the premium where it is plain SQL (possible saving).
   const sDisc = discOf(sof);
-  const soItems: StatusBarItem[] = (rowsOf(sof) || []).filter((r) => r.verdict != null).map((r) => {
-    const usd = numOrZero(r.est_saving_usd_list) * (1 - sDisc);
-    const what = r.verdict === "plain_sql" ? `plain SQL · ${usd > 0 ? `${fmtMoney(usd, 0)} possible saving` : "premium under the floor"}`
-      : r.verdict === "no_premium" ? "same rate as standard" : "Snowpark work: keep it";
-    return {
-      key: whKey(r), name: whLabel(r, p), value: r.verdict === "plain_sql" ? usd : 0, status: r.status,
-      valueText: [what, `${fmtShare(numOrZero(r.call_exec_pct))} in procedures`, numOrZero(r.spill_exec_pct) > 0 ? `${fmtShare(numOrZero(r.spill_exec_pct))} spills` : null,
-        r.resource_constraint ? String(r.resource_constraint) : null].filter(Boolean).join(" · "),
-    };
-  });
   // Gen1 warehouses whose run time is mostly delete, update and merge: a Gen2 test, never a saving.
   const g2Rows = rowsOf(g2) || [];
   const gen2: StatusBarItem[] = g2Rows.filter((r) => r.verdict === "test_gen2")
     .map((r) => ({ key: whKey(r), name: whLabel(r, p), value: numOrZero(r.dml_exec_pct), status: "neutral",
       valueText: `${fmtShare(numOrZero(r.dml_exec_pct))} of run time · ${r.warehouse_size || "?"}` }));
   const conversions = g2Rows.filter((r) => r.converted_at != null);
+  const consFlagged = (consRows || []).filter(isFlagged).map((r) => ({ r, usd: numOrZero(r.est_saving_usd_list) * (1 - cDisc) })).sort((a, b) => b.usd - a.usd);
+  const soRows = (rowsOf(sof) || []).filter((r) => r.verdict != null)
+    .sort((a, b) => (b.verdict === "plain_sql" ? 1 : 0) - (a.verdict === "plain_sql" ? 1 : 0) || numOrZero(b.est_saving_usd_list) - numOrZero(a.est_saving_usd_list));
+  const spillSorted = [...spill].sort((a, b) => numOrZero(pctOf(b.value, b.total)) - numOrZero(pctOf(a.value, a.total)));
+  const spillMax = spillSorted.length ? numOrZero(pctOf(spillSorted[0].value, spillSorted[0].total)) : 1;
+  const dotName = (status: any, name: string, sub?: React.ReactNode) => (
+    <span><span className="cx-dotname"><span className="blk-dot" style={{ background: statusBarColor(status) }} aria-hidden="true" /><span><NameIdText text={name} /></span></span>{sub ? <span className="cx-sub cx-indent">{sub}</span> : null}</span>
+  );
   return (
     <div className="ac-page">
       <div className="summary-tile-row compact sx-tiles-4">
-        <IssueTile label={`Possible saving from resizing · ${p.filters.window} d`} loading={loading(over) || loading(cons) || loading(sof)} pill={<KindChip>kept apart</KindChip>}
-          headline={saving != null ? (savingPct != null ? fmtShare(savingPct) : fmtMoney(saving, 0)) : null} unit={savingPct != null ? "of spend" : undefined}
+        <IssueTile label="Possible saving from resizing" loading={loading(over) || loading(cons) || loading(sof)}
+          headline={saving != null ? (savingPct != null ? fmtShare(savingPct) : fmtMoney(saving, 0)) : null} unit={savingPct != null ? `of spend · ${p.filters.window} days` : `${p.filters.window} days`}
           missingReason={oM.why || cM.why || missingOf(over, p)}
-          base={saving != null ? [`${fmtMoney(saving, 0)}${spend != null ? ` of ${fmtMoney(spend, 0)}` : ""}`, "3 checks", sizePop ? `${fmtInt(flaggedWh)} of ${fmtInt(sizePop)} warehouses` : null].filter(Boolean).join(" · ") : null}
-          cause={saving != null ? `${partText(cE)} from sharing, ${partText(oE)} from one size down, ${partText(sE)} from Snowpark-optimized. Not added to waste.` : null}
-          onOpen={() => scrollToAnchor("ac-resize")} openLabel="Where it comes from ↓" />
-        <IssueTile label="Large warehouses, small queries" loading={loading(over)} status={statusOf(over.f)}
-          headline={affectedOf(over.f) ? `${fmtInt(affectedOf(over.f)!.flagged)}` : null} unit={affectedOf(over.f)?.total ? `of ${fmtInt(affectedOf(over.f)!.total)} warehouses` : "warehouses"} missingReason={missingOf(over, p) || oM.why}
-          base={oM.headline ? [savingWords(oM.headline), smallRange ? `${smallRange} of queries small` : null].filter(Boolean).join(" · ") : null}
-          cause={resize[0] ? `Most: ${whLabel(resize[0].r, p)}, ${resize[0].r.warehouse_size} → ${resize[0].r.suggested_size || "one size down"}.` : null}
-          onOpen={() => scrollToAnchor("ac-resize")} openLabel="One size down ↓" />
+          base={saving != null ? `${[`${fmtMoney(saving, 0)}${spend != null ? ` of ${fmtMoney(spend, 0)}` : ""}`, "3 checks", sizePop ? `${fmtInt(flaggedWh)} of ${fmtInt(sizePop)} warehouses` : null].filter(Boolean).join(" · ")}.` : null}
+          cause={saving != null ? `${partText(cE)} from sharing, ${partText(oE)} from one size down, ${partText(sE)} from Snowpark-optimized. Kept apart from waste.` : null}
+          onOpen={() => scrollToAnchor("ac-share")} openLabel="Where it comes from ↓" />
         <IssueTile label="Lightly loaded at the same hours" loading={loading(cons)} status={statusOf(cons.f)}
           headline={affectedOf(cons.f) ? `${fmtInt(affectedOf(cons.f)!.flagged)}` : null} unit={affectedOf(cons.f)?.total ? `of ${fmtInt(affectedOf(cons.f)!.total)} warehouses` : "warehouses"} missingReason={missingOf(cons, p) || cM.why}
-          base={cM.headline ? `${savingWords(cM.headline)} · ${fmtInt(pairs.length)} pairs` : null}
-          cause="Same size, busy at the same hours: one warehouse could carry both." onOpen={() => scrollToAnchor("ac-share")} openLabel="Pairs ↓" />
+          base={cM.headline ? `${savingWords(cM.headline)} · ${fmtInt(pairs.length)} pairs.` : null}
+          cause="Same size, busy at the same hours. Saving is the second warehouse's bill while both run." onOpen={() => scrollToAnchor("ac-share")} openLabel="Pairs ↓" />
+        <IssueTile label="Large warehouses, small queries" loading={loading(over)} status={statusOf(over.f)}
+          headline={affectedOf(over.f) ? `${fmtInt(affectedOf(over.f)!.flagged)}` : null} unit={affectedOf(over.f)?.total ? `of ${fmtInt(affectedOf(over.f)!.total)} warehouses` : "warehouses"} missingReason={missingOf(over, p) || oM.why}
+          base={oM.headline ? `${[savingWords(oM.headline), smallRange ? `${smallRange} of queries small` : null].filter(Boolean).join(" · ")}.` : null}
+          cause={resize[0] ? `Most: ${whLabel(resize[0].r, p)}, ${resize[0].r.warehouse_size} → ${resize[0].r.suggested_size || "one size down"}.` : null}
+          onOpen={() => scrollToAnchor("ac-resize")} openLabel="One size down ↓" />
         <IssueTile label="Too small: queries spill" loading={loading(under)} status={statusOf(under.f)}
           headline={underAff && underAff.total ? fmtShare(pctOf(underAff.flagged, underAff.total)) : null} unit="of warehouses" missingReason={missingOf(under, p)}
-          base={underAff ? `${fmtInt(underAff.flagged)} of ${fmtInt(underAff.total)} warehouses${spillSpend > 0 ? ` · ${fmtMoney(spillSpend, 0)} spend on them · context` : ""}` : null}
+          base={underAff ? `${fmtInt(underAff.flagged)} of ${fmtInt(underAff.total)} warehouses${spillSpend > 0 ? ` · ${fmtMoney(spillSpend, 0)} spend in scope, as context` : ""}.` : null}
           cause={topSpill ? `Most: ${topSpill.name}, ${fmtShare(pctOf(topSpill.value, topSpill.total))} of its queries spill.` : null}
           onOpen={() => scrollToAnchor("ac-spill")} openLabel="By warehouse ↓" />
       </div>
-      <Row2>
-        <div id="ac-resize">
-          <Panel p={p} src={over} title="Resize candidates" subtitle="ranked by possible saving · size now → one step down · share of small queries · median scan">
-            <DrillTable aria="Resize candidates" n={8} empty={`No warehouse is too big for its queries in ${rangeOf(p) || "this window"}.`}
-              cols={[{ label: "Warehouse" }, { label: "Size → next", width: "minmax(90px, auto)" }, { label: "Saving", width: "minmax(50px, 1fr)" }, { label: `$ · ${p.filters.window} d`, num: true, width: "auto" }, { label: "Small", num: true, width: "auto" }]}
-              rows={resize.map(({ r, usd }) => ({
-                key: `${whKey(r)}|${usd}`, status: r.status,
-                onOpen: () => DrawerBus.open({ id: "sf_wh_oversized", col: r.warehouse_id != null ? "warehouse_id" : null, val: r.warehouse_id != null ? String(r.warehouse_id) : null, label: whLabel(r, p) }),
-                cells: [whLabel(r, p), <span key="s" className="dt-chip">{`${r.warehouse_size || "?"} → ${r.suggested_size || "?"}`}</span>, <MiniBar key="b" value={usd} max={maxSave} />, fmtMoney(usd, 0),
-                  r.small_query_pct != null ? fmtShare(numOrZero(r.small_query_pct)) : "–"],
-              }))} />
-          </Panel>
-        </div>
+      <div className="cx-row">
         <div id="ac-share">
-          <Panel p={p} src={cons} title="Warehouses that could share" subtitle="same size, each lightly loaded at the same hours · saving = the second warehouse's bill while both run">
-            <RankedOrLine items={pairs} valueFmt={usdFmt} unitLabel="$" ariaLabel="Consolidation pairs by saving" emptyText="No same-size warehouses idle together in this window."
-              onBarClick={(it) => DrawerBus.open({ id: "sf_wh_consolidation_candidates", label: it.name })} />
-          </Panel>
+          <WPanel p={p} src={cons} title="Warehouses that could share" subtitle="Same size, each lightly loaded at the same hours · saving = the second warehouse's bill while both run">
+            {consFlagged.length === 0 ? <div className="chart-note-oneline">No same-size warehouses idle together in this window.</div> : (
+              <ShowMore n={8} total={consFlagged.length} noun="pairs">{(k) => (
+                <CxTable aria="Warehouses that could share, by saving" phone={{ cols: [0, 2], widths: "minmax(0, 1fr) 70px" }} minWidth={420}
+                  cols={[{ label: "Warehouse · could share with", width: "minmax(190px, 1.4fr)" }, { label: "", width: "minmax(60px, 1fr)" }, { label: "Saving", width: "76px", num: true }]}
+                  rows={consFlagged.slice(0, k).map(({ r, usd }) => ({
+                    key: whKey(r), title: `${fmtInt(r.shared_hours)} h together${r.partners ? ` · with ${String(r.partners)}` : ""}`,
+                    onOpen: () => DrawerBus.open({ id: "sf_wh_consolidation_candidates", label: whLabel(r, p) }),
+                    cells: [dotName(r.status, whLabel(r, p), partnerText(r.partners)),
+                      <CellBar key="b" value={usd} max={consFlagged[0].usd} color="var(--c3)" />, <b key="v">{fmtMoney(usd, 0)}</b>],
+                  }))} />
+              )}</ShowMore>
+            )}
+          </WPanel>
         </div>
-      </Row2>
-      <div id="ac-spill">
-        <Panel p={p} src={under} title="Too small: share of queries that spill to remote storage" subtitle={`spilling queries of all queries, by warehouse and size${underAff ? ` · ${fmtInt(underAff.flagged)} of ${fmtInt(underAff.total)} flagged` : ""} · dot = status`}>
-          <ShareBarList items={spill} noun="queries" emptyText="No warehouse spilled in this window." />
-        </Panel>
+        <div className="cx-stack" id="ac-resize">
+          <WPanel p={p} src={over} title="Resize candidates" subtitle={`One size down · by possible saving, ${p.filters.window} days`}>
+            {resize.length === 0 ? <div className="chart-note-oneline">{`No warehouse is too big for its queries in ${rangeOf(p) || "this window"}.`}</div> : (
+              <CxTable aria="Resize candidates" phone={{ cols: [0, 1, 2], widths: "minmax(0, 1fr) 110px 56px" }} minWidth={400}
+                cols={[{ label: "Warehouse", width: "minmax(140px, 1.2fr)" }, { label: "Size now → next", width: "minmax(120px, 1fr)" }, { label: "Saving", width: "64px", num: true }, { label: "Small", width: "48px", num: true }]}
+                rows={resize.map(({ r, usd }) => ({
+                  key: `${whKey(r)}|${usd}`,
+                  onOpen: () => DrawerBus.open({ id: "sf_wh_oversized", col: r.warehouse_id != null ? "warehouse_id" : null, val: r.warehouse_id != null ? String(r.warehouse_id) : null, label: whLabel(r, p) }),
+                  cells: [dotName(r.status, whLabel(r, p)), <span key="s">{`${r.warehouse_size || "?"} → `}<b>{r.suggested_size || "?"}</b></span>, <b key="v">{fmtMoney(usd, 0)}</b>,
+                    r.small_query_pct != null ? fmtShare(numOrZero(r.small_query_pct)) : "–"],
+                }))}
+                foot={<span className="cx-muted cx-foot-note">Small = share of the warehouse's queries that are small.</span>} />
+            )}
+          </WPanel>
+          <WPanel p={p} src={sof} title="Snowpark-optimized: Snowpark work or plain SQL?" subtitle="Plain SQL pays the premium for nothing · possible saving, not waste">
+            {soRows.length === 0 ? <div className="chart-note-oneline">No Snowpark-optimized warehouse ran queries in this window.</div> : (
+              <CxTable aria="Snowpark-optimized warehouses by fit" phone={{ cols: [0, 1, 3], widths: "minmax(0, 1fr) 96px 56px" }} minWidth={400}
+                cols={[{ label: "Warehouse", width: "minmax(140px, 1.2fr)" }, { label: "Verdict", width: "minmax(110px, 1fr)" }, { label: "In procedures", width: "88px", num: true }, { label: "Saving", width: "64px", num: true }]}
+                rows={soRows.map((r) => {
+                  const usd = numOrZero(r.est_saving_usd_list) * (1 - sDisc);
+                  const verdict = r.verdict === "plain_sql" ? "Plain SQL" : r.verdict === "no_premium" ? "Same rate as standard" : "Snowpark work: keep it";
+                  return {
+                    key: whKey(r), title: [numOrZero(r.spill_exec_pct) > 0 ? `${fmtShare(numOrZero(r.spill_exec_pct))} spills` : null, r.resource_constraint ? String(r.resource_constraint) : null].filter(Boolean).join(" · ") || undefined,
+                    onOpen: () => DrawerBus.open({ id: "sf_wh_snowpark_optimized_fit", col: "warehouse_id", val: String(r.warehouse_id), label: whLabel(r, p) }),
+                    cells: [dotName(r.status, whLabel(r, p)), <span key="v" className={r.verdict === "plain_sql" ? "cx-strong" : "cx-muted"}>{verdict}</span>,
+                      fmtShare(numOrZero(r.call_exec_pct)),
+                      r.verdict === "plain_sql" ? (usd > 0 ? <b key="u">{fmtMoney(usd, 0)}</b> : <span key="u" className="cx-muted">under floor</span>) : <span key="u" className="cx-muted">–</span>],
+                  };
+                })}
+                foot={<span className="cx-muted cx-foot-note">In procedures = share of run time spent in stored procedures.</span>} />
+            )}
+          </WPanel>
+        </div>
       </div>
-      <Row2>
-        <Panel p={p} src={sof} title="Snowpark-optimized: Snowpark work or plain SQL?" subtitle="run time in procedures and in spilling statements · plain SQL pays the premium for nothing · possible saving, not waste">
-          <RankedOrLine items={soItems} valueFmt={usdFmt} unitLabel="$" ariaLabel="Snowpark-optimized warehouses by fit" emptyText="No Snowpark-optimized warehouse ran queries in this window."
-            onBarClick={(it) => { const r = (rowsOf(sof) || []).find((x) => whKey(x) === it.key); if (r) DrawerBus.open({ id: "sf_wh_snowpark_optimized_fit", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }); }} />
-        </Panel>
-        <Panel p={p} src={g2} title="Gen1 or Gen2" subtitle="Gen2 runs delete, update and merge faster but bills 1.35× per hour (1.25× on Azure): a test, not a saving">
+      <div className="cx-row">
+        <div id="ac-spill">
+          <WPanel p={p} src={under} title="Too small: queries that spill" subtitle={`Share of queries that spill to remote storage, by warehouse and size${underAff ? ` · ${fmtInt(underAff.flagged)} of ${fmtInt(underAff.total)} flagged` : ""}`}>
+            {spillSorted.length === 0 ? <div className="chart-note-oneline">No warehouse spilled in this window.</div> : (
+              <ShowMore n={10} total={spillSorted.length} noun="warehouses">{(k) => (
+                <NameBars ariaLabel="Share of queries that spill, by warehouse" max={spillMax} nameCol="minmax(170px, 1.3fr)" valueCol="52px"
+                  rows={spillSorted.slice(0, k).map((it) => ({
+                    key: String(it.key), value: numOrZero(pctOf(it.value, it.total)), valueText: fmtShare(pctOf(it.value, it.total)), onClick: it.onClick,
+                    label: dotName(it.status, it.name),
+                  }))} />
+              )}</ShowMore>
+            )}
+          </WPanel>
+        </div>
+        <WPanel p={p} src={g2} title="Gen1 or Gen2" subtitle="Gen2 runs delete, update and merge faster but bills 1.35× per hour (1.25× on Azure): a test, not a saving">
+          {conversions.length > 0 && <div className="cx-next-head">Conversions so far</div>}
           {conversions.map((r) => <Gen2Conversion key={whKey(r)} r={r} name={whLabel(r, p)} />)}
-          <div className="ac-sub-title">Gen1 warehouses that mostly delete, update and merge</div>
-          <RankedOrLine items={gen2} valueFmt={(v) => fmtShare(v)} unitLabel="% of run time" ariaLabel="Gen1 warehouses by delete, update and merge share"
-            emptyText="No Gen1 warehouse spends most of its run time on delete, update and merge."
-            onBarClick={(it) => { const r = g2Rows.find((x) => whKey(x) === it.key); if (r) DrawerBus.open({ id: "sf_wh_gen2_fit", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }); }} />
-        </Panel>
-      </Row2>
+          <div className="cx-next-head" style={{ marginTop: conversions.length ? 18 : 0 }}>Gen1 warehouses that mostly delete, update and merge</div>
+          {gen2.length === 0 ? <div className="chart-note-oneline">No Gen1 warehouse spends most of its run time on delete, update and merge.</div> : (
+            <ShowMore n={8} total={gen2.length} noun="warehouses">{(k) => (
+              <NameBars ariaLabel="Gen1 warehouses by delete, update and merge share" max={100} nameCol="minmax(150px, 1.2fr)" valueCol="minmax(110px, auto)"
+                rows={[...gen2].sort((a, b) => b.value - a.value).slice(0, k).map((it) => {
+                  const r = g2Rows.find((x) => whKey(x) === it.key);
+                  return {
+                    key: String(it.key), label: <NameIdText text={it.name} />, value: it.value, valueText: fmtShare(it.value), aside: ` · ${r && r.warehouse_size ? r.warehouse_size : "?"}`,
+                    onClick: r ? () => DrawerBus.open({ id: "sf_wh_gen2_fit", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }) : null,
+                  };
+                })} />
+            )}</ShowMore>
+          )}
+        </WPanel>
+      </div>
     </div>
   );
 }
 (WhSizing as any).ownsLede = true;
 
+/** "with WH_A and 4 more": the first partner in full, the rest counted (all are in the row's tooltip). */
+function partnerText(partners: any): string | null {
+  const list = partners ? String(partners).split(",").map((x) => x.trim()).filter(Boolean) : [];
+  if (!list.length) return null;
+  return `with ${list[0]}${list.length > 1 ? ` and ${fmtInt(list.length - 1)} more` : ""}`;
+}
+
 const G2_VERDICT: Record<string, string> = {
-  paid_off: "paid off", about_even: "about even", costs_more: "costs more", back_to_gen1: "moved back to Gen1", too_soon: "too soon to judge",
+  paid_off: "Paid off", about_even: "About even", costs_more: "Costs more", back_to_gen1: "Moved back to Gen1", too_soon: "Too soon to judge",
 };
+const G2_TONE: Record<string, string> = { paid_off: "ok", costs_more: "warn", back_to_gen1: "warn" };
 const signed = (v: any) => (v == null ? "–" : `${Number(v) > 0 ? "+" : ""}${fmtShare(Number(v))}`);
 
 /** One generation change: before vs after, credits per query and the same statements' run time. */
@@ -846,12 +992,15 @@ function Gen2Conversion({ r, name }: { r: Row; name: string }) {
   const verdict = G2_VERDICT[String(r.verdict)] || String(r.verdict || "");
   const facts = r.verdict === "too_soon"
     ? `${fmtInt(r.days_before ?? 0)} days before, ${fmtInt(r.days_after ?? 0)} after`
-    : [`credits per query ${signed(r.credits_per_query_change_pct)}`, r.same_shapes ? `same ${fmtInt(r.same_shapes)} statements ${signed(r.same_shape_exec_change_pct)} run time` : null,
+    : [`Credits per query ${signed(r.credits_per_query_change_pct)}`, r.same_shapes ? `same ${fmtInt(r.same_shapes)} statements ${signed(r.same_shape_exec_change_pct)} run time` : null,
       `${fmtInt(r.days_before)} d before, ${fmtInt(r.days_after)} d after`].filter(Boolean).join(" · ");
   return (
-    <div className="chart-note-oneline ac-one-line">
-      <span className="blk-dot" style={{ background: statusBarColor(r.status) }} aria-hidden="true" />
-      <strong>{name}</strong>{` → ${r.converted_to === "GEN1" ? "Gen1" : "Gen2"} on ${fmtDayShort(String(r.converted_at).slice(0, 10))}: `}<strong>{verdict}</strong>{` · ${facts}`}
+    <div className="cx-conv">
+      <div className="cx-conv-head">
+        <span><b><NameIdText text={name} /></b><span className="cx-muted">{` → ${r.converted_to === "GEN1" ? "Gen1" : "Gen2"} on ${fmtDayShort(String(r.converted_at).slice(0, 10))}`}</span></span>
+        <span className={`cx-chip${G2_TONE[String(r.verdict)] ? ` cx-chip-${G2_TONE[String(r.verdict)]}` : ""}`}>{verdict}</span>
+      </div>
+      <div className="cx-sub">{facts}</div>
     </div>
   );
 }
@@ -863,14 +1012,6 @@ function WhLoad(p: ApPageProps) {
   const lu = useRows(p, "sf_wh_load_utilization");
   const mix = useRows(p, "sf_wh_mixed_workload_contention");
   const mcPop = affectedOf(mc.f)?.total || null;
-  // Warehouses where reads queue more while pipelines write: the bar is the queued share in pipeline hours.
-  const mixItems: StatusBarItem[] = (rowsOf(mix) || []).filter((r) => r.verdict === "pipeline_crowds_out" || r.verdict === "queue_from_reads")
-    .map((r) => ({
-      key: whKey(r), name: whLabel(r, p), value: numOrZero(r.queued_pct_pipeline_hours), status: r.status,
-      valueText: [`${fmtShare(numOrZero(r.queued_pct_pipeline_hours))} queue while pipelines run vs ${fmtShare(numOrZero(r.queued_pct_other_hours))} otherwise`,
-        r.top_pipeline_user_name ? String(r.top_pipeline_user_name) : null,
-        r.peak_pipeline_hour_utc != null ? `worst ${String(r.peak_pipeline_hour_utc).padStart(2, "0")}:00 UTC` : null].filter(Boolean).join(" · "),
-    }));
   const mcRows = rowsOf(mc);
   const queued = (mcRows || []).filter((r) => isFlagged(r) && numOrZero(r.queued_pct) > 0);
   const qp = queued.map((r) => numOrZero(r.queued_pct));
@@ -893,48 +1034,80 @@ function WhLoad(p: ApPageProps) {
   const lede = loading(mc) || loading(lu) ? "…" : [
     mcRows && queued.length ? `${fmtInt(queued.length)}${mcPop ? ` of ${fmtInt(mcPop)}` : ""} warehouses queue ${range} of their queries${oneCluster === queued.length ? ", all on one cluster" : ""}` : null,
     luRows && billed > 0 ? `${fmtShare(pctOf(low, billed))} of billed hours carried little load` : null,
-  ].filter(Boolean).join("; ") || null;
+  ].filter(Boolean).join(", and ") || null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede ? (lede === "…" ? lede : `${lede}.`) : null); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadNote = aggNote(load.day, p.meta, p.filters.window);
+  const lowSorted = [...lowItems].sort((a, b) => numOrZero(pctOf(b.value, b.total)) - numOrZero(pctOf(a.value, a.total)));
+  const mixRows = (rowsOf(mix) || []).filter((r) => r.verdict === "pipeline_crowds_out" || r.verdict === "queue_from_reads")
+    .sort((a, b) => numOrZero(b.queued_pct_pipeline_hours) - numOrZero(a.queued_pct_pipeline_hours));
+  const mixMax = Math.max(1, ...mixRows.map((r) => Math.max(numOrZero(r.queued_pct_pipeline_hours), numOrZero(r.queued_pct_other_hours))));
   return (
     <div className="ac-page">
       <Tiles>
         <IssueTile label="Queries queued at capacity" loading={loading(mc)}
           headline={mcRows ? (range || "None") : null} unit={range ? "of their queries queue" : undefined} missingReason={missingOf(mc, p)}
-          base={mcRows ? `${fmtInt(queued.length)} of ${fmtInt(mcPop ?? mcRows.length)} warehouses${queued.length ? ` · ${fmtInt(oneCluster)} run on 1 cluster with MAX_CLUSTER_COUNT = 1` : ""}` : null}
+          base={mcRows ? `${fmtInt(queued.length)} of ${fmtInt(mcPop ?? mcRows.length)} warehouses.${queued.length ? ` ${fmtInt(oneCluster)} of them run on one cluster, with a maximum of 1.` : ""}` : null}
           cause={queued.length ? "A second cluster, or spreading the load, removes the queue." : null}
           status={statusOf(mc.f)} onOpen={() => scrollToAnchor("ac-clusters")} openLabel="Clusters allowed vs used ↓" />
         <IssueTile label="Billed hours with little load" loading={loading(lu)}
           headline={luRows ? fmtShare(pctOf(low, billed)) : null} unit="of billed hours" missingReason={missingOf(lu, p)}
-          base={luRows ? `${fmtInt(luAff?.flagged ?? 0)} of ${fmtInt(luAff?.total || luRows.length)} warehouses flagged · ${fmtInt(Math.round(low))} of ${fmtInt(Math.round(billed))} h across all ${fmtInt(luRows.length)}` : null}
+          base={luRows ? `${fmtInt(luAff?.flagged ?? 0)} of ${fmtInt(luAff?.total || luRows.length)} warehouses flagged · ${fmtInt(Math.round(low))} of ${fmtInt(Math.round(billed))} h across all ${fmtInt(luRows.length)}.` : null}
           cause="Overlaps idle time, so not priced here: it is counted once, on Idle & settings."
           status={statusOf(lu.f)} onOpen={() => scrollToAnchor("ac-lowload")} openLabel="By warehouse ↓" />
       </Tiles>
-      <ChartCard title={`Warehouses · load over ${fmtInt(p.filters.window)} days`} subtitle="each day split busy, busy with queries queued, idle but billed, and not running · most queued first · click a warehouse for its days" onOpenCheck={openCheck(p, "sf_wh_state_daily")} takeaway={null}>
-        <WarehouseLoadBands load={load} meta={p.meta} filters={p.filters} n={10}
-          onRow={(w) => DrawerBus.open({ id: "sf_wh_load_utilization", col: "warehouse_id", val: w.id, label: `${w.name} (${w.id})` })} />
-      </ChartCard>
-      <Row2>
+      <div className="cx-row cx-row-wide">
         <div id="ac-clusters">
-          <Panel p={p} src={mc} title="Clusters allowed vs used, with % queued" subtitle="filled = clusters that ran · outlined = allowed, never used · most queued first">
+          <WPanel p={p} src={mc} title="Clusters allowed vs used, with % queued" subtitle="Most queued first · filled square = a cluster that ran, outlined = allowed, never used">
             {mcRows && <ClusterRows rows={mcRows} p={p} />}
-          </Panel>
+          </WPanel>
         </div>
-        <div id="ac-lowload">
-          <Panel p={p} src={lu} title="Low-load hours, by warehouse" subtitle="low-load hours of billed hours">
-            <ShareBarList items={lowItems} noun="hours" valueFmt={(v) => `${fmtInt(Math.round(v))} h`} emptyText="No billed hours in this window." />
-          </Panel>
+        <div className="cx-stack">
+          <div id="ac-lowload">
+            <WPanel p={p} src={lu} title="Low-load hours, by warehouse" subtitle="Share of each warehouse's billed hours that carried little load">
+              {lowSorted.length === 0 ? <div className="chart-note-oneline">No billed hours in this window.</div> : (
+                <ShowMore n={10} total={lowSorted.length} noun="warehouses">{(k) => (
+                  <NameBars ariaLabel="Low-load hours by warehouse" max={100} nameCol="minmax(150px, 1.3fr)" valueCol="48px"
+                    rows={lowSorted.slice(0, k).map((it) => ({
+                      key: String(it.key), value: numOrZero(pctOf(it.value, it.total)), valueText: fmtShare(pctOf(it.value, it.total)),
+                      label: <span className="cx-dotname" title={`${fmtInt(Math.round(numOrZero(it.value)))} of ${fmtInt(Math.round(numOrZero(it.total)))} h`}><span className="blk-dot" style={{ background: statusBarColor(it.status) }} aria-hidden="true" /><span><NameIdText text={it.name} /></span></span>,
+                    }))} />
+                )}</ShowMore>
+              )}
+            </WPanel>
+          </div>
+          <WPanel p={p} src={mix} title="Pipelines that make people wait" subtitle="Share of SELECTs that queue while a pipeline writes vs the other hours · split or reschedule the pipeline before upsizing">
+            {mixRows.length === 0 ? <div className="chart-note-oneline">{`No warehouse where reads queue behind pipelines in ${rangeOf(p) || "this window"}.`}</div> : (
+              <div className="cx-pipes">
+                <div className="cx-legend-line" style={{ marginTop: 0 }}><span className="cx-sw" style={{ background: "var(--c2)" }} />While pipelines run<span className="cx-sw" style={{ background: "var(--c-other)", marginLeft: 10 }} />Other hours</div>
+                {mixRows.map((r) => (
+                  <button type="button" key={whKey(r)} className="cx-pipe"
+                    onClick={() => DrawerBus.open({ id: "sf_wh_mixed_workload_contention", col: "warehouse_id", val: String(r.warehouse_id), label: whLabel(r, p) })}>
+                    <span className="cx-dotname"><span className="blk-dot" style={{ background: statusBarColor(r.status) }} aria-hidden="true" /><span><NameIdText text={whLabel(r, p)} /></span></span>
+                    <span className="cx-pipe-bar"><CellBar value={numOrZero(r.queued_pct_pipeline_hours)} max={mixMax} color="var(--c2)" /><b>{fmtShare(numOrZero(r.queued_pct_pipeline_hours))}</b></span>
+                    <span className="cx-pipe-bar"><CellBar value={numOrZero(r.queued_pct_other_hours)} max={mixMax} color="var(--c-other)" /><span className="cx-muted">{fmtShare(numOrZero(r.queued_pct_other_hours))}</span></span>
+                    {(r.top_pipeline_user_name || r.peak_pipeline_hour_utc != null) && (
+                      <span className="cx-sub">{[r.top_pipeline_user_name ? `Writer ${String(r.top_pipeline_user_name)}` : null, r.peak_pipeline_hour_utc != null ? `worst hour ${String(r.peak_pipeline_hour_utc).padStart(2, "0")}:00 UTC` : null].filter(Boolean).join(" · ")}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </WPanel>
         </div>
-      </Row2>
-      <Panel p={p} src={mix} title="Pipelines that make people wait" subtitle="share of SELECTs that queue in hours a pipeline writes vs the other hours · split or reschedule the pipeline before upsizing">
-        <RankedOrLine items={mixItems} valueFmt={(v) => fmtShare(v)} unitLabel="% queued" max={100} ariaLabel="Warehouses where pipelines make reads queue"
-          emptyText={`No warehouse where reads queue behind pipelines in ${rangeOf(p) || "this window"}.`}
-          onBarClick={(it) => { const r = (rowsOf(mix) || []).find((x) => whKey(x) === it.key); if (r) DrawerBus.open({ id: "sf_wh_mixed_workload_contention", col: "warehouse_id", val: String(r.warehouse_id), label: it.name }); }} />
-      </Panel>
-      <StartsResumes p={p} src={sr} />
+      </div>
+      {loadNote && loadNote !== "…"
+        ? <div className="cx-strip-wrap"><EmptyStrip title={`Warehouses · load over ${fmtInt(p.filters.window)} days`}>{loadNote.replace(/^– /, "")}</EmptyStrip></div>
+        : (
+          <ChartCard title={`Warehouses · load over ${fmtInt(p.filters.window)} days`} subtitle="Each day split busy, busy with queries queued, idle but billed, and not running · most queued first · click a warehouse for its days" onOpenCheck={openCheck(p, "sf_wh_state_daily")} takeaway={null}>
+            <WarehouseLoadBands load={load} meta={p.meta} filters={p.filters} n={10}
+              onRow={(w) => DrawerBus.open({ id: "sf_wh_load_utilization", col: "warehouse_id", val: w.id, label: `${w.name} (${w.id})` })} />
+          </ChartCard>
+        )}
       <HourVolume p={p} src={hours} />
       <EfficiencyByWarehouse p={p} press={press} cache={cacheAgg} prune={pruneAgg} />
-      <ChartCard title="Warehouse spend by calendar month" subtitle="last 12 months and this month · compute and billed cloud services · the top 4 warehouses and the rest" onOpenCheck={openCheck(p, "sf_wh_spend_monthly")} takeaway={null}>
+      <StartsResumes p={p} src={sr} />
+      <ChartCard title="Warehouse spend by calendar month" subtitle="Last 12 months and this month · compute and billed cloud services · the top 4 warehouses and the rest" onOpenCheck={openCheck(p, "sf_wh_spend_monthly")} takeaway={null}>
         <WarehouseSpendMonths filters={p.filters} meta={p.meta} />
       </ChartCard>
     </div>
@@ -942,39 +1115,33 @@ function WhLoad(p: ApPageProps) {
 }
 (WhLoad as any).ownsLede = true;
 
-/** One row per warehouse: a box per cluster (filled = used, outlined = allowed, unused) and the % queued. */
+/** One row per warehouse: a box per cluster (filled = used, outlined = allowed, unused), its settings as tokens, and the % queued. */
 function ClusterRows({ rows, p, n = 10 }: { rows: Row[]; p: ApPageProps; n?: number }) {
-  const [ref, W] = useChartWidth(560);
-  const labelW = rowLabelWidth(W);
+  const [all, setAll] = React.useState(false);
   const list = rows.filter((r) => r.status !== "NOT_ASSESSED")
     .sort((a, b) => numOrZero(b.queued_pct) - numOrZero(a.queued_pct) || numOrZero(b.compute_credits) - numOrZero(a.compute_credits));
-  if (!list.length) return <div className="chart-note-oneline" ref={ref}>No warehouse could be judged in this window.</div>;
-  const shown = list.slice(0, n);
-  const dot = (s: any) => (s === "CRITICAL" ? "crit" : s === "WARN" ? "warn" : "ok");
+  if (!list.length) return <div className="chart-note-oneline">No warehouse could be judged in this window.</div>;
+  const shown = all ? list : list.slice(0, n);
+  const cap = (s: any) => { const t = String(s); return t.charAt(0) + t.slice(1).toLowerCase(); };
   return (
-    <div className="de-cl-list" ref={ref} role="table" aria-label="Clusters allowed vs used, by warehouse">
-      <div className="de-cl-row de-cl-head" role="row"><span role="columnheader">Warehouse</span><span role="columnheader">Clusters</span><span role="columnheader">Setting</span><span role="columnheader" className="de-cl-q">Queued</span></div>
-      {shown.map((r) => {
-        const allowed = Math.max(1, numOrZero(r.max_clusters));
-        const used = Math.max(0, numOrZero(r.max_cluster_seen));
-        const q = numOrZero(r.queued_pct);
-        const name = whLabel(r, p);
-        return (
-          <div key={whKey(r)} className="de-cl-row" role="row">
-            <span className="de-cl-name" role="cell" title={name}>
-              <span className={`de-dot ${dot(r.status)}`} aria-hidden="true" />
-              <button type="button" className="b2-linkbtn" onClick={() => DrawerBus.open({ id: "sf_wh_multicluster_scaling", col: r.warehouse_id != null ? "warehouse_id" : null, val: r.warehouse_id != null ? String(r.warehouse_id) : null, label: name })}>
-                {truncateLeft(name, Math.max(80, labelW - 8))}
-              </button>
-            </span>
-            <span role="cell"><ClusterDots used={Math.min(10, used)} allowed={Math.min(10, Math.max(allowed, used))} /></span>
-            <span className="de-cl-set" role="cell">{[`MIN ${fmtInt(r.min_clusters ?? 1)} · MAX ${fmtInt(allowed)}`, r.scaling_policy ? String(r.scaling_policy) : null, r.warehouse_size ? String(r.warehouse_size) : null].filter(Boolean).join(" · ")}</span>
-            <span className="de-cl-q" role="cell">{fmtShare(q)}</span>
-          </div>
-        );
-      })}
-      {list.length > shown.length && <div className="blk-more">{`+${fmtInt(list.length - shown.length)} more not shown`}</div>}
-    </div>
+    <>
+      <CxTable aria="Clusters allowed vs used, by warehouse" phone={{ cols: [0, 3], widths: "minmax(0, 1fr) 56px" }} minWidth={560}
+        cols={[{ label: "Warehouse", width: "minmax(170px, 1.2fr)" }, { label: "Clusters", width: "70px" }, { label: "Setting", width: "minmax(220px, 1.3fr)" }, { label: "Queued", width: "60px", num: true }]}
+        rows={shown.map((r) => {
+          const allowed = Math.max(1, numOrZero(r.max_clusters));
+          const used = Math.max(0, numOrZero(r.max_cluster_seen));
+          const name = whLabel(r, p);
+          return {
+            key: whKey(r),
+            onOpen: () => DrawerBus.open({ id: "sf_wh_multicluster_scaling", col: r.warehouse_id != null ? "warehouse_id" : null, val: r.warehouse_id != null ? String(r.warehouse_id) : null, label: name }),
+            cells: [<span key="n" className="cx-dotname"><span className="blk-dot" style={{ background: statusBarColor(r.status) }} aria-hidden="true" /><span><NameIdText text={name} /></span></span>,
+              <ClusterDots key="d" used={Math.min(10, used)} allowed={Math.min(10, Math.max(allowed, used))} />,
+              <span key="s" className="cx-tokens">{[`Min ${fmtInt(r.min_clusters ?? 1)}`, `Max ${fmtInt(allowed)}`, r.scaling_policy ? cap(r.scaling_policy) : null, r.warehouse_size ? String(r.warehouse_size) : null].filter(Boolean).map((t) => <span key={String(t)} className="cx-token">{t}</span>)}</span>,
+              <b key="q">{fmtShare(numOrZero(r.queued_pct))}</b>],
+          };
+        })} />
+      {list.length > n && <button type="button" className="cx-show-all" onClick={() => setAll(!all)}>{all ? `Show the first ${fmtInt(n)}` : `Show all ${fmtInt(list.length)}`}</button>}
+    </>
   );
 }
 
@@ -992,7 +1159,7 @@ function StartsResumes({ p, src }: { p: ApPageProps; src: Src }) {
     .sort((a, b) => numOrZero(b.resumes) - numOrZero(a.resumes) || numOrZero(b.provisioning_wait_s) - numOrZero(a.provisioning_wait_s));
   const split = (parts: [any, string][]) => parts.filter(([v]) => numOrZero(v) > 0).map(([v, w]) => `${fmtInt(v)} ${w}`).join(" · ");
   return (
-    <Panel p={p} src={src} title="Starts and resumes"
+    <WPanel p={p} src={src} title="Starts and resumes"
       subtitle={`${fmtInt(days)} days · each resume bills at least 60 s · query wait p95 is how long queries waited for it to start, not the resume itself`}>
       <DrillTable aria="Starts and resumes by warehouse" n={10}
         empty={`No resume, suspend or start-up wait in ${rangeOf(p) || "this window"}.`}
@@ -1010,7 +1177,7 @@ function StartsResumes({ p, src }: { p: ApPageProps; src: Src }) {
             r.provisioning_wait_s != null ? secFmt(numOrZero(r.provisioning_wait_s)) : "–",
             r.provisioning_p95_s != null ? secFmt(numOrZero(r.provisioning_p95_s)) : "–"],
         }))} />
-    </Panel>
+    </WPanel>
   );
 }
 
@@ -1023,12 +1190,12 @@ function HourVolume({ p, src }: { p: ApPageProps; src: Src }) {
   const peak = byHour.reduce((best, v, h) => (v > byHour[best] ? h : best), 0);
   const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
   return (
-    <Panel p={p} src={src} title="Query volume by hour"
-      subtitle={g && all > 0 ? `all queries, incl. those with no warehouse · per hour of day, all days summed · UTC · peak ${hh(peak)}, ${fmtInt(byHour[peak])} of ${fmtInt(all)} queries (${fmtShare(pctOf(byHour[peak], all))})` : "all queries, incl. those with no warehouse · per hour of day, all days summed · UTC"}>
+    <WPanel p={p} src={src} title="Query volume by hour"
+      subtitle={g && all > 0 ? `All queries, including those with no warehouse · per hour of day, all ${fmtInt(p.filters.window)} days summed · UTC · peak ${hh(peak)}, ${fmtInt(byHour[peak])} of ${fmtInt(all)} queries (${fmtShare(pctOf(byHour[peak], all))})` : "All queries, including those with no warehouse · per hour of day, all days summed · UTC"}>
       {g && (all > 0
-        ? <div className="ac-hour-line"><MultiLine series={[{ label: "Queries", color: "var(--c1)", data: byHour }]} xLabels={byHour.map((_, h) => `${hh(h)} UTC`)} /></div>
+        ? <HourLine values={byHour} yLabel={`queries / hour (${fmtInt(p.filters.window)} days summed)`} valueFmt={(v) => fmtInt(v)} ariaLabel="Queries by hour of day, UTC" />
         : <div className="chart-note-oneline">{`No queries in ${rangeOf(p) || "this window"}.`}</div>)}
-    </Panel>
+    </WPanel>
   );
 }
 
@@ -1046,6 +1213,7 @@ const EFF_COLS: { k: EffSort; label: string; title: string }[] = [
 /** One row per warehouse with each efficiency measure its checks give; click a header to sort. */
 function EfficiencyByWarehouse({ p, press, cache, prune }: { p: ApPageProps; press: Src; cache: Src; prune: Src }) {
   const [sort, setSort] = React.useState<EffSort>("queries");
+  const [effAll, setEffAll] = React.useState(false);
   const rows = rowsOf(press);
   // The pressure check has ids only; the daily query feed names warehouses the role's name list lacks.
   const daily = rowsOf(useRows(p, "sf_qry_daily_by_warehouse"));
@@ -1080,45 +1248,31 @@ function EfficiencyByWarehouse({ p, press, cache, prune }: { p: ApPageProps; pre
       prune: pct(pruneBy, r.warehouse_id),
     } as Record<EffSort, number | null>,
   })).sort((a, b) => (b.v[sort] ?? -1) - (a.v[sort] ?? -1));
-  const dot = (s: any) => (s === "CRITICAL" ? "crit" : s === "WARN" ? "warn" : "ok");
+  const effN = effAll ? list.length : 12;
   const busy: Partial<Record<EffSort, boolean>> = { cache: loading(cache), prune: loading(prune) };
   const cell = (k: EffSort, v: number | null) => (busy[k] ? "…" : v == null ? "–" : k === "queries" ? fmtInt(v) : k === "avg" ? secFmt(v) : fmtShare(v));
   const sideNote = [noteOf(cache, p), noteOf(prune, p)].filter((n) => n && n.startsWith("–"));
   return (
-    <Panel p={p} src={press} title="Efficiency by warehouse"
-      subtitle="warehouse queries only · spill of run time · queued and start-up wait of statement time · cache miss of repeat runs · click a header to sort">
+    <WPanel p={p} src={press} title="Efficiency by warehouse"
+      subtitle="Warehouse queries only · spill as a share of run time · queued and start-up wait as a share of statement time · cache miss of repeat runs · click a header to sort">
       {rows && (list.length ? (
         <>
-          <div className="b2-scroll de-qp-box">
-            <table className="de-qp">
-              <thead>
-                <tr>
-                  <th scope="col">Warehouse</th>
-                  {EFF_COLS.map((c) => (
-                    <th key={c.k} scope="col" className="num" title={c.title} aria-sort={sort === c.k ? "descending" : undefined}>
-                      <button type="button" className={`de-sort${sort === c.k ? " on" : ""}`} onClick={() => setSort(c.k)}>{c.label}{sort === c.k ? " ↓" : ""}</button>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {list.slice(0, 15).map((x) => (
-                  <tr key={whKey(x.r)} title={isFlagged(x.r) && x.r.pressure_reason ? String(x.r.pressure_reason) : undefined}>
-                    <td className="de-qp-shape">
-                      <span className={`de-dot ${dot(x.r.status)}`} aria-hidden="true" title={x.r.pressure_reason ? String(x.r.pressure_reason) : undefined} />
-                      <button type="button" className="b2-linkbtn" onClick={() => DrawerBus.open({ id: "query_warehouse_pressure", col: "warehouse_id", val: x.r.warehouse_id != null ? String(x.r.warehouse_id) : null, label: x.name })}>{x.name}</button>
-                    </td>
-                    {EFF_COLS.map((c) => <td key={c.k} className="num">{cell(c.k, x.v[c.k])}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {list.length > 15 && <div className="blk-more">{`+${fmtInt(list.length - 15)} more not shown`}</div>}
+          <CxTable aria="Efficiency by warehouse" phone={{ cols: [0, 1], widths: "minmax(0, 1fr) 72px" }} minWidth={860}
+            cols={[{ label: "Warehouse", width: "minmax(200px, 1.6fr)" }, ...EFF_COLS.map((c) => ({
+              num: true, width: c.k === "cold" ? "96px" : "80px",
+              label: <button type="button" title={c.title} aria-sort={sort === c.k ? "descending" : undefined} className={`cx-sort${sort === c.k ? " on" : ""}`} onClick={() => setSort(c.k)}>{c.label}{sort === c.k ? " ↓" : ""}</button>,
+            }))]}
+            rows={list.slice(0, effN).map((x) => ({
+              key: whKey(x.r), title: isFlagged(x.r) && x.r.pressure_reason ? String(x.r.pressure_reason) : undefined,
+              onOpen: () => DrawerBus.open({ id: "query_warehouse_pressure", col: "warehouse_id", val: x.r.warehouse_id != null ? String(x.r.warehouse_id) : null, label: x.name }),
+              cells: [<span key="n" className="cx-dotname"><span className="blk-dot" style={{ background: statusBarColor(x.r.status) }} aria-hidden="true" /><span><NameIdText text={x.name} /></span></span>,
+                ...EFF_COLS.map((c) => (c.k === "queries" ? <b key={c.k}>{cell(c.k, x.v[c.k])}</b> : <span key={c.k}>{cell(c.k, x.v[c.k])}</span>))],
+            }))} />
+          {list.length > 12 && <button type="button" className="cx-show-all" onClick={() => setEffAll(!effAll)}>{effAll ? "Show the first 12" : `Show all ${fmtInt(list.length)}`}</button>}
           {sideNote.length > 0 && <div className="chart-note-oneline">{`Cache miss or pruning: ${sideNote.map((n) => n!.replace(/^– /, "")).join("; ")}`}</div>}
         </>
       ) : <div className="chart-note-oneline">{`No warehouse ran queries in ${rangeOf(p) || "this window"}.`}</div>)}
-    </Panel>
+    </WPanel>
   );
 }
 
