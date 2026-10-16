@@ -7,22 +7,21 @@ import "../styles/css/p_area_pipelines.css";
 import { fmtBytes, fmtCredits, fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { FLAGGED_STATUSES, aggTotal, numOrZero, taskName, useFindingAgg, useFindingData, useMultiFindingData } from "./hooks";
 import type { DimMaps } from "./hooks";
-import { ChartCard, KindChip, StatusPill, bandOf, bandPillKind } from "./primitives";
+import { ChartCard, KindChip } from "./primitives";
 import { COST_MONEY_COL } from "./tab_registry";
 import { DrillTable, MiniBar } from "./drill_table";
 import { DrawerBus } from "./drawer";
-import { DivergingBars, rowLabelWidth } from "./charts_more";
-import { truncateLeft, useChartWidth } from "./charts";
+import { DivergingBars } from "./charts_more";
 import { notAssessedText } from "./scope";
 import { scrollToAnchor, windowShortLabel } from "./overview_tile";
 import { TaskFocus } from "./names";
 import { CauseSplitBar, IssueTile, ShareBarList, StackedShareBar, StatusBars, fmtShare, pctOf } from "./blocks";
 import type { IssueTileProps, StatusBarItem } from "./blocks";
-import { DumbbellRows } from "./blocks_2";
+import { CxBarRows, CxCellBar, CxChip, CxDotLegend, CxDumbbell, CxEyebrow, CxMissing, CxObjName, CxRanked, CxStat, CxStrip, CxSwatches, CxTable, CxTrackRows, rankTally, scheduleText } from "./cx_e";
+import type { CxBarRow, CxRankItem } from "./cx_e";
 import { TaskRunGrid, useTaskRunDays } from "./run_blocks";
 import { CsvButton } from "./csv";
 import type { CsvColumn } from "./csv";
-import type { DumbbellRow } from "./blocks_2";
 import { warehouseNameId, withoutTotalRows } from "../tabs/tab_area";
 import type { ApPageProps } from "./area_pages";
 import type { Dims, FetchState, Finding, Row } from "../types";
@@ -196,6 +195,19 @@ export function failedSplit(rows: Row[], keyOf: (r: Row) => string | null, aria:
   return segs.length ? <StackedShareBar segments={segs} pareto valueFmt={(v) => `${fmtInt(v)} runs`} ariaLabel={aria} /> : null;
 }
 
+/** Failed runs ranked by one key; a missing key counts under `none`. */
+function failedRanked(rows: Row[], keyOf: (r: Row) => string | null, none: string): CxRankItem[] {
+  const m = new Map<string, number>();
+  let total = 0;
+  rows.forEach((r) => {
+    const v = numOrZero(r.failed_runs);
+    if (v <= 0) return;
+    const k = keyOf(r) || none;
+    m.set(k, (m.get(k) || 0) + v); total += v;
+  });
+  return rankTally([...m.entries()], total, (v) => `${fmtInt(v)} ${v === 1 ? "run" : "runs"}`);
+}
+
 export function PlTasksFailures(p: ApPageProps) {
   const d = usePlData(p, ["sf_task_failures", "sf_task_silent_failures", "sf_task_alerts", "sf_task_alerts_silenced"]);
   const open = opener(p);
@@ -219,22 +231,10 @@ export function PlTasksFailures(p: ApPageProps) {
   // The run grid needs the per-day check; an older export without it keeps the failure-rate bars.
   const runDays = useTaskRunDays(p.filters);
   const hasRunDays = (p.findings || []).some((f) => f.query_id === "sf_task_runs_daily");
-  const alertCheck = (c: PlCheck, title: string, extra: (c: PlCheck) => string | null) => {
-    const band = c.f ? bandOf(c.f) : "NOT_ASSESSED";
-    const n = c.note || c.loading ? null : counts(c, "alerts");
-    return (
-      <button type="button" className="ck-row" key={c.id} onClick={() => DrawerBus.open({ id: c.id })}>
-        <span className="ck-pill"><StatusPill kind={bandPillKind(band)} /></span>
-        <span className="ck-name" title={title}>{title}</span>
-        <span className="ck-fact">{c.loading ? "…" : c.note ? c.note : [n ? `${fmtInt(n.flagged)}${ofPop(n)}` : null, extra(c)].filter(Boolean).join(" · ")}</span>
-        <span className="ck-rows">{"Rows →"}</span>
-      </button>
-    );
-  };
   const alertSpend = (c: PlCheck) => { const v = usdSum(c, c.rows.filter(isFlagged), "est_alert_usd_list"); return c.priced && v > 0 ? `${usd0(v)} spend` : null; };
 
   return (
-    <div>
+    <div className="cx-e">
       <Tiles>
         <PlTile c={fail} open={open("sf_task_failures")} label="Task runs failed" make={(c) => {
           if (runs <= 0) return null;
@@ -242,8 +242,8 @@ export function PlTasksFailures(p: ApPageProps) {
           const n = counts(c, "tasks");
           return {
             headline: fmtShare(pctOf(failed, runs)), unit: "of runs",
-            base: `${fmtInt(failed)} of ${fmtInt(runs)} runs · ${fmtInt(n.flagged)}${ofPop(n)} · ${fmtInt(now)} failing now`,
-            cause: topErr ? `err ${topErr[0]} is ${fmtShare(pctOf(topErr[1], failed))} of failed runs.` : undefined,
+            base: `${fmtInt(failed)} of ${fmtInt(runs)} runs. ${fmtInt(n.flagged)}${ofPop(n)}; ${fmtInt(now)} failing now.`,
+            cause: topErr ? `Error ${topErr[0]} is ${fmtShare(pctOf(topErr[1], failed))} of failed runs.` : undefined,
             status: now > 0 ? "critical" : tileStatus(c.rows),
           };
         }} />
@@ -256,7 +256,7 @@ export function PlTasksFailures(p: ApPageProps) {
           const pct = n.population ? pctOf(n.flagged, n.population) : null;
           return {
             headline: pct != null ? fmtShare(pct) : fmtInt(n.flagged), unit: pct != null ? `of ${n.noun}` : ofPop(n),
-            base: `${fmtInt(n.flagged)}${ofPop(n)}${top ? ` · ${taskCause(top[0])}: ${fmtInt(top[1])}` : ""}`,
+            base: `${fmtInt(n.flagged)}${ofPop(n)}.${top ? ` ${fmtInt(top[1])}: ${taskCause(top[0])}.` : ""}`,
             cause: "Set ERROR_INTEGRATION on the root task, or add a finalizer that alerts.",
             status: tileStatus(flagged),
           };
@@ -266,9 +266,8 @@ export function PlTasksFailures(p: ApPageProps) {
           const nf = !alerts.loading && !alerts.note ? counts(alerts, "alerts") : null;
           const spent = alertSpend(alerts);
           return {
-            headline: fmtInt(n.flagged), unit: `${ofPop(n).trim()} switched off or stopped`,
-            base: [nf ? `${fmtInt(nf.flagged)}${ofPop(nf)} fail when they run` : `failing alerts: ${alerts.note ? alerts.note.replace(/^– /, "") : "…"}`,
-              `${fmtInt(n.flagged)}${ofPop(n)} off`].join(" · "),
+            headline: fmtInt(n.flagged), unit: `${ofPop(n).trim()} off`,
+            base: `Switched off or stopped evaluating. ${nf ? `${fmtInt(nf.flagged)}${ofPop(nf)} fail when they run.` : `Failing alerts: ${alerts.note ? alerts.note.replace(/^– /, "") : "…"}`}`,
             cause: spent ? `The failing ones spent ${spent.replace(/ spend$/, "")} to fail: context, not waste.` : undefined,
             status: worseStatus(tileStatus(c.rows.filter(isFlagged)), alerts.rows.length ? tileStatus(alerts.rows.filter(isFlagged)) : "ok"),
           };
@@ -314,23 +313,32 @@ export function PlTasksFailures(p: ApPageProps) {
         </PlCard>}
         <PlCard c={fail} open={open("sf_task_failures")} title="Why runs fail" subtitle={`${fmtInt(failed)} failed runs, by each task's last error code, then by the compute they ran on`}>
           {(c) => {
-            const a = failedSplit(c.rows, (r) => (r.last_error_code ? `err ${r.last_error_code}` : null), "Failed runs by error code");
-            const b = failedSplit(c.rows, (r) => computeWord(r), "Failed runs by compute");
-            if (!a && !b) return null;
-            return <div className="pl-stack">{a}{b}</div>;
+            const a = failedRanked(c.rows, (r) => (r.last_error_code ? `err ${r.last_error_code}` : null), "(no error code)");
+            const b = failedRanked(c.rows, (r) => computeWord(r), "(no compute)");
+            if (!a.length && !b.length) return null;
+            return (
+              <div>
+                {topErr && <div className="cx-lead">{`Error ${topErr[0]} accounts for ${fmtShare(pctOf(topErr[1], failed))} of failed runs.`}</div>}
+                {a.length > 0 && <div className="cx-block"><CxEyebrow>By error code</CxEyebrow><CxRanked items={a} ariaLabel="Failed runs by error code" /></div>}
+                {b.length > 0 && <div className="cx-block"><CxEyebrow>By compute</CxEyebrow><CxRanked items={b} ariaLabel="Failed runs by compute" /></div>}
+              </div>
+            );
           }}
         </PlCard>
         <PlCard c={silent} open={open("sf_task_silent_failures")} title="Silent failures, by cause" subtitle={silentN ? `${fmtInt(silentN.flagged)}${ofPop(silentN)} fail and tell no one · why` : "root tasks that fail and tell no one · why"}>
           {(c) => {
             const rows = c.rows.filter(isFlagged);
+            if (!rows.length) return <Note>Nothing flagged in this window.</Note>;
+            const by = new Map<string, number>();
+            rows.forEach((r) => String(r.finding || "").split(/[,;|]/).map((x) => x.trim()).filter(Boolean).forEach((k) => by.set(k, (by.get(k) || 0) + 1)));
+            const ranked = [...by.entries()].sort((x, y) => y[1] - x[1]);
+            const items = rankTally(ranked, rows.length, (v) => `${fmtInt(v)} ${v === 1 ? "task" : "tasks"}`, 8, taskCause)
+              .map((it) => ({ ...it, strong: it.rest, rest: it.strong, onClick: () => DrawerBus.open({ id: "sf_task_silent_failures" }) }));
             return (
               <div>
-                {rows.length ? <CauseSplitBar rows={rows} column="finding" noun="tasks" labelFor={taskCause} onCauseClick={() => DrawerBus.open({ id: "sf_task_silent_failures" })} />
-                  : <Note>Nothing flagged in this window.</Note>}
-                <div className="ck-list pl-alert-checks">
-                  {alertCheck(alerts, "Alerts that fail, and what alerts cost", alertSpend)}
-                  {alertCheck(off, "Alerts that were switched off or stopped evaluating", () => null)}
-                </div>
+                {ranked[0] && <div className="cx-lead">{`Most often, ${fmtInt(ranked[0][1])} ${ranked[0][1] === 1 ? "task" : "tasks"}: ${taskCause(ranked[0][0])}.`}</div>}
+                <CxRanked items={items} layout="above" ariaLabel="Silent failures by cause" />
+                <div className="cx-foot">{"The alert checks behind these tasks are in the checks list below."}</div>
               </div>
             );
           }}
@@ -340,6 +348,20 @@ export function PlTasksFailures(p: ApPageProps) {
   );
 };
 (PlTasksFailures as any).ownsLede = true;
+
+/** PlCard, but a check with no rows reads as one dashed line instead of an empty card. */
+function XCard(props: { c: PlCheck; title: string; subtitle?: string; open: () => void; children: (c: PlCheck) => React.ReactNode }) {
+  if (!props.c.loading && props.c.note) return <CxMissing title={props.title} reason={props.c.note.replace(/^– /, "")} onOpen={props.open} />;
+  return <PlCard {...props} />;
+}
+
+/** A task row for CxBarRows: full dotted name and id, opening the task's panel. */
+function taskBar(r: Row, dims: Dims, value: number, strong: React.ReactNode, rest?: React.ReactNode): CxBarRow {
+  return {
+    key: `${r.account_id}|${r.task_full_name}`, name: taskName(dims as DimMaps, r.task_full_name || r.task_name), id: r.task_id,
+    value, status: rowStatus(r), strong, rest, onClick: () => openTask(r),
+  };
+}
 
 const START_CAUSE: Record<string, string> = { warehouse_busy: "queued behind other work", warehouse_resume: "warehouse resuming", scheduler: "scheduler late" };
 
@@ -358,29 +380,14 @@ export function PlTasksCost(p: ApPageProps) {
   const slowList = slower(slow.rows).sort((a, b) => numOrZero(b.p50_growth_pct) - numOrZero(a.p50_growth_pct));
   const slowN = !slow.loading && !slow.note ? counts(slow, "tasks") : null;
   const lede = cost.loading || noop.loading || slow.loading ? "…" : [
-    slowN && slowList.length ? `${fmtInt(slowList.length)}${ofPop(slowN)} got slower than the ${win} before` : null,
+    slowN && slowList.length ? `${fmtInt(slowList.length)}${ofPop(slowN)} got slower than in the previous ${fmtInt(p.filters.window)} days` : null,
     judged > 0 ? `${fmtShare(pctOf(sum(noop.rows, "noop_runs"), judged))} of judged runs changed nothing` : null,
   ].filter(Boolean).join("; ").replace(/^./, (x) => x.toUpperCase()) || null;
   React.useEffect(() => { if (p.setLede) p.setLede(lede ? (lede === "…" ? lede : `${lede}.`) : null); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div>
+    <div className="cx-e">
       <Tiles>
-        <PlTile c={cost} open={open("sf_task_cost")} label="Task spend" make={(c) => {
-          if (!c.priced) return { headline: null, missingReason: "No $/credit price in this export." };
-          const now = usdSum(c, c.rows, "est_task_usd_list"), prev = usdSum(c, c.rows, "est_prev_usd_list");
-          const m = c.f && c.f.money;
-          const total = m && m.unit !== "currency" && Number.isFinite(Number(m.usd)) ? Number(m.usd) : now;
-          const ch = prev > 0 ? ((now - prev) / prev) * 100 : null;
-          const top = [...c.rows].sort((a, b) => numOrZero(b.est_task_usd_list) - numOrZero(a.est_task_usd_list))[0];
-          const n = counts(c, "tasks");
-          return {
-            headline: usd0(total), pill: <StatusPill kind="neutral" />,
-            base: [ch === null ? null : `${signedPct(ch)} vs previous ${win}`, `${fmtInt(n.population ?? c.rows.length)} ${n.noun}`].filter(Boolean).join(" · "),
-            cause: top ? `Most: ${taskLabel(top, p.dims)}, ${usd0(usd(c, top, "est_task_usd_list"))}${num(top.change_pct) !== null ? `, ${signedPct(num(top.change_pct))}` : ""}.` : undefined,
-            status: "neutral",
-          };
-        }} />
         <PlTile c={noop} open={open("sf_task_noop_runs")} label="Runs that changed nothing" make={(c) => {
           if (judged <= 0) return null;
           const n = counts(c, "tasks");
@@ -388,8 +395,7 @@ export function PlTasksCost(p: ApPageProps) {
           const waste = c.priced ? usdSum(c, noopFlagged, "est_wasted_usd_list") : 0;
           return {
             headline: fmtShare(pctOf(sum(c.rows, "noop_runs"), judged)), unit: "of runs",
-            base: [`${fmtInt(n.flagged)}${ofPop(n)}`, noopFlagged.length ? `${fmtInt(withWhen)} of the ${fmtInt(noopFlagged.length)} have a WHEN` : null,
-              waste > 0 ? `${usd0(waste)} possible waste` : null].filter(Boolean).join(" · "),
+            base: `${fmtInt(n.flagged)}${ofPop(n)}${noopFlagged.length ? `; only ${fmtInt(withWhen)} of the ${fmtInt(noopFlagged.length)} have a WHEN condition` : ""}.${waste > 0 ? ` ${usd0(waste)} possible waste.` : ""}`,
             cause: "A WHEN SYSTEM$STREAM_HAS_DATA skips the run without waking the warehouse.",
             status: tileStatus(noopFlagged),
           };
@@ -400,7 +406,7 @@ export function PlTasksCost(p: ApPageProps) {
           const worst = [...c.rows].sort((a, b) => numOrZero(b.p90_duration_to_interval_pct) - numOrZero(a.p90_duration_to_interval_pct))[0];
           return {
             headline: fmtShare(pctOf(sum(c.rows, "overlap_skips") + sum(c.rows, "condition_skips"), sched)), unit: "of scheduled runs",
-            base: [`${fmtInt(n.flagged)}${ofPop(n)}`, worst && num(worst.p90_duration_to_interval_pct) !== null ? `worst runs for ${pctText(worst.p90_duration_to_interval_pct)} of its schedule` : null].filter(Boolean).join(" · "),
+            base: `${fmtInt(n.flagged)}${ofPop(n)}.${worst && num(worst.p90_duration_to_interval_pct) !== null ? ` The worst runs for ${pctText(worst.p90_duration_to_interval_pct)} of its schedule.` : ""}`,
             cause: "The previous run was still going. Make the task faster, or widen the schedule.",
             status: tileStatus(c.rows.filter(isFlagged)),
           };
@@ -410,88 +416,88 @@ export function PlTasksCost(p: ApPageProps) {
           if (!slowList.length) return { headline: "0", unit: ofPop(n), cause: "No task got slower in this window.", status: "ok" };
           return {
             headline: fmtInt(slowList.length), unit: ofPop(n).trim(),
-            base: `median run vs previous ${win} · slowest ${signedPct(num(slowList[0].p50_growth_pct))}`,
+            base: `Median run vs the previous ${fmtInt(p.filters.window)} days. The slowest is up ${fmtShare(num(slowList[0].p50_growth_pct))}.`,
             cause: `${taskLabel(slowList[0], p.dims)}: ${dur(slowList[0].prev_p50_duration_seconds)} → ${dur(slowList[0].p50_duration_seconds)}`,
             status: tileStatus(slowList),
           };
         }} />
-        <PlTile c={rt} open={open("sf_task_run_times")} label="Cost of failed task runs" make={(c) => failedCostTile(c, p.dims)} />
       </Tiles>
+      <CxStrip>
+        <PlTile c={cost} open={open("sf_task_cost")} label="Task spend" make={(c) => {
+          if (!c.priced) return { headline: null, missingReason: "No $/credit price in this export." };
+          const now = usdSum(c, c.rows, "est_task_usd_list"), prev = usdSum(c, c.rows, "est_prev_usd_list");
+          const m = c.f && c.f.money;
+          const total = m && m.unit !== "currency" && Number.isFinite(Number(m.usd)) ? Number(m.usd) : now;
+          const ch = prev > 0 ? ((now - prev) / prev) * 100 : null;
+          const top = [...c.rows].sort((a, b) => numOrZero(b.est_task_usd_list) - numOrZero(a.est_task_usd_list))[0];
+          const n = counts(c, "tasks");
+          return {
+            headline: usd0(total), unit: `last ${fmtInt(p.filters.window)} days · context, not waste`,
+            base: [ch === null ? null : `${signedPct(ch)} vs the previous ${fmtInt(p.filters.window)} days`, `${fmtInt(n.population ?? c.rows.length)} ${n.noun}`].filter(Boolean).join(" · ") + ".",
+            cause: top ? `Most: ${taskLabel(top, p.dims)}, ${usd0(usd(c, top, "est_task_usd_list"))}${num(top.change_pct) !== null ? `, ${signedPct(num(top.change_pct))}` : ""}.` : undefined,
+            status: "neutral",
+          };
+        }} />
+        <PlTile c={rt} open={open("sf_task_run_times")} label="Cost of failed task runs" make={(c) => failedCostTile(c, p.dims)} />
+      </CxStrip>
       <Grid>
-        <PlCard c={slow} open={open("sf_task_duration_regression")} title="Slower tasks · earlier → now" subtitle={`median run time, previous ${win} → last ${win} · ${slowN ? `${fmtInt(slowList.length)}${ofPop(slowN)}` : "flagged tasks"}`}>
+        <XCard c={slow} open={open("sf_task_duration_regression")} title="Slower tasks" subtitle={`Median run time, previous ${win} → last ${win} · ${slowN ? `${fmtInt(slowList.length)}${ofPop(slowN)}` : "flagged tasks"}`}>
           {() => {
             if (!slowList.length) return <Note>No task got slower in this window.</Note>;
-            const shown = slowList.slice(0, 8);
-            const rows: DumbbellRow[] = shown.map((r) => ({
-              key: `${r.account_id}|${r.task_full_name}`, name: taskName(p.dims as DimMaps, r.task_full_name || r.task_name), id: r.task_id,
-              before: numOrZero(r.prev_p50_duration_seconds), after: numOrZero(r.p50_duration_seconds),
-              valueText: `${signedPct(num(r.p50_growth_pct))} ${dur(r.prev_p50_duration_seconds)} → ${dur(r.p50_duration_seconds)}`,
-            }));
-            return (
-              <div>
-                <div className="b2-legend"><span className="b2-legend-item"><span className="b2-sw b2-ring" />earlier</span><span className="b2-legend-item"><span className="b2-sw b2-ring now" />now</span></div>
-                <DumbbellRows rows={rows} />
-                {slowList.length > shown.length && <div className="blk-more">{`+${fmtInt(slowList.length - shown.length)} more not shown`}</div>}
-              </div>
-            );
+            return <CxDumbbell ariaLabel="Slower tasks, median run before and now" axisLabel="median run time" tick={(v) => dur(v)}
+              beforeLabel={`Previous ${fmtInt(p.filters.window)} days`} afterLabel={`Last ${fmtInt(p.filters.window)} days`}
+              rows={slowList.map((r) => ({
+                key: `${r.account_id}|${r.task_full_name}`, name: taskName(p.dims as DimMaps, r.task_full_name || r.task_name), id: r.task_id,
+                before: numOrZero(r.prev_p50_duration_seconds), after: numOrZero(r.p50_duration_seconds), onClick: () => openTask(r),
+                strong: signedPct(num(r.p50_growth_pct)), rest: `${dur(r.prev_p50_duration_seconds)} → ${dur(r.p50_duration_seconds)}`,
+              }))} />;
           }}
-        </PlCard>
-        <PlCard c={cost} open={open("sf_task_cost")} title="Task cost" subtitle={`by task · change vs the previous ${win} · context, not waste`}>
+        </XCard>
+        <XCard c={cost} open={open("sf_task_cost")} title="Task cost" subtitle={`By task, with change vs the previous ${win} · spend, not waste`}>
           {(c) => {
             const col = c.priced ? "est_task_usd_list" : "credits";
-            const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r[col]) > 0).map((r) => {
-              const v = c.priced ? usd(c, r, col) : numOrZero(r[col]);
-              const ch = num(r.change_pct);
-              return {
-                key: `${r.account_id}|${r.task_full_name}`, name: taskLabel(r, p.dims), value: v, row: r, status: rowStatus(r),
-                valueText: `${c.priced ? usd0(v) : `${fmtInt(v)} credits`}${ch !== null ? ` · ${signedPct(ch)}` : ""}`,
-              };
-            });
-            return items.length ? <StatusBars items={items} n={8} ariaLabel="Task cost by task" onBarClick={(it) => openTask(it.row)} /> : null;
+            const rows = c.rows.filter((r) => numOrZero(r[col]) > 0)
+              .map((r) => { const v = c.priced ? usd(c, r, col) : numOrZero(r[col]); const ch = num(r.change_pct); return taskBar(r, p.dims, v, c.priced ? usd0(v) : `${fmtInt(v)} credits`, ch !== null ? `${signedPct(ch)} vs before` : undefined); })
+              .sort((x, y) => y.value - x.value);
+            return rows.length ? <CxBarRows rows={rows} legend={false} ariaLabel="Task cost by task" /> : null;
           }}
-        </PlCard>
+        </XCard>
       </Grid>
       <Grid>
-        <PlCard c={noop} open={open("sf_task_noop_runs")} title="Runs that changed nothing" subtitle={`${fmtInt(judged)} judged runs · runs that changed no rows`}>
+        <XCard c={noop} open={open("sf_task_noop_runs")} title="Runs that changed nothing" subtitle={`Share of each task's judged runs that changed no rows · ${fmtInt(judged)} judged runs`}>
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r.noop_runs) > 0).map((r) => {
-              const judged = numOrZero(r.noop_runs) + numOrZero(r.changed_runs);
-              const pct = pctOf(numOrZero(r.noop_runs), judged) ?? 0;
-              return {
-                key: `${r.account_id}|${r.task_full_name}`, name: taskLabel(r, p.dims), value: pct, row: r, status: rowStatus(r),
-                valueText: `${fmtShare(pct)} · ${fmtInt(r.noop_runs)} of ${fmtInt(judged)}${numOrZero(r.runs_with_when) > 0 ? " · has WHEN" : " · no WHEN"}`,
-              };
-            });
-            return items.length ? <StatusBars items={items} max={100} n={8} ariaLabel="No-op runs by task" onBarClick={(it) => openTask(it.row)} /> : null;
+            const rows = c.rows.filter((r) => numOrZero(r.noop_runs) > 0).map((r) => {
+              const j = numOrZero(r.noop_runs) + numOrZero(r.changed_runs);
+              const pct = pctOf(numOrZero(r.noop_runs), j) ?? 0;
+              return taskBar(r, p.dims, pct, `${fmtShare(pct)} · ${fmtInt(r.noop_runs)} of ${fmtInt(j)} runs`, numOrZero(r.runs_with_when) > 0 ? "has a WHEN condition" : "no WHEN condition");
+            }).sort((x, y) => y.value - x.value);
+            return rows.length ? <CxBarRows rows={rows} max={100} ariaLabel="No-op runs by task" /> : null;
           }}
-        </PlCard>
-        <PlCard c={skip} open={open("sf_task_skipped_overlaps")} title="Skipped runs" subtitle="skipped of scheduled runs · p90 run time vs schedule">
+        </XCard>
+        <XCard c={skip} open={open("sf_task_skipped_overlaps")} title="Skipped runs" subtitle="Share of scheduled runs skipped · p90 run time as a share of the schedule">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r.overlap_skips) + numOrZero(r.condition_skips) > 0).map((r) => {
+            const rows = c.rows.filter((r) => numOrZero(r.overlap_skips) + numOrZero(r.condition_skips) > 0).map((r) => {
               const pct = pctOf(numOrZero(r.overlap_skips) + numOrZero(r.condition_skips), numOrZero(r.scheduled_runs)) ?? numOrZero(r.skip_pct);
               const ratio = num(r.p90_duration_to_interval_pct);
-              return {
-                key: `${r.account_id}|${r.task_full_name}`, name: taskLabel(r, p.dims), value: pct, row: r, status: rowStatus(r),
-                valueText: `${fmtShare(pct)} skipped${ratio !== null ? ` · run time ${fmtShare(ratio)} of schedule` : ""}`,
-              };
-            });
-            return items.length ? <StatusBars items={items} max={100} n={8} ariaLabel="Skipped runs by task" onBarClick={(it) => openTask(it.row)} /> : null;
+              return taskBar(r, p.dims, pct, `${fmtShare(pct)} skipped`, ratio !== null ? `run time ${fmtShare(ratio)} of schedule` : undefined);
+            }).sort((x, y) => y.value - x.value);
+            if (!rows.length) return null;
+            const top = Math.max(...rows.map((r) => r.value));
+            return <div><CxBarRows rows={rows} ariaLabel="Skipped runs by task" /><div className="cx-foot">{`Bars scaled to the highest share, ${fmtShare(top)}.`}</div></div>;
           }}
-        </PlCard>
+        </XCard>
       </Grid>
-      <PlCard c={rt} open={open("sf_task_run_times")} title="Tasks by run time" subtitle={`completed runs in the last ${win} · Snowflake's own tasks left out · click a task for its panel`}>
-        {(c) => <TaskRunTimes c={c} dims={p.dims} />}
-      </PlCard>
-      <PlCard c={late} open={open("sf_task_start_delay")} title="Tasks that start late" subtitle="p90 wait from the scheduled time until the statement runs · what held it back">
+      <XCard c={late} open={open("sf_task_start_delay")} title="Tasks that start late" subtitle="p90 wait from the scheduled time until the statement runs · what held it back">
         {(c) => {
-          const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r.late_runs) > 0).map((r) => ({
-            key: `${r.account_id}|${r.task_full_name}`, name: taskLabel(r, p.dims), value: numOrZero(r.p90_delay_s), row: r, status: rowStatus(r),
-            valueText: [`p90 ${dur(r.p90_delay_s)}`, `${pctText(r.late_pct)} of runs late`, START_CAUSE[String(r.main_cause)] || null].filter(Boolean).join(" · "),
-          }));
-          return items.length ? <StatusBars items={items} n={8} ariaLabel="Late task starts by task" onBarClick={(it) => openTask(it.row)} />
+          const rows = c.rows.filter((r) => numOrZero(r.late_runs) > 0).map((r) => taskBar(r, p.dims, numOrZero(r.p90_delay_s), `p90 ${dur(r.p90_delay_s)}`,
+            [`${pctText(r.late_pct)} of runs late`, START_CAUSE[String(r.main_cause)] || null].filter(Boolean).join(" · "))).sort((x, y) => y.value - x.value);
+          return rows.length ? <CxBarRows rows={rows} ariaLabel="Late task starts by task" />
             : <Note>{`No task started late in the last ${fmtInt(p.filters.window)} days.`}</Note>;
         }}
-      </PlCard>
+      </XCard>
+      <XCard c={rt} open={open("sf_task_run_times")} title="Tasks by run time" subtitle={`completed runs in the last ${win} · Snowflake's own tasks left out · click a task for its panel`}>
+        {(c) => <TaskRunTimes c={c} dims={p.dims} />}
+      </XCard>
     </div>
   );
 };
@@ -618,7 +624,7 @@ export function PlTasksHygiene(p: ApPageProps) {
   };
   const toFailures = () => p.goTo({ tab: p.area, subtab: "failures" });
   return (
-    <div className="sx-page">
+    <div className="sx-page cx-e">
       <Tiles4>
         <PlTile c={stale} open={scrollTo("th-why")} label="Suspended or not running" make={() => {
           const by = new Map<string, number>();
@@ -627,7 +633,7 @@ export function PlTasksHygiene(p: ApPageProps) {
           return {
             headline: staleBase ? fmtShare(pctOf(staleFlag.length, staleBase)) : fmtInt(staleFlag.length), unit: staleBase ? "of tasks" : "tasks",
             flagged: staleFlag.length, population: staleBase, noun: "tasks",
-            cause: top ? `${taskCause(top[0])} leads · ${fmtInt(top[1])} ${top[1] === 1 ? "task" : "tasks"}` : undefined,
+            cause: top ? `"${taskCause(top[0]).replace(/^./, (x) => x.toUpperCase())}" leads, with ${fmtInt(top[1])} ${top[1] === 1 ? "task" : "tasks"}.` : undefined,
             status: tileStatus(staleFlag), openLabel: "By cause ↓",
           };
         }} />
@@ -641,12 +647,12 @@ export function PlTasksHygiene(p: ApPageProps) {
         }} />
         {otherTile("Overlapping runs allowed", roots, () => ({
           headline: fmtInt(overlap.length), unit: `of ${fmtInt(rootRows.length)} root tasks`,
-          base: "ALLOW_OVERLAPPING_EXECUTION = TRUE", cause: overlap.length ? "Two runs can write the same table at once." : "No root task allows overlap.",
+          base: "Root tasks set to allow overlapping execution.", cause: overlap.length ? "Two runs can write the same table at once." : "No root task allows overlap.",
           openLabel: "Which ↓",
         }), scrollTo("th-settings"))}
         {otherTile("No error integration", roots, () => ({
           headline: fmtInt(noInt.length), unit: `of ${fmtInt(rootRows.length)} root tasks`,
-          base: `${fmtInt(intSet)} have ERROR_INTEGRATION set · ${fmtInt(failingNoInt.length)} failing without one`,
+          base: `${fmtInt(intSet)} have ERROR_INTEGRATION set; ${fmtInt(failingNoInt.length)} are failing without one.`,
           cause: "A failure lands in TASK_HISTORY and nowhere else.", openLabel: "Failures →",
         }), toFailures)}
       </Tiles4>
@@ -656,89 +662,62 @@ export function PlTasksHygiene(p: ApPageProps) {
             {() => staleFlag.length ? <CauseSplitBar rows={staleFlag} column="finding" noun="tasks" labelFor={taskCause} onCauseClick={() => open("sf_task_suspended_or_stale")()} /> : null}
           </PlCard>
         </div>
-        <PlCard c={stale} open={open("sf_task_suspended_or_stale")} title="Days suspended or idle" subtitle="flagged tasks · click a task for its panel">
-          {() => {
-            const items: StatusBarItem[] = staleRows.map((r) => {
-              const days = num(r.days_suspended) ?? num(r.stale_days) ?? 0;
-              return {
-                key: `${r.account_id}|${r.task_full_name}`, name: taskLabel(r, p.dims), value: days, row: r, status: rowStatus(r),
-                valueText: `${fmtInt(days)} d · ${taskCause(String(r.finding || ""))}`,
-              };
-            });
-            return items.length ? <StatusBars items={items} n={10} ariaLabel="Days suspended or idle by task" onBarClick={(it) => openTask(it.row)} /> : null;
-          }}
-        </PlCard>
-      </Grid>
-      <Grid>
-        <PlCard c={stale} open={open("sf_task_suspended_or_stale")} title="Stopped tasks" subtitle="snapshot at export · state from SHOW TASKS, last run from TASK_HISTORY · click a row">
-          {() => (
-            <DrillTable aria="Stopped tasks" n={10} empty="Nothing flagged in this window."
-              cols={[{ label: "Task" }, { label: "Owner", width: "minmax(80px, 1fr)" }, { label: "State", width: "auto" }, { label: "Last run", width: "auto" }, { label: "Why", width: "minmax(80px, auto)" }]}
-              rows={staleRows.map((r) => ({
-                key: `${r.account_id}|${r.task_full_name}`, status: rowStatus(r),
-                onOpen: openRow("sf_task_suspended_or_stale", "task_full_name", r.task_full_name, taskLabel(r, p.dims)),
-                cells: [taskLabel(r, p.dims), String(r.owner || "–"), String(r.state || "–").toLowerCase(),
-                  r.last_run_time ? fmtDayShort(r.last_run_time) : "never in lookback",
-                  chip(`${taskCause(String(r.finding || ""))}${num(r.days_suspended) != null ? ` · ${fmtInt(r.days_suspended)} d` : ""}`, rowStatus(r))],
-              }))} />
-          )}
-        </PlCard>
         <div id="th-settings">
-          <ChartCard title="Settings that bite later" subtitle="root tasks that allow overlapping runs · p90 run time as a share of the schedule · context, not scored here" onOpenCheck={toFailures} takeaway={null}>
+          <ChartCard title="Settings that bite later" subtitle="Root-task settings worth knowing · context, not scored here" onOpenCheck={toFailures} takeaway={null}>
             {roots.loading ? <Note>…</Note> : !roots.rows ? <Note>{`– ${roots.why || "not in this export"}`}</Note> : (
-              <div className="pl-stack">
-                {overlap.length ? <StatusBars n={8} ariaLabel="Root tasks that allow overlapping runs" max={Math.max(100, ...overlap.map((r) => p90Of.get(`${r.account_id}|${r.task_full_name}`) ?? 0))}
-                  items={overlap.map((r) => {
+              <div>
+                <div className="cx-block">
+                  <CxEyebrow>{`Overlapping runs allowed · ${fmtInt(overlap.length)}`}</CxEyebrow>
+                  {overlap.length ? <div className="cx-list">{overlap.map((r) => {
                     const ratio = p90Of.get(`${r.account_id}|${r.task_full_name}`) ?? null;
-                    return {
-                      key: `${r.account_id}|${r.task_full_name}`, name: nameId(taskName(p.dims as DimMaps, r.task_full_name), r.task_id), value: ratio ?? 0, status: ratio != null && ratio > 100 ? "WARN" : "OK",
-                      valueText: `${ratio != null ? `${fmtShare(ratio)} of schedule` : "no skip data"}${r.task_schedule ? ` · every ${String(r.task_schedule).toLowerCase()}` : ""}`,
-                    };
-                  })} /> : <Note>No root task allows overlapping runs.</Note>}
-                {rootRows.length > 0 && <div>
-                  <div className="pl-note chart-note-oneline">{`ERROR_INTEGRATION set · ${fmtInt(intSet)} of ${fmtInt(rootRows.length)} root tasks`}</div>
+                    return (
+                      <div key={`${r.account_id}|${r.task_full_name}`} className="cx-list-row">
+                        <CxObjName full={taskName(p.dims as DimMaps, r.task_full_name)} id={r.task_id} />
+                        <span>{`${scheduleText(r.task_schedule)} · ${ratio != null ? `p90 run ${fmtShare(ratio)} of the schedule` : "no skip data"}`}</span>
+                      </div>
+                    );
+                  })}</div> : <Note>No root task allows overlapping runs.</Note>}
+                </div>
+                {rootRows.length > 0 && <div className="cx-block">
+                  <CxEyebrow>{`ERROR_INTEGRATION on root tasks · ${fmtInt(rootRows.length)}`}</CxEyebrow>
                   <StackedShareBar ariaLabel="Root tasks with an error integration" valueFmt={(v) => `${fmtInt(v)} tasks`}
-                    segments={[{ key: "set", label: "set", value: intSet }, { key: "none", label: "not set", value: noInt.length, color: "var(--c-other)" }]} />
+                    segments={[{ key: "set", label: "Set", value: intSet }, { key: "none", label: "Not set", value: noInt.length, color: "var(--c-other)" }]} />
                 </div>}
               </div>
             )}
           </ChartCard>
         </div>
       </Grid>
+      <PlCard c={stale} open={open("sf_task_suspended_or_stale")} title="Stopped tasks" subtitle="The flagged tasks, longest suspended or idle first · state from SHOW TASKS at export, last run from TASK_HISTORY · select a row for its panel">
+        {() => {
+          if (!staleRows.length) return null;
+          const daysOf = (r: Row) => num(r.days_suspended) ?? num(r.stale_days);
+          const maxDays = Math.max(1, ...staleRows.map((r) => daysOf(r) ?? 0));
+          const neverRan = staleRows.filter((r) => !r.last_run_time).length;
+          return (
+            <CxTable ariaLabel="Stopped tasks"
+              cols={[{ label: "Task" }, { label: "Owner" }, { label: "State" }, { label: "Last run" }, { label: "Why" }, { label: "Days suspended or idle", num: true }]}
+              foot={neverRan === staleRows.length ? `Last run: none of these ${fmtInt(neverRan)} ran inside the lookback that TASK_HISTORY keeps.` : undefined}
+              rows={staleRows.map((r) => {
+                const days = daysOf(r);
+                return {
+                  key: `${r.account_id}|${r.task_full_name}`, status: rowStatus(r),
+                  onClick: openRow("sf_task_suspended_or_stale", "task_full_name", r.task_full_name, taskLabel(r, p.dims)),
+                  cells: [<CxObjName full={taskName(p.dims as DimMaps, r.task_full_name || r.task_name)} id={r.task_id} />, String(r.owner || "–"),
+                    r.state ? String(r.state).charAt(0).toUpperCase() + String(r.state).slice(1).toLowerCase() : "–",
+                    r.last_run_time ? fmtDayShort(r.last_run_time) : "Not in the lookback",
+                    <CxChip status={rowStatus(r)}>{taskCause(String(r.finding || "")).replace(/^./, (x) => x.toUpperCase())}</CxChip>,
+                    days != null ? <CxCellBar value={days} max={maxDays} text={`${fmtInt(days)} d`} /> : "–"],
+                };
+              })} />
+          );
+        }}
+      </PlCard>
     </div>
   );
 };
 PlTasksHygiene.ownsTiles = true;
 (PlTasksHygiene as any).ownsLede = true;
-
-/** Days until a stream goes stale, around zero: past zero (already stale) red, inside a week amber. */
-function StaleDays({ items }: { items: { key: string; name: string; days: number; note: string }[] }) {
-  const [ref, W] = useChartWidth(560);
-  if (!items.length) return <div ref={ref} />;
-  const labelW = rowLabelWidth(W);
-  const sorted = [...items].sort((a, b) => a.days - b.days).slice(0, 10);
-  const maxAbs = Math.max(1, ...sorted.map((it) => Math.abs(it.days)));
-  return (
-    <div ref={ref} className="pl-stale" role="list" aria-label="Days until each stream goes stale">
-      {sorted.map((it) => {
-        const w = (Math.abs(it.days) / maxAbs) * 50;
-        const tone = it.days < 0 ? "crit" : it.days < 7 ? "warn" : "ok";
-        return (
-          <div key={it.key} className="pl-stale-row" role="listitem" title={`${it.name}: ${it.note}`}>
-            <span className="pl-stale-name" style={{ width: labelW }}>{truncateLeft(it.name, labelW - 8)}</span>
-            <span className="pl-stale-track">
-              <span className="pl-stale-axis" />
-              <span className={`pl-stale-fill tone-${tone}`} style={it.days < 0 ? { right: "50%", width: `${w}%` } : { left: "50%", width: `${w}%` }} />
-            </span>
-            <span className="pl-stale-value">{it.note}</span>
-          </div>
-        );
-      })}
-      {items.length > sorted.length && <div className="blk-more">{`+${fmtInt(items.length - sorted.length)} more not shown`}</div>}
-      <Note>Left of the line: already stale, changes lost. Right: days left.</Note>
-    </div>
-  );
-}
 
 export function PlTasksDynamic(p: ApPageProps) {
   const d = usePlData(p, ["sf_dt_refresh_failures_and_lag", "sf_stream_stale", "sf_stream_consumers", "sf_dt_unread_refresh_cost", "sf_dt_suspended_still_read",
@@ -766,14 +745,14 @@ export function PlTasksDynamic(p: ApPageProps) {
   React.useEffect(() => { if (p.setLede) p.setLede(lede ? (lede === "…" ? lede : `${lede}.`) : null); }, [lede]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="sx-page">
+    <div className="sx-page cx-e">
       <Tiles4>
         <PlTile c={dt} open={scrollTo("dt-lag")} label="Dynamic tables behind target" make={(c) => {
           if (!withTarget.length) return null;
           return {
             headline: fmtShare(pctOf(over.length, withTarget.length)), unit: "of dynamic tables",
-            flagged: over.length, population: withTarget.length, noun: "with a target lag",
-            cause: over.length ? `worst ${dtName(over[0])}: p90 ${(lagRatio(over[0]) as number).toFixed(1)}× target` : "all within target lag at p90",
+            base: `${fmtInt(over.length)} of the ${fmtInt(withTarget.length)} that have a target lag.`,
+            cause: over.length ? `Worst: ${dtName(over[0])}, p90 ${(lagRatio(over[0]) as number).toFixed(1)}× its target.` : "All within their target lag at p90.",
             status: tileStatus(c.rows.filter(isFlagged)), openLabel: "By table ↓",
           };
         }} />
@@ -783,7 +762,7 @@ export function PlTasksDynamic(p: ApPageProps) {
           const consN = sum(cons.rows, "consumer_count"), consOff = sum(cons.rows, "suspended_consumers");
           return {
             headline: fmtInt(staleNow), unit: `of ${fmtInt(c.rows.length)} streams`,
-            base: [`${fmtInt(soon)} more go stale within 7 d`, !cons.loading && !cons.note && consN > 0 ? `${fmtInt(consOff)} of ${fmtInt(consN)} consumers suspended` : null].filter(Boolean).join(" · "),
+            base: `${fmtInt(soon)} more go stale within 7 days.${!cons.loading && !cons.note && consN > 0 ? ` ${fmtInt(consOff)} of ${fmtInt(consN)} consumers are suspended.` : ""}`,
             cause: staleNow ? "A stale stream has lost its changes; the consumer must reload in full." : undefined,
             status: staleNow ? "critical" : soon ? "warn" : "ok", openLabel: "Days left ↓",
           };
@@ -794,7 +773,7 @@ export function PlTasksDynamic(p: ApPageProps) {
           const waste = c.priced ? usdSum(c, unreadFlag, "est_wasted_usd_list") : 0;
           return {
             headline: fmtInt(n.flagged), unit: ofPop(n).trim(),
-            base: [`0 reads in ${fmtInt(p.filters.window)} d`, waste > 0 ? `${usd0(waste)} possible waste` : null].filter(Boolean).join(" · "),
+            base: `0 reads in ${fmtInt(p.filters.window)} days.${waste > 0 ? ` ${usd0(waste)} possible waste.` : ""}`,
             cause: unreadFlag[0] ? `${dtName(unreadFlag[0])}: ${fmtInt(unreadFlag[0].refreshes)} refreshes, no reader.` : "Every refreshed table was read.",
             status: tileStatus(unreadFlag), openLabel: unreadFlag.length ? "Open the worst →" : "Open check →",
           };
@@ -805,7 +784,7 @@ export function PlTasksDynamic(p: ApPageProps) {
           const oldest = fl.map((r) => (r.suspended_since ? String(r.suspended_since).slice(0, 10) : null)).filter((x): x is string => !!x).sort()[0];
           return {
             headline: fmtInt(n.flagged), unit: ofPop(n).trim(),
-            base: [`${fmtInt(sum(fl, "read_queries"))} reads since they stopped`, oldest ? `oldest suspended ${fmtDayShort(oldest)}` : null].filter(Boolean).join(" · "),
+            base: `${fmtInt(sum(fl, "read_queries"))} reads since they stopped.${oldest ? ` The oldest was suspended ${fmtDayShort(oldest)}.` : ""}`,
             cause: fl.length ? "Readers get rows frozen on the day the refresh stopped." : undefined,
             status: tileStatus(fl), openLabel: "Refresh state ↓",
           };
@@ -813,17 +792,27 @@ export function PlTasksDynamic(p: ApPageProps) {
       </Tiles4>
       <Grid>
         <div id="dt-lag">
-        <PlCard c={dt} open={open("sf_dt_refresh_failures_and_lag")} title="Lag vs target, by dynamic table" subtitle="p90 observed lag ÷ target lag · 1× = on target">
+        <PlCard c={dt} open={open("sf_dt_refresh_failures_and_lag")} title="Lag vs target, by dynamic table" subtitle="p90 observed lag ÷ target lag, on a doubling scale · bars grow from the target line">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter((r) => lagRatio(r) !== null).map((r) => {
-              const x = lagRatio(r) as number;
-              return {
-                key: `${r.account_id}|${r.dt_full_name}`, name: dtName(r), value: x, status: rowStatus(r), dtFull: r.dt_full_name,
-                valueText: `${x.toFixed(x >= 10 ? 0 : 1)}× (${dur(r.p90_observed_lag_seconds)} vs ${dur(r.target_lag_seconds)})`,
-              };
-            });
-            return items.length ? <StatusBars items={items} n={10} ariaLabel="Observed vs target lag by dynamic table"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_dt_refresh_failures_and_lag", col: "dt_full_name", val: String(it.dtFull), label: it.name })} /> : null;
+            const list = c.rows.filter((r) => lagRatio(r) !== null).sort((x, y) => (lagRatio(y) as number) - (lagRatio(x) as number));
+            if (!list.length) return null;
+            const l2 = (v: number) => Math.log2(Math.max(v, 1 / 64));
+            const lo = Math.min(-1, Math.floor(l2(Math.min(...list.map((r) => lagRatio(r) as number))))), hi = Math.max(1, Math.ceil(l2(Math.max(...list.map((r) => lagRatio(r) as number)))));
+            const at = (v: number) => (100 * (l2(v) - lo)) / (hi - lo);
+            // Status from the value shown: over 1.5x critical, over 1x warning, 1x or less on target.
+            const band = (x: number) => (x > 1.5 ? "CRITICAL" : x > 1 ? "WARN" : "OK");
+            const tickAt = [lo, hi].map((e) => ({ at: at(2 ** e), label: `${2 ** e >= 1 ? fmtInt(2 ** e) : `1/${fmtInt(2 ** -e)}`}×` }));
+            return <CxTrackRows ariaLabel="Observed vs target lag by dynamic table" line={{ at: at(1), label: "1× target" }} ticks={tickAt}
+              legend={<CxDotLegend statuses={["CRITICAL", "WARN", "OK"]} words={{ CRITICAL: "Critical · over 1.5×", WARN: "Warning · over 1× up to 1.5×", OK: "On target · 1× or less" }} />}
+              rows={list.map((r) => {
+                const x = lagRatio(r) as number;
+                return {
+                  key: `${r.account_id}|${r.dt_full_name}`, name: String(r.dt_full_name || r.dt_name || "(no name in this export)"), id: r.dt_id, status: band(x),
+                  from: at(1), to: at(x), color: x > 1 ? "var(--c1)" : "var(--c-other)",
+                  strong: `${dur(r.p90_observed_lag_seconds)} vs ${dur(r.target_lag_seconds)} target`, rest: `${x.toFixed(x >= 10 ? 0 : 1)}× the target`,
+                  onClick: () => DrawerBus.open({ id: "sf_dt_refresh_failures_and_lag", col: "dt_full_name", val: String(r.dt_full_name), label: dtName(r) }),
+                };
+              })} />;
           }}
         </PlCard>
         </div>
@@ -840,45 +829,68 @@ export function PlTasksDynamic(p: ApPageProps) {
                 const n = numOrZero(k.consumer_count);
                 who = n === 0 ? "no consumer" : numOrZero(k.suspended_consumers) > 0 ? `${fmtInt(k.suspended_consumers)} of ${fmtInt(n)} consumers suspended` : `${fmtInt(n)} consumer${n === 1 ? "" : "s"} running`;
               } else if (!cons.loading && !cons.note) who = "no consumer";
-              const when = isStale(r) ? (days < 0 ? `stale ${fmtInt(Math.abs(Math.round(days)))} d` : "stale") : `${fmtInt(Math.round(days))} d left`;
+              const when = isStale(r) ? (days < 0 ? `Stale ${fmtInt(Math.abs(Math.round(days)))} d` : "Stale") : `${fmtInt(Math.round(days))} d left`;
               return { key: `${r.account_id}|${r.stream_fqn}`, name: String(r.stream_fqn || r.stream_name || "(no name in this export)"), days: isStale(r) && days >= 0 ? -0.5 : days, note: who ? `${when} · ${who}` : when };
             });
-            return <StaleDays items={items} />;
+            if (!items.length) return null;
+            const sorted = [...items].sort((x, y) => x.days - y.days);
+            const lo = Math.min(0, ...sorted.map((x) => x.days)), hi = Math.max(1, ...sorted.map((x) => x.days));
+            const at = (v: number) => (100 * (v - lo)) / (hi - lo || 1);
+            return <CxTrackRows ariaLabel="Days until each stream goes stale" line={{ at: at(0), label: "Today" }}
+              ticks={[{ at: 0, label: lo < 0 ? `${fmtInt(Math.abs(Math.round(lo)))} d ago` : "0" }, { at: 100, label: `+${fmtInt(Math.round(hi))} d` }].filter((t) => !(lo === 0 && t.at === 0))}
+              legend={<CxSwatches items={[["var(--st-crit)", "Already stale"], ["var(--st-warn)", "Under 7 days left"], ["var(--c-other)", "More time left"]]} />}
+              rows={sorted.map((x) => ({
+                key: x.key, name: x.name, status: x.days < 0 ? "CRITICAL" : x.days < 7 ? "WARN" : "OK", from: at(0), to: at(x.days),
+                color: x.days < 0 ? "var(--st-crit)" : x.days < 7 ? "var(--st-warn)" : "var(--c-other)",
+                strong: x.note.split(" · ")[0], rest: x.note.split(" · ").slice(1).join(" · ") || undefined,
+              }))} />;
           }}
         </PlCard>
         </div>
       </Grid>
       <PlCard c={dt} open={open("sf_dt_refresh_failures_and_lag")} title="Refresh state, by dynamic table"
-        subtitle={`${fmtInt(p.filters.window)} d · failed and behind-target share of refreshes · full-refresh share · click a row`}>
+        subtitle={`Last ${fmtInt(p.filters.window)} days · share of refreshes that failed, fell behind target or ran in full · select a row for its panel`}>
         {(c) => {
           const suspBy = new Map(susp.rows.filter(isFlagged).map((r) => [`${r.account_id}|${r.dt_full_name}`, r]));
           const rows = [...c.rows].sort((a, b) => numOrZero(b.failure_pct) + numOrZero(b.lag_breach_pct) - numOrZero(a.failure_pct) - numOrZero(a.lag_breach_pct));
           return (
-            <DrillTable aria="Refresh state by dynamic table" n={10}
-              cols={[{ label: "Dynamic table" }, { label: "Refreshes", num: true, width: "auto" }, { label: "Failed", num: true, width: "auto" }, { label: "Behind", num: true, width: "auto" }, { label: "Full", num: true, width: "auto" }, { label: "State", width: "minmax(80px, auto)" }]}
+            <CxTable ariaLabel="Refresh state by dynamic table" n={10}
+              cols={[{ label: "Dynamic table" }, { label: "Refreshes", num: true }, { label: "Failed", num: true }, { label: "Behind target", num: true }, { label: "Full refresh", num: true }, { label: "State" }]}
               rows={rows.map((r) => {
                 const s = suspBy.get(`${r.account_id}|${r.dt_full_name}`);
+                const lastState = String(r.last_state || "–").toLowerCase().replace(/^./, (x) => x.toUpperCase());
                 return {
                   key: `${r.account_id}|${r.dt_full_name}`, status: rowStatus(r),
-                  onOpen: openRow("sf_dt_refresh_failures_and_lag", "dt_full_name", r.dt_full_name, dtName(r)),
-                  cells: [dtName(r), fmtInt(r.refreshes), pctText(r.failure_pct), pctText(r.lag_breach_pct), pctText(r.full_pct),
-                    s ? chip(`suspended · ${fmtInt(s.read_queries)} reads`, "CRITICAL") : chip(String(r.last_state || "–").toLowerCase(), String(r.last_state || "").toUpperCase() === "FAILED" ? "CRITICAL" : "OK")],
+                  onClick: openRow("sf_dt_refresh_failures_and_lag", "dt_full_name", r.dt_full_name, dtName(r)),
+                  cells: [<CxObjName full={String(r.dt_full_name || r.dt_name || "(no name in this export)")} id={r.dt_id} />, fmtInt(r.refreshes), pctText(r.failure_pct), pctText(r.lag_breach_pct), pctText(r.full_pct),
+                    s ? <CxChip status="CRITICAL">{`Suspended · ${fmtInt(s.read_queries)} reads`}</CxChip> : <CxChip status={String(r.last_state || "").toUpperCase() === "FAILED" ? "CRITICAL" : "OK"}>{lastState}</CxChip>],
                 };
               })} />
           );
         }}
       </PlCard>
       <Grid>
-        <PlCard c={awake} open={open("sf_dt_lag_keeps_warehouse_awake")} title="Refreshes that keep a warehouse awake" subtitle="refreshes sooner than the auto-suspend · $ is part of the idle $, not added to it">
+        <PlCard c={awake} open={open("sf_dt_lag_keeps_warehouse_awake")} title="Refreshes that keep a warehouse awake" subtitle="Refreshes sooner than the auto-suspend · the $ is part of idle spend">
           {(c) => {
             const items: StatusBarItem[] = c.rows.filter((r) => numOrZero(r.dt_keepawake_credits) > 0).map((r) => {
               const v = c.priced ? usd(c, r, "est_idle_context_usd_list") : numOrZero(r.dt_keepawake_credits);
               return {
-                key: `${r.account_id}|${r.warehouse_id}`, name: nameId(r.warehouse_name, r.warehouse_id), value: v, status: rowStatus(r), wh: r.warehouse_id,
+                key: `${r.account_id}|${r.warehouse_id}`, name: nameId(r.warehouse_name, r.warehouse_id), value: v, status: rowStatus(r), wh: r.warehouse_id, row: r,
                 valueText: [`${c.priced ? usd0(v) : `${fmtInt(Math.round(v))} credits`} of idle`, r.top_dt_full_name ? `${String(r.top_dt_full_name).split(".").pop()} every ${dur(r.top_dt_every_s)}` : null,
                   `auto-suspend ${dur(r.auto_suspend_s)}`].filter(Boolean).join(" · "),
               };
             });
+            if (items.length === 1) {
+              const r = items[0].row as Row, it = items[0];
+              const n = counts(c, "warehouses");
+              return (
+                <div>
+                  <div className="cx-statnum"><b>{c.priced ? usd0(it.value) : `${fmtInt(Math.round(it.value))} credits`}</b><span className="cx-muted">{` of idle spend · ${fmtInt(n.flagged)}${ofPop(n)}`}</span></div>
+                  <CxStat>{`Warehouse ${it.name} is kept awake${r.top_dt_full_name ? ` by ${String(r.top_dt_full_name).split(".").pop()} refreshing every ${dur(r.top_dt_every_s)}` : ""}, sooner than its auto-suspend of ${dur(r.auto_suspend_s)}.`}</CxStat>
+                  <div className="cx-foot">{"Already part of idle spend, so not added to it."}</div>
+                </div>
+              );
+            }
             return items.length ? <StatusBars items={items} n={8} ariaLabel="Warehouses kept awake by dynamic-table refreshes"
               onBarClick={(it) => DrawerBus.open({ id: "sf_dt_lag_keeps_warehouse_awake", col: "warehouse_id", val: String(it.wh), label: it.name })} />
               : <Note>No dynamic table refreshes sooner than its warehouse can suspend.</Note>;
@@ -886,13 +898,13 @@ export function PlTasksDynamic(p: ApPageProps) {
         </PlCard>
         <PlCard c={orph} open={open("sf_dt_downstream_orphans")} title="DOWNSTREAM tables that never refresh" subtitle="TARGET_LAG = DOWNSTREAM with no running consumer · days since its data">
           {(c) => {
-            const items: StatusBarItem[] = c.rows.filter(isFlagged).map((r) => ({
-              key: `${r.account_id}|${r.dt_full_name}`, name: dtName(r), value: numOrZero(r.days_since_data), status: rowStatus(r), dtFull: r.dt_full_name,
-              valueText: `${fmtInt(r.days_since_data)} d old · ${r.finding === "manual_only" ? "refreshed only at creation or by hand" : "no scheduled refresh"}`,
-            }));
+            const items: CxBarRow[] = c.rows.filter(isFlagged).map((r) => ({
+              key: `${r.account_id}|${r.dt_full_name}`, name: String(r.dt_full_name || r.dt_name || "(no name in this export)"), id: r.dt_id, value: numOrZero(r.days_since_data), status: rowStatus(r),
+              strong: `${fmtInt(r.days_since_data)} d old`, rest: r.finding === "manual_only" ? "refreshed only at creation or by hand" : "no scheduled refresh",
+              onClick: () => DrawerBus.open({ id: "sf_dt_downstream_orphans", col: "dt_full_name", val: String(r.dt_full_name), label: dtName(r) }),
+            })).sort((x, y) => y.value - x.value);
             const ok = c.rows.filter((r) => r.finding === "ok").length;
-            return items.length ? <StatusBars items={items} n={8} ariaLabel="DOWNSTREAM dynamic tables that never refresh"
-              onBarClick={(it) => DrawerBus.open({ id: "sf_dt_downstream_orphans", col: "dt_full_name", val: String(it.dtFull), label: it.name })} />
+            return items.length ? <CxBarRows rows={items} ariaLabel="DOWNSTREAM dynamic tables that never refresh" />
               : <Note>{c.rows.length ? `All ${fmtInt(ok)} DOWNSTREAM tables refresh with a consumer.` : "No dynamic table uses TARGET_LAG = DOWNSTREAM."}</Note>;
           }}
         </PlCard>
