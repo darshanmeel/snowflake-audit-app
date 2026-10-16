@@ -3,9 +3,9 @@
 
 :root {                      /* LIGHT */
   color-scheme: light;
-  --bg: #f4f1ea; --surface: #ffffff; --surface-2: #faf8f3; --surface-3: #efebe2;
-  --border-subtle: #ece8df; --border: #e3ded2; --border-strong: #b9b3a5;
-  --text: #1c1b18; --text-2: #4a463e; --text-3: #6b665b; --text-faint: #8f8b82;
+  --bg: #f3efe6; --surface: #ffffff; --surface-2: #faf8f3; --surface-3: #efebe2;
+  --border-subtle: #ece8df; --border: #e5dfd1; --border-strong: #b9b3a5;
+  --text: #1c1b18; --text-2: #4a463e; --text-3: #5f5b52; --text-faint: #6b665b;
   --accent: var(--text); --accent-contrast: var(--surface); --focus: #2356a0;
   --link: #2356a0; --link-tint: #e3ecf8;
   --shadow-card: 0 1px 2px rgba(28, 27, 24, .04), 0 8px 24px rgba(28, 27, 24, .05);
@@ -17,13 +17,13 @@
   --st-ref: #6b665b;  --st-ref-ink: #4a463e;  --st-ref-tint: #efebe2;   /* Reference lists */
   /* charts */
   --c1: #2356a0; --c2: #d9822b; --c3: #3e8e88; --c4: #7a6fb0; --c5: #9a7b4f;   /* blue, orange, teal, purple, bronze */
-  --c-other: #b9b3a5; --c-untagged-bg: #efebe2; --c-untagged-line: #8f8b82;
+  --c-other: #b9b3a5; --c-untagged-bg: #efebe2; --c-untagged-line: #9c9483;
   --seq-0: #efebe2; --seq-1: #b7cbe8; --seq-2: #7fa2d4; --seq-3: #2356a0; --seq-4: #1a4480; --seq-5: #102c55;
   --heat-1: #cfe9bf; --heat-2: #e8d77a; --heat-3: #eea155; --heat-4: #d8583a; --heat-5: #9e1c1c;   /* cost heat: light green (low) to dark red (high) */
   --div-down: #3e8e88; --div-up: #d9822b; --div-mid: #efebe2; --grid: #ece8df; --axis: #d5cfc1;
   /* the left rail stays dark in both modes */
-  --rail: #1b1d21; --rail-2: #26292f; --rail-active: #33363d; --rail-border: #2e3137;
-  --rail-text: #c9c6be; --rail-muted: #8f8b82; --rail-strong: #ffffff; --rail-crit: #ec8a80;
+  --rail: #1e1d1b; --rail-2: #2b2a27; --rail-active: #34322e; --rail-border: #3a3833;
+  --rail-text: #ece8df; --rail-muted: #a29d92; --rail-strong: #ffffff; --rail-crit: #a29d92;
 
   /* type scale; size / line-height */
   --fs-xs: 12px;  --lh-xs: 16px;   /* captions, chart ticks, chips, ids, footnotes -- the floor */
@@ -62,7 +62,7 @@
   --heat-1: #2e5a3a; --heat-2: #7d7a2c; --heat-3: #b8702a; --heat-4: #d24a2e; --heat-5: #ef3b2c;   /* muted green recedes, red stands out */
   --div-down: #3cc6c0; --div-up: #f3a04b; --div-mid: #222935; --grid: #262d38; --axis: #323a47;
   --rail: #0a0c10; --rail-2: #151a21; --rail-active: #1b212a; --rail-border: #1b212a;
-  --rail-text: #b7bfca; --rail-muted: #7c8696; --rail-strong: #ffffff; --rail-crit: #f08a85;
+  --rail-text: #b7bfca; --rail-muted: #7c8696; --rail-strong: #ffffff; --rail-crit: #7c8696;
 }
 /* Older names some components still use. (A star right before a slash anywhere in this comment
    would close it early and silently drop the rule below.) */
@@ -75,9 +75,9 @@
   /* Reports get printed and pasted into decks -- print is always light. */
   :root[data-theme="dark"] {
     color-scheme: light;
-    --bg: #f4f1ea; --surface: #ffffff; --surface-2: #faf8f3; --surface-3: #efebe2;
-    --border-subtle: #ece8df; --border: #e3ded2; --border-strong: #b9b3a5;
-    --text: #1c1b18; --text-2: #4a463e; --text-3: #6b665b; --text-faint: #8f8b82;
+    --bg: #f3efe6; --surface: #ffffff; --surface-2: #faf8f3; --surface-3: #efebe2;
+    --border-subtle: #ece8df; --border: #e5dfd1; --border-strong: #b9b3a5;
+    --text: #1c1b18; --text-2: #4a463e; --text-3: #5f5b52; --text-faint: #6b665b;
     --accent: var(--text); --accent-contrast: var(--surface); --focus: #2356a0; --link: #2356a0;
     --shadow-card: none;
     --st-crit: #a8261d; --st-crit-ink: #7e1c15; --st-crit-tint: #f8e1de;
@@ -86,7 +86,7 @@
     --st-na: #7a6fb0;   --st-na-ink: #4f4583;   --st-na-tint: #ece9f6;
     --st-ref: #6b665b;  --st-ref-ink: #4a463e;  --st-ref-tint: #efebe2;
     --c1: #2356a0; --c2: #d9822b; --c3: #3e8e88; --c4: #7a6fb0; --c5: #9a7b4f;
-    --c-other: #b9b3a5; --c-untagged-bg: #efebe2; --c-untagged-line: #8f8b82;
+    --c-other: #b9b3a5; --c-untagged-bg: #efebe2; --c-untagged-line: #9c9483;
     --seq-0: #efebe2; --seq-1: #b7cbe8; --seq-2: #7fa2d4; --seq-3: #2356a0; --seq-4: #1a4480; --seq-5: #102c55;
     --div-down: #3e8e88; --div-up: #d9822b; --div-mid: #efebe2; --grid: #ece8df; --axis: #d5cfc1;
   }
@@ -534,7 +534,6 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
   color: var(--text-3); margin-bottom: 6px;
 }
 .page-intro-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
-.page-intro-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .page-intro-title { font-family: var(--f-serif); font-size: var(--fs-3xl); font-weight: 600; color: var(--text); margin: 0; }
 .page-intro-scope {
   font-size: 12px; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--border-subtle);

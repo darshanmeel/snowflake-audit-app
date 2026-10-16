@@ -481,8 +481,8 @@ export function pageEyebrow(role: string | null | undefined, section: string, me
   return [lens, section, when].filter(Boolean).join(" · ");
 }
 
-// PageIntro: overline (small caps scope/date label), title, one scope chip, one verdict sentence
-// with real numbers, and an optional right-aligned action (e.g. Export).
+// PageIntro: overline (small caps scope/date label), title, one verdict sentence with real numbers,
+// the method line under it, and an optional right-aligned action (e.g. Export).
 export function PageIntro({ overline, title, scope, verdict, action }: {
   overline?: React.ReactNode; title?: React.ReactNode; scope?: React.ReactNode; verdict?: React.ReactNode; action?: React.ReactNode;
 }) {
@@ -491,11 +491,9 @@ export function PageIntro({ overline, title, scope, verdict, action }: {
       {overline && <div className="page-intro-overline">{overline}</div>}
       <div className="page-intro-head">
         <div>
-          <div className="page-intro-title-row">
-            <h1 className="page-intro-title">{title}</h1>
-            {scope && <span className="page-intro-scope">{scope}</span>}
-          </div>
+          <h1 className="page-intro-title">{title}</h1>
           {verdict && <div className="page-intro-verdict">{verdict}</div>}
+          {scope && <div className="page-intro-scope">{scope}</div>}
         </div>
         {action && <div className="page-intro-action">{action}</div>}
       </div>

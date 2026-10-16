@@ -240,3 +240,38 @@
 .rb-mtrack.partial { opacity: .55; outline: 1px dashed var(--border-strong); outline-offset: -1px; }
 .rb-mlabel { font-family: var(--f-mono); font-size: 11px; color: var(--text-2); text-align: center; margin-top: 4px; white-space: nowrap; }
 .rb-months-legend { margin-top: 10px; flex-wrap: wrap; }
+
+/* ─────────── Look: header, cards, tiles, no cut-off text ─────────── */
+/* Header: eyebrow, 52px serif H1, the lede built from the page's figures, the method line under it. */
+.page-intro .page-intro-overline { font-size: 12px; font-weight: 500; letter-spacing: .1em; color: var(--text-3); margin-bottom: 8px; }
+.page-intro .page-intro-title { font-family: var(--f-serif); font-size: 52px; line-height: 1.05; font-weight: 400; letter-spacing: -.01em; }
+.page-intro .page-intro-verdict { font-family: var(--f-serif); font-size: 23px; line-height: 1.4; color: var(--text); margin-top: 14px; max-width: 760px; }
+.page-intro .page-intro-verdict b { font-family: inherit; font-weight: 500; }
+.page-intro .page-intro-scope { display: block; background: none; border: 0; padding: 0; margin-top: 10px; font-size: 13px; color: var(--text-3); white-space: normal; }
+.page-intro { margin-bottom: 24px; }
+
+/* Cards: 14px radius, flat, every card title serif 24px. */
+.card, .chart-card, .pattern-card, .summary-tile { border-radius: 14px; border-color: var(--border); box-shadow: none; }
+.card-title, .pc-title { font-family: var(--f-serif); font-size: 24px; font-weight: 400; line-height: 1.2; letter-spacing: -.005em; }
+
+/* KPI tile: 40px number, sans sentences, status slot only for Critical / Warning / Not assessed. */
+.summary-tile { padding: 22px 24px; }
+.summary-tile-value { font-size: 40px; }
+.summary-tile-base { font-family: var(--f-sans); font-size: 14px; color: var(--text-2); }
+.summary-tile-head .status-pill-neutral, .summary-tile-head .status-pill-kind { display: none; }
+
+/* Never cut titles or sentences: wrap instead. */
+.issue-tile .summary-tile-value, .issue-tile-cause, .al-title, .al-base, .ff-item-title, .ws-line-title, .wu-check-text span {
+  white-space: normal; overflow: visible; text-overflow: clip;
+}
+.al-base { font-family: var(--f-sans); }
+.summary-tile .summary-tile-reading, .summary-tile-row.compact .summary-tile-reading {
+  display: block; -webkit-line-clamp: unset; overflow: visible; white-space: normal; text-overflow: clip;
+}
+/* Names wrap rather than end in an ellipsis. */
+.ref-name { white-space: normal; overflow: visible; text-overflow: clip; max-width: none; overflow-wrap: anywhere; }
+
+@media (max-width: 700px) {
+  .page-intro .page-intro-title { font-size: 38px; }
+  .page-intro .page-intro-verdict { font-size: 19px; }
+}
