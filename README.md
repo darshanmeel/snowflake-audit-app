@@ -479,7 +479,14 @@ it reads, the grant it needs, its traps, links to docs.snowflake.com and the che
 copy into a worksheet), test queries per section to check the app's numbers by hand, concept pages
 (the cloud services 10% adjustment, query attribution, latency and retention, Time Travel and
 Fail-safe, pricing basis, the kinds of dollars, editions and role visibility) and a walkthrough of
-every page.
+every page. Its left nav folds open and shut by group; the group holding the open page starts open.
+
+Every page links into it:
+
+- a **?** beside each check's name (in check lists, tables, chart cards, Waste, Coverage and
+  Actions) opens that check's own page; clicking the row still opens its details;
+- **Read:** under each page's lede links the concept pages that page leans on;
+- the page footer opens that tab's own How it works page.
 
 ## What the numbers mean
 
