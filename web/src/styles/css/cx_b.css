@@ -40,6 +40,7 @@ button.cx-lbar:hover .cx-lbar-label, button.cx-nbar:hover .cx-nbar-name { color:
 .cx-td { min-width: 0; overflow-wrap: anywhere; }
 .cx-num { text-align: right; font-variant-numeric: tabular-nums; }
 .cx-tr.cx-click:hover { background: var(--surface-2); }
+.cx-tr.cx-click:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .cx-tr.open { background: var(--surface-2); border-bottom-color: transparent; }
 .cx-tr-body { padding: 4px 16px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 8px; }
 .cx-group-head { display: flex; justify-content: space-between; gap: 12px; padding: 18px 4px 6px; font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); font-weight: 500; }

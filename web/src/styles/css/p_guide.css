@@ -305,3 +305,14 @@ button.gd-nav-h:hover{ color: var(--text); background: var(--surface-2); }
   .guide2-reviewer-toggle > :nth-child(3){ grid-column: 2; overflow-wrap: anywhere; }
   .guide2-reviewer-body{ padding-left: 16px; }
 }
+
+/* Guide links from the screens: a "?" beside a check's name, and the concepts under a page's lede. */
+.gd-help{
+  display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; margin-left: 2px; vertical-align: 1px;
+  border: 1px solid var(--border); border-radius: 50%; font-size: 11px; font-weight: 600; line-height: 1;
+  color: var(--text-3); text-decoration: none; font-family: var(--font-sans, inherit); letter-spacing: 0; text-transform: none;
+}
+.gd-help:hover, .gd-help:focus-visible{ color: var(--link); border-color: var(--link); background: var(--link-tint); }
+.gd-concepts a{ color: var(--link); text-decoration: none; }
+.gd-concepts a:hover{ text-decoration: underline; }
+.dr-link-pair{ display: inline-flex; align-items: center; gap: 4px; }

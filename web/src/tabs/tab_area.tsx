@@ -30,6 +30,7 @@ import { moneyKindOf } from "../components/waste_total";
 import { AREA_CHART_PAGES } from "../components/area_pages";
 import { COMPUTE_PAGES } from "../components/area_compute";
 import type { Dims, FetchState, Filters, Finding, GoToFn, Meta, Row } from "../types";
+import { GuideHelp } from "../components/guide_links";
 
 /** A column as GET /api/finding lists it. */
 type Col = { name: string; [key: string]: any };
@@ -235,7 +236,7 @@ export function CheckChartCard({ f, state, dims, maxCat, meta, filters, onOpen, 
     }
   }
   return (
-    <ChartCard title={label.title} subtitle={[subtitle, basisNote].filter(Boolean).join(" · ")} onOpenCheck={onOpen} takeaway={null}>
+    <ChartCard title={<React.Fragment>{label.title} <GuideHelp id={f.query_id} label={label.title} /></React.Fragment>} subtitle={[subtitle, basisNote].filter(Boolean).join(" · ")} onOpenCheck={onOpen} takeaway={null}>
       {body}
     </ChartCard>
   );

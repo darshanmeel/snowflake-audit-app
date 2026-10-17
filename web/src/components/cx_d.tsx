@@ -9,6 +9,7 @@ import { navHref } from "./nav_hash";
 import { AREA_REGISTRY, homeForQuery } from "./tab_registry";
 import { TAB_ORDER } from "./findings_table";
 import type { Finding, GoToFn, Row } from "../types";
+import { GuideHelp } from "./guide_links";
 
 /** "25 h 9 m", "48 m 9 s", "1 h", "27 s": no zero parts, no padding; never broken across lines. */
 export function fmtDur(seconds: unknown): string {
@@ -297,7 +298,7 @@ export function CxChecksTable({ rows, goTo, n = 12, title, sub, right, summary, 
       tableRows.push({
         key: e.row.query_id,
         cells: [<span key="s" className={`cxd-sev ${dotOf(isRef(e) ? "REF" : e.band)}`}><Dot status={isRef(e) ? "REF" : e.band} />{bandWord(e.band, e.pill)}</span>,
-          name, found(e), impact(e), spend(e), where(e)],
+          <span key="n">{name} <GuideHelp id={e.row.query_id} label={name} /></span>, found(e), impact(e), spend(e), where(e)],
       });
     });
   };

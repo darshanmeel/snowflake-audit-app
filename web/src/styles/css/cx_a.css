@@ -45,8 +45,8 @@
   padding: 12px 4px; border: 0; border-bottom: 1px solid var(--border-subtle); background: none; color: inherit; font: inherit;
   text-align: left; cursor: pointer; width: 100%;
 }
-button.cx-ck-tr:hover, .cx-ck-tr.selected { background: var(--surface-2); }
-button.cx-ck-tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cx-ck-tr[role="row"]:not(.cx-ck-th):not(.cx-ck-group):hover, .cx-ck-tr.selected { background: var(--surface-2); }
+.cx-ck-tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .cx-ck-th { cursor: default; padding: 0 4px 10px; border-bottom-color: var(--border); font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
 .cx-ck-tr .num { text-align: right; }
 .cx-ck-group { padding: 16px 4px 6px; font-size: 12px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }

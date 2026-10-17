@@ -34,6 +34,7 @@ import type { CsvColumn } from "../components/csv";
 import { emptyLabelFor, pickLabelColumn, rowLabelOf } from "./tab_area";
 import type { WasteEntry } from "../components/waste_total";
 import type { Dims, FetchState, Filters, Finding, GoToFn, Row } from "../types";
+import { GuideHelp } from "../components/guide_links";
 
 type ActionTitleFn = (n: string, w: string) => string;
 
@@ -408,10 +409,13 @@ export function ActionDrawer({ action, filters, dims, goTo, onClose }: { action:
       <ActionEvidence action={action} filters={filters} dims={dims} />
       <div className="dr-links">
         {action.rows.map((row) => (
-          <button key={row.query_id} type="button" className="dr-link"
-            onClick={() => goTo({ tab: homeForQuery(row).tab, subtab: homeForQuery(row).subtab, focusQueryId: row.query_id })}>
-            {`${getCheckLabel(row.query_id, row.title).title} →`}
-          </button>
+          <span key={row.query_id} className="dr-link-pair">
+            <button type="button" className="dr-link"
+              onClick={() => goTo({ tab: homeForQuery(row).tab, subtab: homeForQuery(row).subtab, focusQueryId: row.query_id })}>
+              {`${getCheckLabel(row.query_id, row.title).title} →`}
+            </button>
+            <GuideHelp id={row.query_id} label={getCheckLabel(row.query_id, row.title).title} />
+          </span>
         ))}
       </div>
     </aside>
@@ -651,17 +655,19 @@ export function FixItemRow({ item, rank, max, per, onOpen }: { item: FixFirstIte
   const aff = fixFirstAffected(item);
   const title = getCheckLabel(item.query_id, item.title).title;
   return (
-    <button type="button" className="ff-item" onClick={onOpen}>
+    // A div, not a button, so the row can hold the Guide link beside the title.
+    <div role="button" tabIndex={0} className="ff-item" onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}>
       <span className="ff-item-rank mono">{rank}</span>
       <span className="ff-item-text">
-        <span className="ff-item-title" title={title}>{title}</span>
+        <span className="ff-item-title" title={title}>{title} <GuideHelp id={item.query_id} label={title} /></span>
         {aff && <span className="ff-item-aff">{aff}</span>}
       </span>
       <span className="ff-item-track" aria-hidden="true">{w > 0 && <span className="ff-item-fill" style={{ width: `${w}%` }} />}</span>
       <span className={`ff-item-usd mono${usd == null && item.group === "critical_no_usd" ? " tone-crit" : ""}`}>
         {usd != null ? `${fmtMoney(usd, 0)}${per}` : item.group === "critical_no_usd" ? "Critical" : "-"}
       </span>
-    </button>
+    </div>
   );
 }
 

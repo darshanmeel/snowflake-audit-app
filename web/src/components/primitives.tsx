@@ -19,6 +19,7 @@ import { CheckDrawer, DrawerBus, useDrawer } from "./drawer";
 import "./wh_idle_detail"; // registers the Idle drawer block
 import { windowRangeLabel } from "./overview_tile";
 import { navHref } from "./nav_hash";
+import { GuideConceptLinks, TAB_CONCEPTS, tabGuideHref } from "./guide_links";
 import { LENS_LABEL, pageLabel } from "./lens_nav";
 import type { Dims, Filters, Finding, GoTo, GoToFn, Meta, Row } from "../types";
 
@@ -483,8 +484,9 @@ export function pageEyebrow(role: string | null | undefined, section: string, me
 
 // PageIntro: overline (small caps scope/date label), title, one verdict sentence with real numbers,
 // the method line under it, and an optional right-aligned action (e.g. Export).
-export function PageIntro({ overline, title, scope, verdict, action }: {
+export function PageIntro({ overline, title, scope, verdict, action, guideTab }: {
   overline?: React.ReactNode; title?: React.ReactNode; scope?: React.ReactNode; verdict?: React.ReactNode; action?: React.ReactNode;
+  guideTab?: string | null;
 }) {
   return (
     <div className="page-intro">
@@ -493,7 +495,7 @@ export function PageIntro({ overline, title, scope, verdict, action }: {
         <div>
           <h1 className="page-intro-title">{title}</h1>
           {verdict && <div className="page-intro-verdict">{verdict}</div>}
-          {scope && <div className="page-intro-scope">{scope}</div>}
+          {(scope || guideTab) && <div className="page-intro-scope">{scope}{scope && guideTab && TAB_CONCEPTS[guideTab] ? " · " : null}<GuideConceptLinks tab={guideTab} /></div>}
         </div>
         {action && <div className="page-intro-action">{action}</div>}
       </div>
@@ -668,14 +670,14 @@ export function FreshnessLine({ findingsById, goTo }: { findingsById?: Record<st
 // PageFooter: the per-page footer line -- the data source and money basis on the left, the Guide
 // on the right. Distinct from App.tsx's BrandFooter (copyright/brand, DEC-69),
 // which stays at the very bottom of the shell once, not on every area page.
-export function PageFooter({ meta }: { meta?: Meta | null }) {
+export function PageFooter({ meta, tab }: { meta?: Meta | null; tab?: string | null }) {
   // The effective discount is 0 when the $/credit is the invoice rate (the API says so).
   const ignored = discountIgnoredReason(meta);
   const caveat = EST_SPEND_CAVEAT || "excludes your cloud provider's own VM bill";
   return (
     <div className="page-footer">
       <span>{`${moneyBasisLabel(meta)} · ${caveat}${ignored ? ` · discount not applied: ${ignored}` : ""}`}</span>
-      <a href={navHref({ tab: "guide", subtab: null, focus: null, domain: null })}>
+      <a href={tabGuideHref(tab)}>
         How it&apos;s worked out →
       </a>
     </div>
@@ -939,6 +941,7 @@ export function AreaPage({
         overline={pageEyebrow(role, title, meta, filters.window, snapshot)}
         title={title}
         scope={scopeText}
+        guideTab={areaKey}
         // A Content reports its own richer verdict via setVerdict/onVerdict (contentVerdict), or
         // renders it inline itself (page-intro-verdict) and leaves this null -- either way this
         // fallback is only for an area/sub-tab nothing has registered yet, so a real page never
@@ -973,7 +976,7 @@ export function AreaPage({
           </ErrorBoundary>
         )}
       </div>
-      <PageFooter meta={meta} />
+      <PageFooter meta={meta} tab={areaKey} />
     </div>
   );
 }

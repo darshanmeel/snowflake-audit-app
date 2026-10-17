@@ -116,7 +116,9 @@ export function CxTable({ cols, rows, groups, aria, minWidth = 720, foot, phone 
   const row = (r: CxRow) => (
     <React.Fragment key={r.key}>
       {r.onOpen
-        ? <button type="button" role="row" className={`cx-tr cx-click${r.open ? " open" : ""}`} style={style} title={r.title} aria-expanded={r.body !== undefined ? !!r.open : undefined} onClick={r.onOpen}>{r.cells.map(cell)}</button>
+        // A div, not a button, so a cell can hold a link (the Guide "?").
+        ? <div role="row" tabIndex={0} className={`cx-tr cx-click${r.open ? " open" : ""}`} style={style} title={r.title} aria-expanded={r.body !== undefined ? !!r.open : undefined} onClick={r.onOpen}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); r.onOpen!(); } }}>{r.cells.map(cell)}</div>
         : <div role="row" className="cx-tr" style={style} title={r.title}>{r.cells.map(cell)}</div>}
       {r.open && r.body ? <div className="cx-tr-body">{r.body}</div> : null}
     </React.Fragment>

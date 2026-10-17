@@ -11,6 +11,7 @@ import { downloadChecksCsv } from "./findings_table";
 import { DrawerBus } from "./drawer";
 import { MONEY_KIND_WORD, upToWord } from "../tabs/tab_area";
 import type { Filters, Finding, GoToFn, Meta } from "../types";
+import { GuideHelp } from "./guide_links";
 
 const LIST_RANK: Record<string, number> = { CRITICAL: 0, WARN: 1, NOT_ASSESSED: 2, ERROR: 2, OK: 3, RANKED: 3, EMPTY_WINDOW: 4, EMPTY_FILTERS: 4, INVENTORY: 5 };
 
@@ -192,10 +193,12 @@ export function ChecksList({ findings, refIds, filters, meta, goTo, openId, titl
                 const a = f.affected;
                 const pct = r.impact != null && max[g] > 0 ? Math.max(2, (100 * Math.abs(r.impact)) / max[g]) : 0;
                 return (
-                  <button type="button" role="row" key={f.query_id} className={`cx-ck-tr${openId === f.query_id ? " selected" : ""}`}
-                    onClick={() => DrawerBus.open({ id: f.query_id })} aria-label={`${title}: open its rows`}>
+                  // A div, not a button, so the row can hold the Guide link beside the name.
+                  <div role="row" tabIndex={0} key={f.query_id} className={`cx-ck-tr${openId === f.query_id ? " selected" : ""}`}
+                    onClick={() => DrawerBus.open({ id: f.query_id })} aria-label={`${title}: open its rows`}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); DrawerBus.open({ id: f.query_id }); } }}>
                     <span role="cell" className="cx-ck-sev"><SevCell sev={r.sev} /></span>
-                    <span role="cell" className="cx-ck-name">{title}</span>
+                    <span role="cell" className="cx-ck-name">{title} <GuideHelp id={f.query_id} label={title} /></span>
                     <span role="cell" className="cx-ck-found">{foundWithFact(f, r.band)}</span>
                     {r.impact != null ? (
                       <span role="cell" className="cx-ck-impact">
@@ -213,7 +216,7 @@ export function ChecksList({ findings, refIds, filters, meta, goTo, openId, titl
                       ) : "–"}
                     </span>
                     <span role="cell" className="ck-rows">{"Rows →"}</span>
-                  </button>
+                  </div>
                 );
               })}
             </React.Fragment>

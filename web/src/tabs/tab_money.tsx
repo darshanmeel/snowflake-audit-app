@@ -515,7 +515,7 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
   return (
     <div>
       <MoneyPrintHeader meta={meta} filters={filters} lines={printLines} priceText={priceText && priceText !== "…" ? priceText : null} />
-      <PageIntro overline={pageEyebrow(role, "Money", meta, filters.window)} title="Money" verdict={lede} scope={MONEY_SCOPE} />
+      <PageIntro guideTab="money" overline={pageEyebrow(role, "Money", meta, filters.window)} title="Money" verdict={lede} scope={MONEY_SCOPE} />
       <FreshnessLine findingsById={byId} goTo={goTo} />
 
       <KpiRow note="Spend, the forecast and billed vs metered are context. Possible waste is part of spend, counted on its own — never summed."
@@ -622,7 +622,7 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
 
       <FilterReachNote />
       <div className="nj-strip"><RanLine meta={meta} byId={byId} goTo={goTo} /></div>
-      <PageFooter meta={meta} />
+      <PageFooter meta={meta} tab="money" />
     </div>
   );
 }

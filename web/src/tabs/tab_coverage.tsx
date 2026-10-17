@@ -20,6 +20,7 @@ import { CxBars, CxCellBar, CxTable, afHomeOf, fmtDur } from "../components/cx_d
 import type { CxRow } from "../components/cx_d";
 import { navHref } from "../components/nav_hash";
 import type { Filters, Finding, GoToFn, Meta, Row } from "../types";
+import { GuideHelp } from "../components/guide_links";
 
 /** One source in the coverage `tables` map: how its read went and which checks depend on it. */
 export interface CoverageSource {
@@ -463,7 +464,7 @@ export function CoverageCouldntPanel({ allFindingsIndex, goTo, meta, onVerdict }
             rows={merged.map((m) => ({
               key: m.qid,
               cells: [<span key="s" className={m.band === "NOT_ASSESSED" || m.band === "ERROR" ? "cv-na-chip" : "cv-nd-chip"}>{m.band === "NOT_ASSESSED" || m.band === "ERROR" ? "Not assessed" : "No data"}</span>,
-                m.title, <span key="w" className="cv-why">{m.window}</span>, <HomeLink key="h" qid={m.qid} goTo={goTo} />],
+                <span key="t">{m.title} <GuideHelp id={m.qid} label={m.title} /></span>, <span key="w" className="cv-why">{m.window}</span>, <HomeLink key="h" qid={m.qid} goTo={goTo} />],
             }))} />
           {grants.length > 0 && (
             <div className="cv-grants" id="cv-grants">

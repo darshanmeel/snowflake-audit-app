@@ -25,6 +25,7 @@ import { emptyLabelFor, pickLabelColumn, rowLabelOf } from "./tab_area";
 import type { MultiFetchState } from "../components/hooks";
 import type { WasteEntry } from "../components/waste_total";
 import type { Dims, Filters, Finding, GoToFn, Meta, Row } from "../types";
+import { GuideHelp } from "../components/guide_links";
 
 /** The three money units, never added together. */
 export type WasteUnit = "waste" | "saving" | "month";
@@ -232,7 +233,7 @@ export function WastePricedContent({ filters, dims, goTo, setVerdict, allFinding
       body: <ErrorBoundary><PricedBody entry={entry} off={offendersFor(entry, topState, dims)} goTo={goTo} /></ErrorBoundary>,
       cells: [
         <SevWord key="s" band={entry.band} />,
-        <span key="t">{entry.title}</span>,
+        <span key="t">{entry.title} <GuideHelp id={entry.id} label={entry.title} /></span>,
         <span key="f" className="cx-muted">{entry.affected ? `${fmtInt(entry.affected.flagged)} of ${fmtInt(entry.affected.total)} ${entry.affected.noun}` : "–"}</span>,
         <span key="i" className="cx-impact"><CellBar value={entry.usd as number} max={max} color={kindColor[unit]} /><span className="cx-impact-val">{fmtMoney(entry.usd, 0)}</span><span className="cx-impact-kind">{kindWord[unit]}</span></span>,
         <span key="r" className="cx-link">{openId === entry.id ? "Close ↑" : "Rows →"}</span>,
@@ -408,7 +409,7 @@ export function WasteUnpricedContent({ goTo, setVerdict, allFindingsIndex }: Was
                 cols={[{ label: "Severity", width: "96px" }, { label: "Check", width: "minmax(240px, 1fr)" }, { label: "Flagged", width: "150px" }, { label: "Share flagged", width: "200px" }, { label: "", width: "64px", num: true }]}
                 rows={byShare.map((w) => ({
                   key: w.id, onOpen: drawer(w.id), title: w.why || undefined,
-                  cells: [<SevWord key="s" band={w.band} />, <span key="t">{w.title}</span>,
+                  cells: [<SevWord key="s" band={w.band} />, <span key="t">{w.title} <GuideHelp id={w.id} label={w.title} /></span>,
                     <span key="f" className="cx-muted">{w.affected ? `${fmtInt(w.affected.flagged)} of ${fmtInt(w.affected.total)} ${w.affected.noun}` : "–"}</span>,
                     affPct(w) != null
                       ? <span key="b" className="cx-impact"><CellBar value={numOrZero(affPct(w))} max={100} /><span className="cx-impact-val" style={{ width: 44 }}>{fmtShare(affPct(w))}</span></span>
@@ -430,7 +431,7 @@ export function WasteUnpricedContent({ goTo, setVerdict, allFindingsIndex }: Was
                 const m = w.ownMoney!;
                 return {
                   key: w.id,
-                  cells: [<SevWord key="s" band={w.band} />, <span key="t">{w.title}</span>,
+                  cells: [<SevWord key="s" band={w.band} />, <span key="t">{w.title} <GuideHelp id={w.id} label={w.title} /></span>,
                     <span key="a" className="cx-strong">{fmtMoney(m.usd, 0)}</span>,
                     <span key="k" className="cx-muted">{KIND_WORD[m.kind] || m.kind}</span>,
                     <button key="o" type="button" className="cx-link cx-btn-link" onClick={open(w.id)}>{`${(AREA_REGISTRY[home.tab] || {}).label || "The check"} →`}</button>],

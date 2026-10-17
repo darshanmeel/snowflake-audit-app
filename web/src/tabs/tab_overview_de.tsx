@@ -128,7 +128,7 @@ export function DeOverview({ filters, meta, findingsById, goTo, role }: {
 
   return (
     <div className="cxd de-ov">
-      <PageIntro overline={pageEyebrow(role, "Overview", meta, win)} title="Overview" verdict={lede}
+      <PageIntro guideTab="overview" overline={pageEyebrow(role, "Overview", meta, win)} title="Overview" verdict={lede}
         scope="Task and query history from the export · credits × your effective $ per credit" />
       <FreshnessLine findingsById={byId} goTo={goTo} />
       <div className="summary-tile-row cto-tiles">
@@ -179,7 +179,7 @@ export function DeOverview({ filters, meta, findingsById, goTo, role }: {
       </PatternCard>
 
       <ChecksRanStrip meta={meta} byId={byId} goTo={goTo} />
-      <PageFooter meta={meta} />
+      <PageFooter meta={meta} tab="overview" />
     </div>
   );
 }

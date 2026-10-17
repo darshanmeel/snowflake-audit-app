@@ -739,11 +739,12 @@ export function TagsRoute({ filters, meta, role }: { filters: Filters; meta: Met
         overline={pageEyebrow(role, "Tags", meta, filters.window)}
         title="Tags"
         scope="Required cost tags, and how much spend each tag key reaches"
+        guideTab="tags"
         verdict={verdict}
       />
       <WindowCoverageNote meta={meta} windowDays={filters.window} />
       <TagsPage filters={filters} windowDays={filters.window} onVerdict={setVerdict} priceLabel={priceLabelOf(meta)} />
-      <PageFooter meta={meta} />
+      <PageFooter meta={meta} tab="tags" />
     </div>
   );
 }

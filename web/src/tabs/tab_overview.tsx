@@ -345,7 +345,7 @@ export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas
 
   return (
     <div>
-      <PageIntro overline={pageEyebrow(role, "Overview", meta, filters.window)} title="Overview" verdict={lede} scope={MONEY_SCOPE} />
+      <PageIntro guideTab="overview" overline={pageEyebrow(role, "Overview", meta, filters.window)} title="Overview" verdict={lede} scope={MONEY_SCOPE} />
       <FreshnessLine findingsById={byId} goTo={goTo} />
       <KpiRow>
         <IssueTile label="Cost" loading={!findingsReady || dayKindAgg.phase === "loading"} status={sev.cost}
@@ -446,7 +446,7 @@ export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas
       </div>
 
       <div className="nj-strip"><RanLine meta={meta} byId={byId} goTo={goTo} /></div>
-      <PageFooter meta={meta} />
+      <PageFooter meta={meta} tab="overview" />
     </div>
   );
 }
