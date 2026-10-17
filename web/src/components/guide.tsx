@@ -1598,6 +1598,21 @@ export function TableChips({ tables, max }: { tables: string[]; max?: number }) 
   );
 }
 
+// One collapsible nav group; it opens on its own when it holds the page you are on.
+function NavGroup({ title, ids, current, children }: { title: string; ids: string[]; current: string; children: React.ReactNode }) {
+  const holdsCurrent = ids.includes(current);
+  const [open, setOpen] = React.useState(holdsCurrent);
+  React.useEffect(() => { if (holdsCurrent) setOpen(true); }, [holdsCurrent]);
+  return (
+    <div className={`gd-nav-group${open ? " open" : ""}`}>
+      <button type="button" className="gd-nav-h" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="gd-nav-caret" aria-hidden="true">{"›"}</span>{title}
+      </button>
+      {open && <div className="gd-nav-items">{children}</div>}
+    </div>
+  );
+}
+
 // The Guide's own left column on every page but home: topics, tabs, reference.
 export function GuideDocsNav({ current, guideIndex, checkArea }: { current: string; guideIndex: GuideIndex; checkArea?: string | null }) {
   const [query, setQuery] = React.useState("");
@@ -1632,33 +1647,28 @@ export function GuideDocsNav({ current, guideIndex, checkArea }: { current: stri
       ) : (
         <React.Fragment>
           {checkArea && (
-            <div className="gd-nav-group">
-              <div className="gd-nav-h">{`${AREA_REGISTRY[checkArea as AreaKey].label} · ${areaChecks.length}`}</div>
+            <NavGroup title={`${AREA_REGISTRY[checkArea as AreaKey].label} · ${areaChecks.length}`} ids={areaChecks} current={current}>
               {areaChecks.map((id) => item(id, getCheckLabel(id, guideIndex[id].title).title))}
-            </div>
+            </NavGroup>
           )}
           {!checkArea && (
-            <div className="gd-nav-group">
-              <div className="gd-nav-h">Start here</div>
+            <NavGroup title="Start here" ids={GUIDE_UNIVERSAL_SECTIONS.map((s) => `how-${s.slug}`)} current={current}>
               {GUIDE_UNIVERSAL_SECTIONS.map((s) => item(`how-${s.slug}`, s.title))}
-            </div>
+            </NavGroup>
           )}
           {!checkArea && (
-            <div className="gd-nav-group">
-              <div className="gd-nav-h">Concepts</div>
+            <NavGroup title="Concepts" ids={GUIDE_CONCEPT_SECTIONS.map((s) => `how-${s.slug}`)} current={current}>
               {GUIDE_CONCEPT_SECTIONS.map((s) => item(`how-${s.slug}`, s.title))}
-            </div>
+            </NavGroup>
           )}
-          <div className="gd-nav-group">
-            <div className="gd-nav-h">{checkArea ? "Other tabs" : "Tabs"}</div>
+          <NavGroup title={checkArea ? "Other tabs" : "Tabs"} ids={GUIDE_SCREEN_ORDER.map(tabGuideId)} current={current}>
             {GUIDE_SCREEN_ORDER.filter((k) => k !== checkArea).map((k) => item(tabGuideId(k), guideArea(k)!.label))}
-          </div>
-          <div className="gd-nav-group">
-            <div className="gd-nav-h">Reference</div>
+          </NavGroup>
+          <NavGroup title="Reference" ids={["how-checks", "how-troubleshooting", "how-glossary"]} current={current}>
             {item("how-checks", "Check reference", Object.keys(guideIndex).length)}
             {item("how-troubleshooting", "Troubleshooting")}
             {item("how-glossary", "Glossary")}
-          </div>
+          </NavGroup>
         </React.Fragment>
       )}
     </nav>

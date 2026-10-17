@@ -180,6 +180,15 @@ a.gd-code:hover{ color: var(--link); text-decoration: underline; }
 }
 .gd-nav-group{ display: flex; flex-direction: column; gap: 1px; }
 .gd-nav-h{ font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); font-weight: 500; padding: 0 8px 4px; }
+button.gd-nav-h{
+  display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; cursor: pointer;
+  font-family: inherit; text-align: left; padding: 4px 8px; border-radius: 6px;
+}
+button.gd-nav-h:hover{ color: var(--text); background: var(--surface-2); }
+.gd-nav-caret{ display: inline-block; width: 10px; font-size: 14px; line-height: 1; transition: transform .15s; }
+.gd-nav-group.open .gd-nav-caret{ transform: rotate(90deg); }
+/* Items sit one step in from their heading, so each level reads as a level. */
+.gd-nav-items{ display: flex; flex-direction: column; gap: 1px; margin: 2px 0 0 13px; padding-left: 8px; border-left: 1px solid var(--border); }
 .gd-nav-item{ display: block; padding: 5px 8px; border-radius: 6px; font-size: 13px; line-height: 1.35; color: var(--text-2); text-decoration: none; }
 .gd-nav-item:hover{ background: var(--surface-2); color: var(--text); }
 .gd-nav-item.active{ background: var(--link-tint); color: var(--link); font-weight: 500; }
