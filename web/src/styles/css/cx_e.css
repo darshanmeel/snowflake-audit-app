@@ -148,6 +148,7 @@ table.cx-table { display: table; width: 100%; border-collapse: collapse; font-si
 .cx-table .cx-td-dot { width: 14px; padding-right: 6px; }
 .cx-table tr.clickable { cursor: pointer; }
 .cx-table tr.clickable:hover td { background: var(--surface-2); }
+.cx-table tr.on td { background: var(--surface-2); }
 .cx-cellbar { display: inline-grid; grid-template-columns: minmax(60px, 120px) auto; gap: 10px; align-items: center; min-width: 140px; }
 .cx-cellbar b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; min-width: 38px; }
 .cx-twobar { display: block; min-width: 80px; height: 12px; }

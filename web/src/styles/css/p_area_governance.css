@@ -72,3 +72,8 @@ button.ax-node:hover { border-color: var(--text-3); }
 .ax-gnode.admin text:not(.ax-badge) { fill: var(--st-crit); }
 .ax-gnode.more rect { fill: var(--surface); stroke-dasharray: 4 3; }
 .ax-gnode.more text { font-family: var(--f-sans); fill: var(--text-2); }
+.ax-gnode.obj rect { fill: var(--surface); stroke-dasharray: 3 2; }
+.ax-graph-bar { margin-bottom: 8px; }
+.ax-namebtn { padding: 0; border: 0; background: none; font-family: var(--f-mono); font-size: 12.5px; color: var(--link, var(--text)); text-align: left; overflow-wrap: anywhere; cursor: pointer; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
+.ax-namebtn.user { font-family: var(--f-sans); font-size: 13.5px; font-weight: 600; }
+.ax-namebtn:hover { text-decoration-color: currentColor; }

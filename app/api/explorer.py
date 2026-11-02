@@ -52,10 +52,17 @@ def _load(account_id: str | None) -> dict:
         rows = con.execute(f"SELECT link_kind, grantee, grantee_kind, name, granted_on, privilege, grant_option, "
                            f"user_type, is_disabled, last_success_login, default_role "
                            f"FROM findings.{TABLE} WHERE account_id IS NOT DISTINCT FROM ?", [acct]).fetchall()
+        try:  # queries per table, so the graph can show the most used ones; none when Activity did not run
+            activity = dict(con.execute(
+                "SELECT table_fqn, SUM(COALESCE(read_queries, 0) + COALESCE(write_queries, 0) + COALESCE(ddl_queries, 0)) "
+                "FROM findings.f_sf_use_table_activity WHERE row_level = 'table' AND window_days = 30 "
+                "AND account_id IS NOT DISTINCT FROM ? GROUP BY 1", [acct]).fetchall())
+        except duckdb.Error:
+            activity = {}
     except (duckdb.Error, OSError):
         raise HTTPException(503, "No grant links in this export: run it again with sf_acc_grant_links.")
     g = {"account_id": acct, "accounts": accounts, "users": {}, "user_roles": {}, "children": {}, "parents": {},
-         "grants": {}, "holders": {}, "kinds": {}}
+         "grants": {}, "holders": {}, "kinds": {}, "activity": activity}
     for kind, grantee, gkind, name, on, priv, opt, utype, disabled, login, default in rows:
         if kind == "user":
             g["users"][grantee] = {"user_type": utype, "is_disabled": bool(disabled), "default_role": default,
@@ -126,6 +133,7 @@ def _grants_from(g: dict, starts: list[list[str]], is_user: bool, mask: bool) ->
         row["depth"] = len(row["paths"][0]) - 1 - off
         row["direct"] = row["depth"] == 1
         row["admin"] = any(r in ADMIN for p in row["paths"] for r in p[off:-1])
+        row["queries"] = g["activity"].get(row["object"])
         rows.append(row)
     rows.sort(key=lambda r: (r["object"], r["privilege"]))
     # depth: steps from the start; a user's granted roles and a role's own children are 1, the role itself 0

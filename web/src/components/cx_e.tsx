@@ -262,7 +262,7 @@ export function CxMissing({ title, reason, onOpen }: { title: React.ReactNode; r
 }
 
 export interface CxCol { label: string; num?: boolean; width?: string }
-export interface CxTableRow { key: string; cells: React.ReactNode[]; status?: string | null; onClick?: (() => void) | null }
+export interface CxTableRow { key: string; cells: React.ReactNode[]; status?: string | null; onClick?: (() => void) | null; on?: boolean }
 
 /** The standard table: 11px uppercase header, 12px row padding, full-row dividers, numbers right-aligned.
  *  A leading status dot when rows carry a status; scrolls inside its own box on a phone. */
@@ -277,7 +277,7 @@ export function CxTable({ cols, rows, n, ariaLabel, foot }: { cols: CxCol[]; row
           <thead><tr>{dots && <th aria-hidden="true" className="cx-td-dot" />}{cols.map((c) => <th key={c.label} className={c.num ? "cx-num" : undefined} style={c.width ? { width: c.width } : undefined}>{c.label}</th>)}</tr></thead>
           <tbody>
             {shown.map((r) => (
-              <tr key={r.key} className={r.onClick ? "clickable" : undefined} onClick={r.onClick || undefined}>
+              <tr key={r.key} className={[r.onClick ? "clickable" : "", r.on ? "on" : ""].join(" ").trim() || undefined} onClick={r.onClick || undefined}>
                 {dots && <td className="cx-td-dot"><CxDot status={r.status} /></td>}
                 {r.cells.map((c, i) => <td key={i} className={cols[i] && cols[i].num ? "cx-num" : undefined}>{c}</td>)}
               </tr>

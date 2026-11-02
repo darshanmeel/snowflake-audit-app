@@ -488,7 +488,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
       "Which apps and containers run on our compute?",
     ],
     screen: [
-      { sub: "cortex", d: "AI spend trend, by function, user, Analyst, Search, Agents and Code, reconciled to the bill; who can call Cortex, AI credits lost to failed statements and Search indexes that stopped taking rows." },
+      { sub: "cortex", d: "AI spend trend, by function, user, Analyst, Search, Agents and Code, reconciled to the bill; Cortex Code use per user and client (requests, active days, last used), listed even when it cost nothing; who can call Cortex, AI credits lost to failed statements and Search indexes that stopped taking rows." },
       { sub: "apps", d: "Container services and compute pools, services that can take internet traffic, notebook runtime, Streamlit apps, functions and procedures, and installed Native Apps." },
       { sub: "serving", d: "Model serving spend." },
     ],
@@ -518,7 +518,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
       { sub: "roles", d: "Broad and PUBLIC grants, role hygiene, direct and grant-option privileges, access roles handed to users, roles granted twice, read-only roles that can write." },
       { sub: "users", d: "MFA, password and key-pair age, stale users, disabled users that still hold roles, failed and new sign-ins, clients and SSO." },
       { sub: "perimeter", d: "Trust Center findings and their age, network, session, password and authentication policies, integrations, PrivateLink, failover readiness and secrets." },
-      { sub: "explorer", d: "Pick a user, role or object: every privilege, with every path through the roles, and who else holds it." },
+      { sub: "explorer", d: "Who can access what. Pick a user, role or object: a graph with an arrow per grant (a few users on the left, the roles, the 10 most used tables on the right), then every privilege with every path, and who else holds it. Select a row to see its whole path in the graph." },
     ],
     measure: "Grants, users, login history and account parameters from ACCOUNT_USAGE and SHOW.",
     judge: "Broad grantees, stale days and failed sign-ins flag against config/thresholds.yml.",

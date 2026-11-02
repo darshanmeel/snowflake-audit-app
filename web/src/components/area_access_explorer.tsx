@@ -66,19 +66,24 @@ function Paths({ paths, count, onPick }: { paths: string[][]; count: number; onP
  *  ("is granted to" runs left to right). A path's leading user (in `users`) is not drawn: it counts as
  *  "N users" on the role the user holds. Columns over CAP boxes show "+N more", which opens them. */
 const W = 196, H = 30, GAP = 56, ROW = 40, TOP = 26, CAP = 14;
+// Users drawn on the left of a role or object graph: a few per role, so the reader sees who; the table lists all.
+const USERS_PER_ROLE = 2, USERS_DRAWN = 12;
 
-function RoleGraph({ paths, focus, users, onPick, laneName }: {
-  paths: string[][]; focus: string; users: Set<string>; onPick: (kind: Kind, name: string) => void; laneName: (lane: number) => string;
+function RoleGraph({ paths, focus, users, objects, onPick, laneName }: {
+  paths: string[][]; focus: string; users: Set<string>; objects: Set<string>; onPick: (kind: Kind, name: string) => void;
+  laneName: (lane: number) => string;
 }) {
   const [open, setOpen] = React.useState<Set<number>>(new Set());
   const [hover, setHover] = React.useState<string | null>(null);
   const g = React.useMemo(() => {
     const lane = new Map<string, number>(), held = new Map<string, Set<string>>(), edges = new Map<string, [string, string]>();
+    const heldBy: [string, string][] = [];
     paths.forEach((p0) => {
       let p = p0;
       if (p.length > 1 && p[0] !== focus && users.has(p[0])) {
         if (!held.has(p[1])) held.set(p[1], new Set());
         held.get(p[1])!.add(p[0]);
+        heldBy.push([p[0], p[1]]);
         p = p.slice(1);
       }
       const f = p.indexOf(focus);
@@ -89,6 +94,24 @@ function RoleGraph({ paths, focus, users, onPick, laneName }: {
         if (i) edges.set(`${p[i - 1]}>${x}`, [p[i - 1], x]);
       });
     });
+    // A few users, in one first column before the highest role, each with an arrow to the role it holds.
+    const drawn = new Set<string>(), perRole = new Map<string, number>();
+    heldBy.forEach(([u, r]) => {
+      if (!lane.has(r) || (perRole.get(r) || 0) >= USERS_PER_ROLE || (drawn.size >= USERS_DRAWN && !drawn.has(u))) return;
+      drawn.add(u);
+      perRole.set(r, (perRole.get(r) || 0) + 1);
+      edges.set(`${u}>${r}`, [u, r]);
+    });
+    if (drawn.size) {
+      const first = Math.min(0, ...lane.values()) - 1;
+      drawn.forEach((u) => lane.set(u, first));
+    }
+    // Tables and views the paths end at sit together in one last column, after the deepest role.
+    const ends = [...lane.keys()].filter((x) => objects.has(x) && x !== focus);
+    if (ends.length) {
+      const last = Math.max(0, ...[...lane.entries()].filter(([k]) => !objects.has(k)).map(([, v]) => v)) + 1;
+      ends.forEach((x) => lane.set(x, last));
+    }
     const lanes = [...new Set(lane.values())].sort((a, b) => a - b);
     const cols = lanes.map((l) => [...lane.entries()].filter(([, v]) => v === l).map(([k]) => k).sort());
     // Order each column by where its parents sit, so arrows cross as little as possible.
@@ -107,7 +130,7 @@ function RoleGraph({ paths, focus, users, onPick, laneName }: {
       });
     }
     return { lane, lanes, cols, held, edges: all };
-  }, [paths, focus, users]);
+  }, [paths, focus, users, objects]);
 
   const xy = new Map<string, [number, number]>();
   const shown = g.cols.map((c, ci) => (open.has(ci) || c.length <= CAP ? c : c.slice(0, CAP)));
@@ -122,7 +145,8 @@ function RoleGraph({ paths, focus, users, onPick, laneName }: {
           <marker id="ax-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" className="ax-arrow" /></marker>
           <marker id="ax-arrow-on" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" className="ax-arrow on" /></marker>
         </defs>
-        {g.lanes.map((l, ci) => <text key={l} className="ax-lane-label" x={ci * (W + GAP)} y={12}>{laneName(l)}</text>)}
+        {g.lanes.map((l, ci) => <text key={l} className="ax-lane-label" x={ci * (W + GAP)} y={12}>
+          {g.cols[ci].some((x) => objects.has(x) && x !== focus) ? "Tables" : g.cols[ci].every((x) => users.has(x) && x !== focus) ? "Users" : laneName(l)}</text>)}
         {g.edges.map(([a, b]) => {
           const pa = xy.get(a), pb = xy.get(b);
           if (!pa || !pb) return null;
@@ -137,14 +161,14 @@ function RoleGraph({ paths, focus, users, onPick, laneName }: {
         {[...xy.entries()].map(([x, [px, py]]) => {
           const isFocus = x === focus;
           const n = g.held.get(x)?.size || 0;
-          const kind: Kind | null = isFocus ? null : users.has(x) ? "user" : g.lane.get(x)! > 0 || g.lane.get(x)! < 0 ? "role" : null;
+          const kind: Kind | null = isFocus ? null : users.has(x) ? "user" : objects.has(x) ? "object" : g.lane.get(x)! !== 0 ? "role" : null;
           return (
-            <g key={x} className={`ax-gnode${isFocus ? " focus" : ""}${ADMIN.has(x) ? " admin" : ""}${kind ? " link" : ""}`}
+            <g key={x} className={`ax-gnode${isFocus ? " focus" : ""}${ADMIN.has(x) ? " admin" : ""}${kind ? " link" : ""}${kind === "object" ? " obj" : ""}`}
               transform={`translate(${px},${py})`} onMouseEnter={() => setHover(x)} onMouseLeave={() => setHover(null)}
               onClick={kind ? () => onPick(kind, x) : undefined}>
               <title>{`${x}${n ? ` · granted directly to ${plural(n, "user")}` : ""}${ADMIN.has(x) ? " · admin role" : ""}`}</title>
               <rect width={W} height={H} rx={users.has(x) ? H / 2 : 6} />
-              <text x={10} y={H / 2 + 4}>{clip(x, n ? 18 : 26)}</text>
+              <text x={10} y={H / 2 + 4}>{clip(kind === "object" ? x.split(".").pop() || x : x, n ? 18 : 26)}</text>
               {n > 0 && <text className="ax-badge" x={W - 8} y={H / 2 + 4} textAnchor="end">{`${fmtInt(n)} ${n === 1 ? "user" : "users"}`}</text>}
             </g>
           );
@@ -160,6 +184,12 @@ function RoleGraph({ paths, focus, users, onPick, laneName }: {
     </div>
   );
 }
+
+const grantKey = (r: any) => `${r.privilege}|${r.granted_on}|${r.object}`;
+const holderKey = (r: any) => `${r.kind}|${r.name}|${r.privilege || ""}`;
+// Object types drawn as the graph's last column: the data a user ends up reading or changing.
+const DATA_KINDS = new Set(["TABLE", "VIEW", "MATERIALIZED_VIEW", "MATERIALIZED VIEW", "DYNAMIC_TABLE", "EXTERNAL_TABLE", "ICEBERG_TABLE", "EVENT_TABLE"]);
+const TOP_TABLES = 10;
 
 /** Text, class and privilege filters over the rows: "can X do P on Y?". */
 function useFilter(rows: any[]) {
@@ -181,7 +211,9 @@ function useFilter(rows: any[]) {
   return { shown, bar };
 }
 
-function GrantsTable({ rows, onPick }: { rows: any[]; onPick: (kind: Kind, name: string) => void }) {
+function GrantsTable({ rows, onPick, onRow, selKey }: {
+  rows: any[]; onPick: (kind: Kind, name: string) => void; onRow: (r: any) => void; selKey: string | null;
+}) {
   const { shown, bar } = useFilter(rows);
   return (
     <div>
@@ -190,16 +222,19 @@ function GrantsTable({ rows, onPick }: { rows: any[]; onPick: (kind: Kind, name:
         cols={[{ label: "Privilege" }, { label: "Object" }, { label: "Type" }, { label: "Path", width: "45%" }]}
         foot={`${plural(shown.length, "privilege")}${shown.length < rows.length ? ` of ${fmtInt(rows.length)}` : ""} · red = an admin role or ownership, amber = can change data.`}
         rows={shown.map((r) => ({
-          key: `${r.privilege}|${r.granted_on}|${r.object}`, status: r.admin ? "CRITICAL" : undefined,
-          onClick: r.granted_on !== "ACCOUNT" ? () => onPick("object", r.object) : null,
-          cells: [<CxChip status={CLS_STATUS[r.cls]}>{r.privilege}</CxChip>, <code className="ax-obj">{r.object}</code>,
+          key: grantKey(r), status: r.admin ? "CRITICAL" : undefined, on: grantKey(r) === selKey, onClick: () => onRow(r),
+          cells: [<CxChip status={CLS_STATUS[r.cls]}>{r.privilege}</CxChip>,
+            r.granted_on !== "ACCOUNT" ? <button type="button" className="ax-namebtn" onClick={(e) => { e.stopPropagation(); onPick("object", r.object); }}>{r.object}</button>
+              : <code className="ax-obj">{r.object}</code>,
             String(r.granted_on || "").replace(/_/g, " ").toLowerCase(), <Paths paths={r.paths} count={r.path_count} onPick={onPick} />],
         }))} />
     </div>
   );
 }
 
-function HoldersTable({ rows, onPick, withPriv }: { rows: any[]; onPick: (kind: Kind, name: string) => void; withPriv: boolean }) {
+function HoldersTable({ rows, onPick, withPriv, onRow, selKey }: {
+  rows: any[]; onPick: (kind: Kind, name: string) => void; withPriv: boolean; onRow: (r: any) => void; selKey: string | null;
+}) {
   const { shown, bar } = useFilter(withPriv ? rows : rows.map((r) => ({ ...r, cls: "" })));
   return (
     <div>
@@ -208,10 +243,9 @@ function HoldersTable({ rows, onPick, withPriv }: { rows: any[]; onPick: (kind: 
         cols={[{ label: "Who" }, ...(withPriv ? [{ label: "Privilege" }] : []), { label: "Last sign-in", num: true }, { label: "Path", width: "50%" }]}
         foot={`${plural(shown.filter((r) => r.kind === "user").length, "user")} and ${plural(shown.filter((r) => r.kind === "role").length, "role")}.`}
         rows={shown.map((r) => ({
-          key: `${r.kind}|${r.name}|${r.privilege || ""}`, status: r.admin ? "CRITICAL" : r.is_disabled ? "WARN" : undefined,
-          onClick: () => onPick(r.kind, r.name),
+          key: holderKey(r), status: r.admin ? "CRITICAL" : r.is_disabled ? "WARN" : undefined, on: holderKey(r) === selKey, onClick: () => onRow(r),
           cells: [
-            <span>{r.kind === "user" ? <b>{r.name}</b> : <code className="ax-obj">{r.name}</code>}{r.kind === "user" && r.is_disabled ? <> <CxChip status="WARN">disabled</CxChip></> : null}{r.kind === "user" && r.user_type && r.user_type !== "PERSON" ? <> <CxChip>{String(r.user_type).toLowerCase()}</CxChip></> : null}</span>,
+            <span><button type="button" className={`ax-namebtn${r.kind === "user" ? " user" : ""}`} onClick={(e) => { e.stopPropagation(); onPick(r.kind, r.name); }}>{r.name}</button>{r.kind === "user" && r.is_disabled ? <> <CxChip status="WARN">disabled</CxChip></> : null}{r.kind === "user" && r.user_type && r.user_type !== "PERSON" ? <> <CxChip>{String(r.user_type).toLowerCase()}</CxChip></> : null}</span>,
             ...(withPriv ? [<CxChip status={CLS_STATUS[r.cls]}>{r.privilege}</CxChip>] : []),
             r.kind === "user" ? lastDay(r.last_success_login) : "–",
             <Paths paths={r.paths} count={r.path_count} onPick={onPick} />],
@@ -264,6 +298,13 @@ export function ApAccessExplorer(p: ApPageProps) {
   }, [sel.kind, sel.name, acct]);
 
   const pick = (kind: Kind, name: string) => { setSel({ kind, name }); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  // A row picked in a table: the graph shows only its paths.
+  const [focusRow, setFocusRow] = React.useState<{ key: string; label: string; paths: string[][]; count: number } | null>(null);
+  React.useEffect(() => setFocusRow(null), [sel.kind, sel.name]);
+  const showRow = (key: string, label: string, r: any) => {
+    setFocusRow((f) => (f && f.key === key ? null : { key, label, paths: r.paths, count: r.path_count }));
+    document.getElementById("ax-graph")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const grants: any[] = (res && res.grants) || [];
   const roles: any[] = (res && res.roles) || [];
   const holders: any[] = (res && res.holders) || [];
@@ -272,8 +313,21 @@ export function ApAccessExplorer(p: ApPageProps) {
   const deepest = Math.max(0, ...roles.map((r) => r.depth));
   const objects = new Set(grants.map((g) => g.object)).size;
   // The graph: a user's or role's paths down its roles, a role's holders above it, an object's roles before it.
-  const graphPaths: string[][] = React.useMemo(() => (!res ? [] : [
-    ...(res.roles || []).flatMap((r: any) => r.paths), ...(res.holders || []).flatMap((h: any) => h.paths)]), [res]);
+  // The most used tables it can reach end the graph (by queries in the window, else by name); the rest stay in the table.
+  const topTables = React.useMemo(() => {
+    if (!res || res.kind === "object") return [] as any[];
+    const best = new Map<string, any>();
+    (res.grants || []).filter((r: any) => DATA_KINDS.has(r.granted_on)).forEach((r: any) => {
+      const cur = best.get(r.object);
+      if (!cur || r.paths[0].length < cur.paths[0].length) best.set(r.object, r);
+    });
+    return [...best.values()].sort((a, b) => (b.queries || 0) - (a.queries || 0) || a.object.localeCompare(b.object)).slice(0, TOP_TABLES);
+  }, [res]);
+  const graphPaths: string[][] = React.useMemo(() => (!res ? [] : focusRow ? focusRow.paths : [
+    ...(res.roles || []).flatMap((r: any) => r.paths), ...(res.holders || []).flatMap((h: any) => h.paths),
+    ...topTables.flatMap((r: any) => r.paths.slice(0, 2))]), [res, focusRow, topTables]);
+  const graphObjects = React.useMemo(() => new Set<string>([
+    ...topTables.map((r: any) => r.object), ...(focusRow ? focusRow.paths.map((p) => p[p.length - 1]) : [])].filter((x) => res && x !== res.name)), [topTables, focusRow, res]);
   const userNames = React.useMemo(() => new Set<string>([...(res && res.kind === "user" ? [res.name] : []),
     ...((res && res.holders) || []).filter((h: any) => h.kind === "user").map((h: any) => h.name)]), [res]);
   const laneName = (l: number) => (l === 0 ? (sel.kind === "user" ? "User" : sel.kind === "role" ? "This role" : "This object")
@@ -324,24 +378,32 @@ export function ApAccessExplorer(p: ApPageProps) {
       )}
       {tiles}
       {res && graphPaths.length > 0 && (
-        <ChartCard title={sel.kind === "user" ? "Roles it can use" : sel.kind === "role" ? "Where it sits in the role tree" : "Roles that reach it"}
-          subtitle={`Arrow = is granted to · one column per step · red = admin role · hover a box to see its arrows, select a role to explore it${sel.kind !== "user" ? " · N users = users granted that role directly" : ""}`} takeaway={null}>
-          <RoleGraph paths={graphPaths} focus={res.name} users={userNames} onPick={pick} laneName={laneName} />
-        </ChartCard>
+        <div id="ax-graph">
+          <ChartCard title={focusRow ? `How ${focusRow.label}` : sel.kind === "user" ? "Roles and tables it can use" : sel.kind === "role" ? "Where it sits in the role tree" : "Roles that reach it"}
+            subtitle={focusRow ? `Every path for the row picked below${focusRow.count > focusRow.paths.length ? ` · the first ${fmtInt(focusRow.paths.length)} of ${fmtInt(focusRow.count)}` : ""}`
+              : `Arrow = is granted to · one column per step · red = admin role${topTables.length ? ` · the ${fmtInt(topTables.length)} most used tables it can reach, the rest in the table below` : ""} · select a row below for its whole path${sel.kind !== "user" ? " · N users = users granted that role directly" : ""}`}
+            takeaway={null}>
+            {focusRow && <div className="ax-graph-bar"><button type="button" className="cx-linkbtn" onClick={() => setFocusRow(null)}>{"← Show the whole graph"}</button></div>}
+            <RoleGraph key={focusRow ? focusRow.key : "all"} paths={graphPaths} focus={res.name} users={userNames} objects={graphObjects} onPick={pick} laneName={laneName} />
+          </ChartCard>
+        </div>
       )}
       {res && sel.kind !== "object" && (
-        <ChartCard title={`What ${res.name} can do`} subtitle="Every privilege, with the path it comes through · select a row to see who else can use that object" takeaway={null}>
-          {grants.length ? <GrantsTable rows={grants} onPick={pick} /> : <CxStat>{"Holds no privileges on objects."}</CxStat>}
+        <ChartCard title={`What ${res.name} can do`} subtitle="Every privilege, with the path it comes through · select a row for its whole path in the graph, a name to explore it" takeaway={null}>
+          {grants.length ? <GrantsTable rows={grants} onPick={pick} selKey={focusRow && focusRow.key}
+            onRow={(r) => showRow(grantKey(r), `${res.name} gets ${r.privilege} on ${r.object}`, r)} /> : <CxStat>{"Holds no privileges on objects."}</CxStat>}
         </ChartCard>
       )}
       {res && sel.kind === "role" && (
         <ChartCard title={`Who can use ${res.name}`} subtitle="Users and roles that hold it, directly or through other roles" takeaway={null}>
-          {holders.length ? <HoldersTable rows={holders} onPick={pick} withPriv={false} /> : <CxStat>{"No user or role holds it."}</CxStat>}
+          {holders.length ? <HoldersTable rows={holders} onPick={pick} withPriv={false} selKey={focusRow && focusRow.key}
+            onRow={(r) => showRow(holderKey(r), `${r.name} gets ${res.name}`, r)} /> : <CxStat>{"No user or role holds it."}</CxStat>}
         </ChartCard>
       )}
       {res && sel.kind === "object" && (
         <ChartCard title={`Who can use ${res.name}`} subtitle={`${String(res.granted_on || "").replace(/_/g, " ").toLowerCase()} · every user and role with a privilege on it, and the path`} takeaway={null}>
-          <HoldersTable rows={holders} onPick={pick} withPriv />
+          <HoldersTable rows={holders} onPick={pick} withPriv selKey={focusRow && focusRow.key}
+            onRow={(r) => showRow(holderKey(r), `${r.name} gets ${r.privilege} on ${res.name}`, r)} />
         </ChartCard>
       )}
     </div>
