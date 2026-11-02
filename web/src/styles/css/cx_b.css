@@ -173,3 +173,8 @@ button.cx-lbar:hover .cx-lbar-label, button.cx-nbar:hover .cx-nbar-name { color:
   .cx-nbar { grid-template-columns: minmax(0, 1fr) 72px !important; row-gap: 4px; }
   .cx-nbar-cell { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* cx_c.css (loaded later) styles .cx-table and .cx-tr as one subgrid; these div tables size each row
+   from its own --cx-cols, so take the rules back inside .cx-table-wrap. */
+.cx-table-wrap > .cx-table { display: flex; flex-direction: column; }
+.cx-table-wrap .cx-tr { grid-column: auto; grid-template-columns: var(--cx-cols); }

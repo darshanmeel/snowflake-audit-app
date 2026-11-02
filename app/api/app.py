@@ -32,6 +32,9 @@ Routes:
                                          groups every failed or never-run check by plain reason with
                                          the fix; truncated_query_ids: the export's row-cap hits.
     GET /api/guide                      app/api/guide.py's build_guide(): the Guide tab's whole feed.
+    GET /api/access/names, /api/access/explore
+                                         app/api/explorer.py: the Access explorer's paths from
+                                         user through roles to objects.
     GET /api/rollup, /api/rollup/top, /api/rollup/keys
                                          the nested cost or performance rollup for one tag key.
                                          area=cost (default) or performance; 422 for a bad area, a
@@ -105,6 +108,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from app.api import guide as guide_api  # noqa: E402
+from app.api import explorer as explorer_api  # noqa: E402
 from app.api import refresh as app_refresh  # noqa: E402
 from app.api import service  # noqa: E402
 from app.core import config as app_config  # noqa: E402
@@ -730,6 +734,7 @@ def get_guide() -> dict:
 
 
 app.include_router(guide_api.router)
+app.include_router(explorer_api.router)
 
 
 # -------------------------------------------------------------------------------------------

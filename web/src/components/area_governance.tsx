@@ -29,6 +29,7 @@ import type { Chk } from "./area_ai_storage";
 import { CxBarRows, CxChip, CxDot, CxDotLegend, CxEyebrow, CxMiniCols, CxMissing, CxObjName, CxRanked, CxStat, CxSwatches, CxTable as CxTableE, CxTwoBar, rankTally } from "./cx_e";
 import type { CxBarRow, CxRankItem } from "./cx_e";
 import type { FetchState, Finding, Row } from "../types";
+import { AccDisabledUsers, AccRoleModel, AccSensitiveReach, ApAccessExplorer } from "./area_access_explorer";
 
 // ═══════════════════════ shared helpers ═══════════════════════
 
@@ -300,6 +301,7 @@ export function ApAccessRoles(p: ApPageProps) {
       </ApRow>
       <GovGrantsByPrivilege p={p} />
       <GovUnusedGrantsFit p={p} />
+      <AccRoleModel p={p} />
     </div>
   );
 }
@@ -416,6 +418,7 @@ export function ApAccessUsers(p: ApPageProps) {
         }}
       </Slot>
       <GovFailedByCause p={p} />
+      <AccDisabledUsers p={p} />
       <Slot c={mfa} title="People signing in with a password and no MFA" subtitle="Admins first · select a row for its sign-ins and the fix">
         {(rows) => (
           <CxTableE ariaLabel="People without MFA" n={10}
@@ -1102,6 +1105,7 @@ export function ApPiiReads(p: ApPageProps) {
             }))} />
         )}
       </Slot>
+      <AccSensitiveReach p={p} />
       <GovAgentsFit p={p} />
     </div>
   );
@@ -1950,7 +1954,7 @@ function GovMaskAttachment({ p }: { p: ApPageProps }) {
 /** The governance sub-tab pages, merged into AREA_CHART_PAGES by area_pages.tsx. Each leads with its
  * own tiles and lede (`ownsTiles`, `ownsLede`). */
 export const GOV_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) => React.JSX.Element>> = {
-  access: { roles: ApAccessRoles, users: ApAccessUsers, perimeter: ApAccessPerimeter },
+  access: { roles: ApAccessRoles, users: ApAccessUsers, perimeter: ApAccessPerimeter, explorer: ApAccessExplorer },
   audit: { admins: ApAuditAdmins, changes: ApAuditChanges },
   pii: { sensitive: ApPiiSensitive, policies: ApPiiPolicies, reads: ApPiiReads, quality: ApPiiQuality },
   lineage: { dependencies: ApLineageDeps },

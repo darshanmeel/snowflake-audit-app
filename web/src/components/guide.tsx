@@ -512,11 +512,13 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
       "Who has broad access?",
       "Who signs in without MFA, with a password, or not at all?",
       "Is the account perimeter (network, sessions, integrations) set up?",
+      "How does this user get this privilege, and who else can use this table?",
     ],
     screen: [
-      { sub: "roles", d: "Broad and PUBLIC grants, role hygiene, direct and grant-option privileges." },
-      { sub: "users", d: "MFA, password and key-pair age, stale users, failed and new sign-ins, clients and SSO." },
+      { sub: "roles", d: "Broad and PUBLIC grants, role hygiene, direct and grant-option privileges, access roles handed to users, roles granted twice, read-only roles that can write." },
+      { sub: "users", d: "MFA, password and key-pair age, stale users, disabled users that still hold roles, failed and new sign-ins, clients and SSO." },
       { sub: "perimeter", d: "Trust Center findings and their age, network, session, password and authentication policies, integrations, PrivateLink, failover readiness and secrets." },
+      { sub: "explorer", d: "Pick a user, role or object: every privilege, with every path through the roles, and who else holds it." },
     ],
     measure: "Grants, users, login history and account parameters from ACCOUNT_USAGE and SHOW.",
     judge: "Broad grantees, stale days and failed sign-ins flag against config/thresholds.yml.",
@@ -528,6 +530,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     limits: [
       "It sees only what the audit role can see.",
       "Login history keeps 365 days.",
+      "The explorer shows current grants; future grants are not in ACCOUNT_USAGE, and USAGE on the database and schema is not required for a path.",
     ],
   },
   audit: {

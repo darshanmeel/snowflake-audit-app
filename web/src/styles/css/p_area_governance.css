@@ -33,3 +33,24 @@ a.ck-row, a.ck-row:hover { text-decoration: none; }
   .gov-headline { font-size: 13px; }
   .cv-sources-table td, .cv-sources-table th { white-space: normal; word-break: break-word; }
 }
+
+/* Access › Explorer: name picker, role lanes and path chips. */
+.ax-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ax-bar .cx-seg { align-self: center; }
+.ax-pick { position: relative; display: flex; align-items: center; gap: 8px; }
+.ax-input { min-height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font: inherit; font-size: 13px; color: var(--text); }
+.ax-input.wide { width: min(360px, 70vw); font-family: var(--f-mono); font-size: 12.5px; }
+.ax-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.ax-path { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ax-paths { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.ax-sep { color: var(--text-3); }
+.ax-node { display: inline-block; padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); font-family: var(--f-mono); font-size: 12px; color: var(--text); overflow-wrap: anywhere; text-align: left; }
+button.ax-node { cursor: pointer; }
+button.ax-node:hover { border-color: var(--text-3); }
+.ax-node.last { background: var(--surface); }
+.ax-node.admin { color: var(--st-crit); border-color: color-mix(in srgb, var(--st-crit) 35%, var(--surface)); background: color-mix(in srgb, var(--st-crit) 8%, var(--surface)); }
+.ax-obj { font-family: var(--f-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.ax-lanes { display: flex; gap: 24px; overflow-x: auto; padding-bottom: 4px; }
+.ax-lane { display: flex; flex-direction: column; gap: 6px; min-width: 160px; }
+.ax-lane-head { font-size: 12px; color: var(--text-3); }
+.ax-who { margin: 0 0 12px; font-size: 13.5px; color: var(--text-2); }

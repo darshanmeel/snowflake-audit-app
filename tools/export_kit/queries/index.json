@@ -690,6 +690,87 @@
     ]
    }
   },
+  "sf_acc_disabled_users_roles": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_acc_grant_links": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_acc_readonly_roles_write": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS"
+   ],
+   "params": {
+    "read_share": 0.8,
+    "min_objects": 5
+   },
+   "needs_enterprise": false
+  },
+  "sf_acc_redundant_role_grants": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_acc_roles_used_both_ways": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
+  "sf_acc_sensitive_reach": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS",
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "dormant_days": 90
+   },
+   "needs_enterprise": true
+  },
   "sf_acct_budgets": {
    "domain": "cost",
    "windowed": true,

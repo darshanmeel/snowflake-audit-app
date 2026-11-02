@@ -139,7 +139,8 @@
 
 /* Standard table */
 .cx-table-box { max-width: 100%; overflow-x: auto; }
-.cx-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+/* table.: the div tables of cx_b / cx_c set .cx-table to grid or flex, which splits a real table's columns. */
+table.cx-table { display: table; width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .cx-table th { text-align: left; font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); padding: 0 12px 8px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .cx-table td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
 .cx-table tr:last-child td { border-bottom: 0; }

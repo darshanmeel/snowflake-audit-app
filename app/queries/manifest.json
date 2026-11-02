@@ -5164,6 +5164,216 @@
       "sql_url": "app/queries/checks/access_views_inventory.sql"
     },
     {
+      "query_id": "sf_acc_disabled_users_roles",
+      "title": "Disabled users that still hold roles",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [],
+      "money": null,
+      "entity": null,
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.ROLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one disabled user that has not been dropped. direct_roles counts roles granted to the user; admin_roles lists the admin roles the user could use again.",
+      "healthy": "status = OK when the user holds no roles.",
+      "investigate_if": "WARN when the user still holds roles: enabling the user again brings all access back at once; CRITICAL when one of them leads to an admin role.",
+      "actions": [
+        "revoke the roles, or drop the user when the person has left (free)"
+      ],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_acc_disabled_users_roles.sql"
+    },
+    {
+      "query_id": "sf_acc_grant_links",
+      "title": "Every live grant link: users to roles, roles to roles, roles to objects",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [],
+      "money": null,
+      "entity": {
+        "noun": "grant links",
+        "columns": [
+          "link_kind",
+          "grantee",
+          "name",
+          "privilege"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one live grant link (user_role, role_role, role_object) or one user (user). The Access explorer walks these links to show every path from a user through roles to an object. Database roles are nodes named DATABASE.ROLE; application roles are objects.",
+      "healthy": "n/a - inventory",
+      "investigate_if": "n/a - inventory",
+      "actions": [],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_acc_grant_links.sql"
+    },
+    {
+      "query_id": "sf_acc_readonly_roles_write",
+      "title": "Read-only roles that can change data",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [],
+      "money": null,
+      "entity": null,
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [
+        {
+          "name": "read_share",
+          "default": 0.8,
+          "meaning": "read share: a role that only reads this share of its tables counts as read-only"
+        },
+        {
+          "name": "min_objects",
+          "default": 5,
+          "meaning": "objects: the share counts from this many tables up"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one custom role that looks read-only, by its name or by what it holds. The name counts when READ, RO, READER, VIEWER, REPORTING or READONLY is a word in it; what it holds counts when it only reads at least :read_share of its :min_objects+ tables. write_objects counts tables it can change (INSERT, UPDATE, DELETE, TRUNCATE, ownership) or schemas it can create in, held directly or through roles it inherits; example_path shows where one comes from.",
+      "healthy": "status = OK when the role only reads.",
+      "investigate_if": "WARN when it can change data: a reviewer trusts the name or the pattern, and the write access goes unseen.",
+      "actions": [
+        "revoke the write grant, or move it to a role whose name says write (free)",
+        "rename the role if it is meant to write (free)"
+      ],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_acc_readonly_roles_write.sql"
+    },
+    {
+      "query_id": "sf_acc_redundant_role_grants",
+      "title": "Role grants a user or role already gets through another role",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [],
+      "money": null,
+      "entity": null,
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one direct role grant (to a user or a role) that the grantee also gets through another of its roles. through_roles lists those roles; example_path shows one way round.",
+      "healthy": "status = OK never appears; no rows means no role is granted twice.",
+      "investigate_if": "WARN on every row: the direct grant adds nothing today and keeps the access when the other role is taken away.",
+      "actions": [
+        "revoke the direct grant, unless the other path is about to go (free)"
+      ],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_acc_redundant_role_grants.sql"
+    },
+    {
+      "query_id": "sf_acc_roles_used_both_ways",
+      "title": "Access roles handed straight to users",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [],
+      "money": null,
+      "entity": null,
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one custom role that holds object privileges and is granted straight to users. parent_roles lists the custom roles it is also granted to: then it is a building block of a job role, and the users who hold it directly skip that job role.",
+      "healthy": "status = OK when users get the role and no other role is built from it.",
+      "investigate_if": "WARN when the role is also granted to another custom role: access sits on two kinds of role, so a review of job roles misses these users.",
+      "actions": [
+        "grant the job role (the parent) to these users and revoke the direct grant (free)",
+        "keep privileges on access roles and hand users only job roles (free)"
+      ],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_acc_roles_used_both_ways.sql"
+    },
+    {
+      "query_id": "sf_acc_sensitive_reach",
+      "title": "Who can read or change each table with sensitive columns",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [],
+      "money": null,
+      "entity": null,
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES",
+        "SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES",
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.ROLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition for tags and policies",
+      "params": [
+        {
+          "name": "dormant_days",
+          "default": 90,
+          "meaning": "dormant days: a person with no sign-in for this long counts as dormant"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one table or view with sensitive-tagged columns. readers counts users who can read it through any role (SELECT or ownership, PUBLIC included); dormant_readers are people with no sign-in for :dormant_days days, disabled_readers are disabled users who still hold the path, people_writers are people who can change it.",
+      "healthy": "status = OK when only active users can read it and only service users can change it.",
+      "investigate_if": "WARN when dormant or disabled users can read it, or people can change it; CRITICAL when dormant or disabled users can read a sensitive column that has no masking policy.",
+      "actions": [
+        "revoke the roles of dormant and disabled users (free)",
+        "mask the sensitive columns (config)",
+        "move write access to a service user that loads the table (free)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_gov_sensitive_data_access",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_acc_sensitive_reach.sql"
+    },
+    {
       "query_id": "sf_acct_object_counts",
       "title": "Inventory of account objects by type",
       "domain": "governance_access",

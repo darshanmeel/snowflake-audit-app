@@ -317,7 +317,8 @@ export const ACCESS_SUBTABS: SubtabDef[] = [
     ids: [
       "access_broad_grants", "sf_gov_public_role_grants", "sf_gov_role_hygiene", "sf_secx_direct_user_grants",
       "sf_secx_grant_option", "sf_govx_schema_grant_control", "sf_gov_ownership_concentration", "sf_secx_secondary_roles_usage",
-      "sf_sec_usage_view_access", "sf_gov_unused_object_grants",
+      "sf_sec_usage_view_access", "sf_gov_unused_object_grants", "sf_acc_roles_used_both_ways", "sf_acc_redundant_role_grants",
+      "sf_acc_readonly_roles_write",
     ],
     refIds: ["access_grants_inventory"],
   },
@@ -327,7 +328,7 @@ export const ACCESS_SUBTABS: SubtabDef[] = [
       "sf_sec_users_without_mfa", "sf_sec_password_service_users", "sf_secx_key_and_password_age", "sf_sec_stale_users",
       "sf_sec_failed_logins", "sf_sec_new_login_sources", "access_login_concentration", "sf_secx_login_client_versions",
       "sf_secx_sso_oauth_integrations", "sf_secx_user_auth_state", "sf_secx_pat_hygiene", "sf_secx_key_pair_age",
-      "sf_sec_privatelink_bypass",
+      "sf_sec_privatelink_bypass", "sf_acc_disabled_users_roles",
     ],
     refIds: [],
   },
@@ -340,6 +341,11 @@ export const ACCESS_SUBTABS: SubtabDef[] = [
       "sf_secx_external_access_calls", "sf_secx_password_policy_posture", "sf_sec_failover_readiness",
       "sf_sec_native_app_permissions", "sf_sec_outbound_privatelink_endpoints", "sf_sec_trust_center_finding_age",
     ],
+    refIds: [],
+  },
+  {
+    key: "explorer", label: "Explorer",
+    ids: ["sf_acc_grant_links"],
     refIds: [],
   },
 ];
@@ -372,7 +378,7 @@ export const PII_SUBTABS: SubtabDef[] = [
   },
   {
     key: "reads", label: "Who reads it, where it goes",
-    ids: ["sf_gov_sensitive_data_access", "sf_gov_data_egress", "sf_gov_shares_sensitive_columns", "sf_sec_data_movement_violations", "sf_gov_ai_agent_data_access"],
+    ids: ["sf_gov_sensitive_data_access", "sf_acc_sensitive_reach", "sf_gov_data_egress", "sf_gov_shares_sensitive_columns", "sf_sec_data_movement_violations", "sf_gov_ai_agent_data_access"],
     refIds: [],
   },
   {

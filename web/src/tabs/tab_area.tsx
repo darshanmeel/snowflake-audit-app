@@ -482,7 +482,7 @@ export function QueryTagRollup({ filters, meta }: { filters: Filters; meta: Meta
   ["tasks", ["failures", "cost", "hygiene", "dynamic"]],
   ["loading", ["pipes", "copy"]],
   ["ai", ["cortex", "apps", "serving"]],
-  ["access", ["roles", "users", "perimeter"]],
+  ["access", ["roles", "users", "perimeter", "explorer"]],
   ["audit", ["admins", "changes"]],
   ["pii", ["sensitive", "policies", "reads", "quality"]],
   ["lineage", ["dependencies"]],
