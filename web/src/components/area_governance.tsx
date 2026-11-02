@@ -1,5 +1,5 @@
 // web/src/components/area_governance.tsx -- the governance sub-tab pages (Access, Audit, PII & policies,
-// Lineage & usage, Sharing & org): four issue tiles (the check's own "N of M", one cause line), two
+// Lineage, Sharing & org): four issue tiles (the check's own "N of M", one cause line), two
 // cause cards, then one drill-down list whose rows open the drawer. Every figure is read off the
 // checks' rows; "…" while loading, "–" and why when a check did not run.
 // Registered into AREA_CHART_PAGES by area_pages.tsx. Never import this file from a module that
@@ -1174,15 +1174,6 @@ export function ApPiiQuality(p: ApPageProps) {
 
 // ═══════════════════════ Lineage › Dependencies & lineage ═══════════════════════
 
-/** A day as "Sep 19", with the year when it falls before the window. */
-function dayYear(v: any, p: ApPageProps): string {
-  const d = day(v);
-  if (!d) return "–";
-  const span = windowSpan(p.meta && p.meta.as_of_date, p.filters.window, p.meta && p.meta.snapshot_days);
-  const t = Date.parse(`${d}T00:00:00Z`);
-  return span && Number.isFinite(t) && t < span.first ? `${fmtDayShort(d)}, ${d.slice(0, 4)}` : fmtDayShort(d);
-}
-
 /** Label-above-bar rows, the first 8, then "Show N more". */
 function RankedAbove({ items, noun, ariaLabel, n = 8 }: { items: CxRankItem[]; noun: string; ariaLabel: string; n?: number }) {
   const [all, setAll] = React.useState(false);
@@ -1252,123 +1243,6 @@ export function ApLineageDeps(p: ApPageProps) {
                 <code className="cx-code">{String(r.missing_refs || "–").split(",")[0]}</code>, fmtInt(numOrZero(r.dependents))],
             }))} />
         ) : okNote("No view or function points at a dropped object.")}
-      </Slot>
-    </div>
-  );
-}
-
-// ═══════════════════════ Lineage › Usage ═══════════════════════
-
-const LOGIN_BANDS: [string, number, number][] = [["within 7 days", 0, 8], ["8-30 days", 8, 31], ["31-90 days", 31, 91], ["over 90 days", 91, Infinity]];
-
-export function ApLineageUsage(p: ApPageProps) {
-  const ua = useCheck(p, "sf_use_user_activity");
-  const uv = useCheck(p, "sf_lin_unused_views");
-  const da = useCheck(p, "sf_use_database_activity");
-  const asOf = p.meta && p.meta.as_of_date ? Date.parse(`${String(p.meta.as_of_date).slice(0, 10)}T00:00:00Z`) : NaN;
-  const idle = (ua.rows || []).filter((r) => isTrue(r.idle_with_roles));
-  const schemas = (da.rows || []).filter((r) => r.schema_name);
-  const never = schemas.filter((r) => isTrue(r.never_used));
-  const aV = uv.rows ? affOf(uv.f, uv.rows, "views") : null;
-  useLede(p, ua.loading || uv.loading || da.loading, [
-    ua.rows ? `${fmtInt(idle.length)} of ${plural(ua.rows.length, "user")} hold roles but ran nothing.` : null,
-    aV ? `${ofText(aV)} were never read.` : null,
-    da.rows && schemas.length ? `${fmtInt(never.length)} of ${plural(schemas.length, "schema")} were never queried.` : null,
-  ].filter(Boolean).join(" ") || null);
-  const usd = (r: Row) => numOrZero(r.est_storage_usd_month) * (1 - da.disc);
-  return (
-    <div className="ais-page cx-e">
-      <SummaryTileRow compact>
-        <CheckTile c={ua} label="Hold roles, run nothing" badge build={(rows) => ({
-          headline: fmtShare(pctOf(idle.length, rows.length)), unit: " of users",
-          base: `${fmtInt(idle.length)} of ${plural(rows.length, "user")} hold roles but ran nothing.`,
-          cause: `${fmtInt(idle.filter((r) => isTrue(r.has_admin_role)).length)} of them can use an admin role.`, openLabel: "By last sign-in ↓",
-        })} />
-        <AffTile c={uv} label="Views never read" as="count" noun="views" openLabel="Which ones ↓"
-          cause={(rows) => `No query in the window; ${fmtInt(rows.filter((r) => isFlagged(r) && isTrue(r.is_secure)).length)} of them are secure views.`} />
-        <CheckTile c={da} label="Databases nobody queries" badge build={(rows) => {
-          const dbs = tally(rows.filter((r) => r.schema_name), (r) => String(r.database_name || "(no database)"));
-          const deadDbs = dbs.filter((g) => g.rows.every((r) => isTrue(r.never_used)));
-          const priced = rows.some((r) => r.price_basis === "priced");
-          return {
-            headline: fmtInt(deadDbs.length), unit: ` of ${plural(dbs.length, "database")}`,
-            base: `${fmtInt(never.length)} of ${plural(schemas.length, "schema")} were never used.`,
-            cause: priced ? `${fmtMoney(never.reduce((s, r) => s + usd(r), 0), 0)} a month of storage sits in never-used schemas.` : undefined, openLabel: "By schema ↓",
-          };
-        }} />
-        <CheckTile c={da} label="Where the reads go" build={() => {
-          const reads = schemas.map((r) => numOrZero(r.read_queries)).sort((a, b) => b - a);
-          const all = reads.reduce((s, v) => s + v, 0);
-          const top = reads.slice(0, 3).reduce((s, v) => s + v, 0);
-          return {
-            headline: fmtShare(pctOf(top, all)), unit: " of read queries",
-            base: `${fmtInt(top)} of ${fmtInt(all)} read queries hit 3 of ${plural(schemas.length, "schema")}. For context.`, openLabel: "By schema ↓",
-          };
-        }} />
-      </SummaryTileRow>
-      <Row2>
-        <Slot c={ua} title="Users by last sign-in" subtitle="days since the last successful sign-in, as of the export · dark bar = can use an admin role">
-          {(rows) => {
-            const bandOfRow = (r: Row) => {
-              const s = r.last_success_login ? String(r.last_success_login) : "";
-              const t = s ? Date.parse(s.slice(0, 19) + (s.length <= 10 ? "T00:00:00Z" : "Z")) : NaN;
-              if (!Number.isFinite(t) || !Number.isFinite(asOf)) return s ? null : "never";
-              const d = Math.max(0, Math.floor((asOf - t) / 86400000));
-              const b = LOGIN_BANDS.find(([, lo, hi]) => d >= lo && d < hi);
-              return b ? b[0] : null;
-            };
-            const by = new Map<string, { value: number; whole: number }>();
-            [...LOGIN_BANDS.map((b) => b[0]), "never"].forEach((k) => by.set(k, { value: 0, whole: 0 }));
-            rows.forEach((r) => {
-              const k = bandOfRow(r);
-              if (!k) return;
-              const cur = by.get(k)!;
-              cur.whole += 1;
-              if (isTrue(r.has_admin_role)) cur.value += 1;
-            });
-            // Bands stay in time order, the most recent first; "never" last.
-            const items = [...by.entries()].filter(([, v]) => v.whole > 0).map(([name, v]) => ({ name: name === "never" ? "Never signed in" : name.charAt(0).toUpperCase() + name.slice(1), value: v.value, whole: v.whole }));
-            if (items.length < 2) return null;
-            const old = by.get("over 90 days")!.whole + by.get("never")!.whole;
-            const max = Math.max(...items.map((x) => x.whole));
-            return (
-              <div>
-                <CxStat>{<span><b>{`${fmtInt(old)} of ${plural(rows.length, "user")}`}</b>{" have not signed in for over 90 days, or never."}</span>}</CxStat>
-                <div className="cx-block"><CxTableE ariaLabel="Users by last sign-in, admins" cols={[{ label: "Last sign-in" }, { label: "", width: "40%" }, { label: "Users", num: true }, { label: "Admins", num: true }]}
-                  foot="Dark part: can use an admin role."
-                  rows={items.map((x) => ({ key: x.name, cells: [x.name, <CxTwoBar part={x.value} whole={x.whole} max={max} />, fmtInt(x.whole), x.value ? <b>{fmtInt(x.value)}</b> : "–"] }))} /></div>
-              </div>
-            );
-          }}
-        </Slot>
-        <Slot c={da} title="Schemas: storage against reads" subtitle="Storage per month, with the queries that used each schema · amber dot = never used">
-          {(rows) => {
-            const list = rows.filter((r) => r.schema_name);
-            if (!list.length) return null;
-            const priced = list.some((r) => r.price_basis !== "unpriced" && r.est_storage_usd_month != null);
-            const valOf = (r: Row) => (priced ? usd(r) : numOrZero(r.storage_gb));
-            const fmtV = (v: number) => (priced ? `${fmtMoney(v, 0)}/mo` : fmtSize(v));
-            const items: CxBarRow[] = list.map((r) => {
-              const q = numOrZero(r.read_queries) + numOrZero(r.write_queries);
-              return {
-                key: `${r.database_name}.${r.schema_name}`, name: `${r.database_name}.${r.schema_name}`, id: r.schema_id, value: valOf(r),
-                status: isTrue(r.never_used) ? "WARN" : "OK", strong: fmtV(valOf(r)), rest: isTrue(r.never_used) ? "never used" : `${fmtInt(q)} queries`, onClick: () => da.open(),
-              };
-            }).filter((it) => it.value > 0).sort((x, y) => y.value - x.value);
-            return items.length ? <CxBarRows rows={items} ariaLabel="Schema storage and queries" /> : null;
-          }}
-        </Slot>
-      </Row2>
-      <Slot c={uv} title="Never read in the window" subtitle="Views with no reader · select a row for the fix">
-        {(rows) => (
-          rows.some(isFlagged) ? <CxTableE ariaLabel="Views never read" n={10}
-            cols={[{ label: "View" }, { label: "Owner" }, { label: "Created", num: true }, { label: "Last changed", num: true }]}
-            rows={rows.filter(isFlagged).map((r) => ({
-              key: `${r.account_id}|${r.view_fqn}`, status: r.status, onClick: drawerBy("sf_lin_unused_views", "view_fqn", r.view_fqn, String(r.view_fqn)),
-              cells: [<span><CxObjName full={String(r.view_fqn)} />{isTrue(r.is_secure) ? <div className="cx-muted">{"Secure view"}</div> : null}</span>, String(r.view_owner || "–"),
-                dayYear(r.created, p), dayYear(r.last_altered, p)],
-            }))} /> : okNote("Every view was read in the window.")
-        )}
       </Slot>
     </div>
   );
@@ -2079,7 +1953,7 @@ export const GOV_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) => 
   access: { roles: ApAccessRoles, users: ApAccessUsers, perimeter: ApAccessPerimeter },
   audit: { admins: ApAuditAdmins, changes: ApAuditChanges },
   pii: { sensitive: ApPiiSensitive, policies: ApPiiPolicies, reads: ApPiiReads, quality: ApPiiQuality },
-  lineage: { dependencies: ApLineageDeps, usage: ApLineageUsage },
+  lineage: { dependencies: ApLineageDeps },
   sharing: { shares: ApSharingShares, accounts: ApSharingAccounts, spend: ApSharingSpend, replication: ApSharingReplication },
 };
 Object.values(GOV_CHART_PAGES).forEach((m) => Object.values(m).forEach((fn) => { (fn as any).ownsTiles = true; (fn as any).ownsLede = true; }));

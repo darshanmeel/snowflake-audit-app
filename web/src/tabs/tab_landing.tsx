@@ -258,7 +258,8 @@ export const GOV_CARDS = [
 
 export const GOV_AREAS: ScoreRow[] = [
   { tab: "access", label: "Access" }, { tab: "pii", label: "PII & policies" }, { tab: "audit", label: "Audit" },
-  { tab: "sharing", label: "Sharing & org" }, { tab: "lineage", label: "Lineage & usage" },
+  { tab: "sharing", label: "Sharing & org" }, { tab: "lineage", label: "Lineage" },
+  { tab: "activity", label: "Activity" },
 ];
 
 /** Every check id the governance areas own or reference. */

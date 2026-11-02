@@ -7,7 +7,7 @@ Query text, secrets and policy bodies are never read.
 What is in this folder:
 
 - `run_export.py`: the export. The only Python file.
-- `queries/`: every statement it runs (279 checks, plus the dims and tag sources), as plain `.sql`.
+- `queries/`: every statement it runs (284 checks, plus the dims and tag sources), as plain `.sql`.
   `queries/index.json` holds each check's parameters. Read them before running if you like.
 - `grants.sql`: the role and the grants it needs (see "Roles and privileges" below).
 - `verify/`: test queries, one file per app section, to paste into a worksheet and compare with what

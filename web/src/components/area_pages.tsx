@@ -19,6 +19,7 @@ import { ApCostBudgets, ApCostByService, ApCostChargeback, ApCostContract, ApCos
 import { ApCostBeforeAfter } from "./cost_before_after";
 import { AI_STORAGE_PAGES } from "./area_ai_storage";
 import { GOV_CHART_PAGES } from "./area_governance";
+import { ACTIVITY_CHART_PAGES } from "./area_activity";
 import { PlLoadingCopy, PlLoadingPipes, PlServerlessClustering, PlServerlessFeature, PlServerlessMvso, PlTasksCost, PlTasksDynamic, PlTasksFailures, PlTasksHygiene } from "./area_pipelines";
 
 /** What a chart slot's build gets besides the rows. */
@@ -185,4 +186,5 @@ export const AREA_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) =>
   serverless: { feature: PlServerlessFeature, clustering: PlServerlessClustering, mvso: PlServerlessMvso },
   ...AI_STORAGE_PAGES,
   ...GOV_CHART_PAGES,
+  ...ACTIVITY_CHART_PAGES,
 };

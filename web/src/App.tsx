@@ -699,6 +699,8 @@ export function applyOldKeyRedirects<T extends { tab: string; subtab: string | n
   // the stale redirect.
   // Admin and change checks moved from Access to their own Audit tab.
   if (tab === "access" && subtab === "admins") tab = "audit";
+  // Usage moved from Lineage to its own Activity tab.
+  if (tab === "lineage" && subtab === "usage") { tab = "activity"; subtab = "databases"; }
   const area = AREA_REGISTRY[tab];
   const isLiveSubtab = area && (area.subtabs || []).some((s) => s.key === subtab);
   if (subtab && !isLiveSubtab && OLD_SUBTAB_REDIRECTS[subtab]) subtab = OLD_SUBTAB_REDIRECTS[subtab];

@@ -3,7 +3,7 @@
 A read-only audit of a Snowflake account. It shows where the credits and dollars go, what looks
 wasted, and how warehouses, queries, tasks, loading, storage, AI and access are set up.
 
-It runs 279 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
+It runs 284 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
 it) through one small warehouse. The results are saved in a local DuckDB file, and a web app on
 your own machine shows them. Nothing is ever written to Snowflake: the checks are `SELECT`, `WITH`
 and `SHOW` only. Only the export (and Refresh in the app) queries Snowflake; browsing the app does
@@ -265,7 +265,7 @@ Stop the app before you run `first_run.py` again: on Windows the load cannot rep
 anything over 90 pulls the same as 90, and a window longer than N shows only N days. Fewer days run
 faster on the big history views.
 
-The export prints one line per check (`[12/279] check_id: ok, 34 rows, 1.2s`), so a long run never
+The export prints one line per check (`[12/284] check_id: ok, 34 rows, 1.2s`), so a long run never
 looks hung. Every statement has a time limit (15 minutes; `--statement-timeout SECONDS` on
 `tools/export_results.py` changes it): a statement that hits it is recorded as timed out and the
 export goes on.
@@ -541,15 +541,15 @@ read.
 
 ## What it checks
 
-279 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
+284 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
 
 | Area | Checks |
 |---|---|
 | Cost, billing, contract and org | 62 |
-| Access, security, PII, audit and lineage | 82 |
+| Access, security, PII, audit, lineage and activity | 85 |
 | Queries and performance | 31 |
 | Tasks, pipelines and loading | 35 |
-| Storage | 28 |
+| Storage | 30 |
 | AI, containers and apps | 19 |
 | Warehouses | 22 |
 

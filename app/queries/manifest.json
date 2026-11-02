@@ -8849,6 +8849,178 @@
       ],
       "next": [],
       "sql_url": "app/queries/checks/sf_share_inbound_databases.sql"
+    },
+    {
+      "query_id": "sf_use_object_activity",
+      "title": "Which stages, views, functions, procedures, pipes, tasks and streams are in use",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "objects",
+        "columns": [
+          "object_domain",
+          "object_key"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.VIEWS",
+        "SNOWFLAKE.ACCOUNT_USAGE.STAGES",
+        "SNOWFLAKE.ACCOUNT_USAGE.FUNCTIONS",
+        "SNOWFLAKE.ACCOUNT_USAGE.PROCEDURES",
+        "SNOWFLAKE.ACCOUNT_USAGE.PIPES",
+        "SNOWFLAKE.ACCOUNT_USAGE.TASKS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.PIPE_USAGE_HISTORY"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database (GOVERNANCE_VIEWER); Enterprise edition for read, write and DDL counts (task runs and pipe loads work on every edition)",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 200,
+          "meaning": "objects: the most active objects kept per kind, the kind totals are exact"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account. Which objectDomain values ACCESS_HISTORY records for functions, procedures and streams is to be confirmed on docs.snowflake.com.",
+      "read_this": "one row = one object, or one object kind as a total row. row_level = object: one stage, view, function, procedure, pipe, task or stream (the top_n most active per kind); read_queries, write_queries and ddl_queries count the queries that read, wrote or changed it (ACCESS_HISTORY), users the distinct people, executions the task runs or the files a pipe loaded. row_level = domain (is_total_row): one row per object kind over all objects, exact, with objects (live count from the inventory, NULL for kinds with no inventory here such as streams, tables, schemas or warehouses) and active_objects (objects with any activity). An object seen in ACCESS_HISTORY but missing from the inventory shows with in_inventory = FALSE (a stream has no ACCOUNT_USAGE view). Procedure overloads are merged into one row per name.",
+      "healthy": "status = OK; this check only shows use and never flags. Unused views are flagged in sf_lin_unused_views, stale pipes in sf_pipe_inactive and stale tasks in sf_task_suspended_or_stale.",
+      "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the window.",
+      "actions": [
+        "open the kind with many inactive objects and ask the owners whether they are still needed (free)",
+        "check the flagging checks named above before dropping anything (free)."
+      ],
+      "next": [
+        {
+          "query_id": "sf_lin_unused_views",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_object_activity.sql"
+    },
+    {
+      "query_id": "sf_use_table_readers",
+      "title": "Who reads and writes the busiest tables, by user and role",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "tables",
+        "columns": [
+          "table_fqn"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 100,
+          "meaning": "tables: only the busiest tables by query count are listed"
+        },
+        {
+          "name": "top_users",
+          "default": 25,
+          "meaning": "users: at most this many user x role rows per table"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one user x role on one of the :top_n busiest tables in the window. table_rank 1 = most queries; each table keeps its busiest :top_users rows (row_rank_in_table 1 = most queries). read_queries, write_queries and ddl_queries count distinct queries that touched the table, also through views; table_users is the exact number of distinct users on the table, even when its rows are cut at :top_users. user_type is the user's type today (UNKNOWN for a dropped or Snowflake-managed user); is_service_user marks SERVICE and LEGACY_SERVICE users.",
+      "healthy": "status = OK on every listed row; this check shows who uses a table, it does not judge it.",
+      "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the window.",
+      "actions": [
+        "check that each user and role on a busy table still needs it; revoke the role otherwise (free)",
+        "move person users off service-only tables, or give shared pipelines their own role (config)."
+      ],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_use_table_readers.sql"
+    },
+    {
+      "query_id": "sf_use_user_data_io",
+      "title": "Which users and roles read, write and change the most data objects",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "users and roles",
+        "columns": [
+          "row_level",
+          "user_name",
+          "role_name"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.ROLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 500,
+          "meaning": "users and roles kept, each ranked by queries that touched data objects"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one user (row_level = user) or one role (row_level = role), the top_n busiest of each. read_queries, write_queries and ddl_queries count distinct queries that read, wrote or changed a data object; data_queries counts distinct queries that did any of the three, so the kinds can add up to more than data_queries. tables_read / tables_written count distinct table-like objects (base, dynamic, Iceberg and external tables, materialized views); objects_ddl counts any object type changed. databases_touched counts databases of the tables and views used. users (role rows) are distinct users who used the role; roles_used (user rows) are distinct roles the user used. top_tables lists up to 5 table names by queries. service_query_pct (role rows) is the share of the role's queries run by service users. activity_rank orders by data_queries within the row level (1 = busiest).",
+      "healthy": "status = OK for every ranked row; this check describes use and flags nothing. NOT_ASSESSED when ACCESS_HISTORY is empty.",
+      "investigate_if": "NOT_ASSESSED (no_access_history) means ACCESS_HISTORY has no rows in the window, so check the edition and the role's access to the SNOWFLAKE database.",
+      "actions": [
+        "none needed for OK rows (free)",
+        "when a service user or role dominates, confirm that is the intended pipeline (free)."
+      ],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_use_user_data_io.sql"
     }
   ],
   "jobs_pipelines": [
@@ -15419,6 +15591,7 @@
         "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.TABLES",
         "SNOWFLAKE.ACCOUNT_USAGE.SCHEMATA",
+        "SNOWFLAKE.ACCOUNT_USAGE.DATABASES",
         "SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
         "SNOWFLAKE.ACCOUNT_USAGE.TABLE_DML_HISTORY"
       ],
@@ -15442,9 +15615,9 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one live schema. read_queries / write_queries count queries that read a table in it (base, dynamic, Iceberg and external tables and materialized views, also through views) or wrote one (INSERT, MERGE, COPY, CTAS, ...), from ACCESS_HISTORY; readers / writers are distinct users. dml_rows counts rows changed in TABLE_DML_HISTORY (it also has Snowpipe loads). activity_rank orders schemas by total queries (1 = busiest). never_used = no read, no write and no DML rows in the window on a schema older than the window. est_storage_usd_month prices its tables' active + Time Travel + Fail-safe bytes.",
-      "healthy": "status = OK when the schema is read or written, or it is unused but nearly free.",
-      "investigate_if": "WARN when a schema older than the window had no read, write or DML and holds tables costing >= warn_usd a month; CRITICAL at crit_usd. NOT_ASSESSED when ACCESS_HISTORY is empty.",
+      "read_this": "one row = one live schema (row_level = 'schema') or one database (row_level = 'database'). row_level = 'database' (is_total_row): one row per database, with exact distinct counts at database level (never sums of schema counts); live_tables, storage_gb, dml_rows and est_storage_usd_month are sums of its schemas. read_queries / write_queries / ddl_queries count queries that read a table or view in it (also through views), wrote one (INSERT, MERGE, COPY, CTAS, ...) or ran DDL on its tables, views, the schema itself and, on database rows, the database; self-reads are dropped as on every Activity page. tables_read / tables_written count table-like objects only (views are not counted). readers / writers / active_users are distinct users (active_users over read, write and DDL). dml_rows counts rows changed in TABLE_DML_HISTORY (it also has Snowpipe loads). activity_rank orders rows of the same row_level by read + write queries (1 = busiest); db_activity_rank orders databases by read + write + DDL. database_queries (on schema rows too) is the exact count of distinct read + write queries on the whole database (DDL excluded), not a sum of its schemas' counts. never_used = no read, no write and no DML rows in the window on a schema older than the window; on a database row, every live schema is never used. database_owner and database_type come from DATABASES. est_storage_usd_month prices active + Time Travel + Fail-safe bytes.",
+      "healthy": "status = OK when the schema is read or written, or it is unused but nearly free. Database rows are always OK (or NOT_ASSESSED).",
+      "investigate_if": "WARN when a schema older than the window had no read, write or DML and holds tables costing >= warn_usd a month; CRITICAL at crit_usd. NOT_ASSESSED when ACCESS_HISTORY is empty or the storage price is unknown. Database rows never flag, so nothing is counted twice.",
       "actions": [
         "ask the schema owner whether the unused schema still feeds anything outside Snowflake (extracts, shares) (free)",
         "revoke access for a grace period, then drop it or make it transient (config)",
@@ -15452,6 +15625,62 @@
       ],
       "next": [],
       "sql_url": "app/queries/checks/sf_use_database_activity.sql"
+    },
+    {
+      "query_id": "sf_use_table_activity",
+      "title": "How each table is used: active, cooling, written but never read, idle",
+      "domain": "storage",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "tables",
+        "columns": [
+          "table_fqn"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_DML_HISTORY"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 1000,
+          "meaning": "rows: table rows kept per ranking (most active, largest unread)"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one live table (row_level = 'table') or one usage class (row_level = 'class'). Class rows are total rows with uncapped totals of tables, storage_gb, active_gb and dml_rows (queries and readers are NULL there: distinct counts cannot be summed). usage_class: active = read in the newer half of the window; cooling = read only in the older half; written_never_read = written (ACCESS_HISTORY or TABLE_DML_HISTORY) but not read; new = created inside the window and not used yet; idle = nothing in the window. read/write/ddl_queries are distinct queries from ACCESS_HISTORY (reads also through views); dml_rows = rows added + removed + updated. activity_rank orders tables with any use by total queries (1 = busiest, NULL = no use); size_rank orders the tables that are not active or cooling by bytes (1 = largest). Table rows are capped to activity_rank <= top_n or size_rank <= top_n; class rows always cover every live table. last_ddl / last_ddl_user_name come from TABLES (LAST_DDL, LAST_DDL_BY). storage_gb counts active, Time Travel, Fail-safe and clone-retained bytes; active_gb only active bytes.",
+      "healthy": "status = OK whenever ACCESS_HISTORY has rows; this check describes use and never flags.",
+      "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY is empty (Standard edition or no activity). Flagging and dollars live in sf_storage_unused_tables, sf_storage_churn_unread and sf_use_unused_clones.",
+      "actions": [
+        "start from written_never_read and idle tables with high storage_gb and run sf_storage_unused_tables for the cost (free)",
+        "ask the owner before dropping (free)."
+      ],
+      "next": [
+        {
+          "query_id": "sf_storage_unused_tables",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_table_activity.sql"
     },
     {
       "query_id": "sf_use_table_churn",
@@ -15509,6 +15738,57 @@
       ],
       "next": [],
       "sql_url": "app/queries/checks/sf_use_table_churn.sql"
+    },
+    {
+      "query_id": "sf_use_table_daily",
+      "title": "Each busy table, day by day: reads, writes, DDL and rows changed",
+      "domain": "storage",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "tables",
+        "columns": [
+          "table_fqn"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_DML_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [
+        {
+          "name": "period_days",
+          "default": "30, capped at 90",
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 50,
+          "meaning": "tables kept, ranked by distinct queries then DML rows over the window"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one of the :top_n busiest tables on one day, with zero-usage days included so a chart has no gaps. rows_added / rows_removed / rows_updated / dml_rows come from TABLE_DML_HISTORY (all editions). read_queries / write_queries / ddl_queries are distinct queries per day from ACCESS_HISTORY (Enterprise and above) and readers / writers the distinct users behind them. access_basis says which columns are real: access_history = all of them, dml_only = the query columns are NULL (not 0) because ACCESS_HISTORY is empty, shown as a dash. table_rank 1 = busiest.",
+      "healthy": "status is always OK: this is a trend series, not a finding. DML works on every edition, so the check is never wholly NOT_ASSESSED.",
+      "investigate_if": "never flags. Read a day with many write_queries or dml_rows against its neighbours to find the load, backfill or rewrite behind a change in a table's size or cost.",
+      "actions": [
+        "open the table in Tables to see who reads and writes it (free)",
+        "check sf_use_table_churn in Storage if dml_rows is large against the table's size (free)",
+        "find the job behind a write spike (engineering)."
+      ],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_use_table_daily.sql"
     },
     {
       "query_id": "sf_use_unused_clones",

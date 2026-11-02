@@ -485,7 +485,8 @@ export function QueryTagRollup({ filters, meta }: { filters: Filters; meta: Meta
   ["access", ["roles", "users", "perimeter"]],
   ["audit", ["admins", "changes"]],
   ["pii", ["sensitive", "policies", "reads", "quality"]],
-  ["lineage", ["dependencies", "usage"]],
+  ["lineage", ["dependencies"]],
+  ["activity", ["databases", "schemas", "tables", "users", "objects"]],
   ["sharing", ["shares", "accounts", "spend", "replication"]],
   ["storage", ["growth", "unused", "retention", "backups"]],
 ] as [string, string[]][]).forEach(([area, subtabs]) => subtabs.forEach((s) => {

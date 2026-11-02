@@ -1,11 +1,12 @@
 # Status
 
-Last updated 15 Oct 2026.
+Last updated 2 Nov 2026.
 
 ## Where it stands
 The POC is feature-complete and on `main`. It has run on one small live trial account (3 days of use) and on the fake and demo accounts.
 
-- **Checks:** 279 in `app/queries/checks`, run by the exporter on `SNOWFLAKE.ACCOUNT_USAGE` and `ORGANIZATION_USAGE`.
+- **Checks:** 284 in `app/queries/checks`, run by the exporter on `SNOWFLAKE.ACCOUNT_USAGE` and `ORGANIZATION_USAGE`.
+- **Activity area:** its own tab (Databases, Schemas, Tables, Users & roles, Stages & other objects) in `web/src/components/area_activity.tsx`; Lineage keeps Dependencies only, and old `lineage/usage` links land on Activity › Databases. Checks: `sf_use_table_activity`, `sf_use_table_daily`, `sf_use_table_readers`, `sf_use_user_data_io`, `sf_use_object_activity` and a reworked `sf_use_database_activity`, on the shared includes `sf_use_access_events` and `sf_use_query_roles`. Unpriced except never-used schema storage, so nothing new reaches Waste. Checked in a browser on the demo DB.
 - **First live run (trial account, 3 days):** 152 ok, 122 empty, 4 not assessed, 1 failed (`sf_ai_model_serving_spend`, Snowflake error 100038). Prices came from `RATE_SHEET_DAILY` ($3.00 per credit, $2.00 per AI credit).
 - **Prices:** for credits, AI credits and storage the export takes the first of: the command-line price, the rate sheet, the 90-day invoice rate, then `config/settings.yml` (3.00 and 2.00).
 - **INFORMATION_SCHEMA fallbacks:** 85 checks have a second version, run when the role cannot read `ACCOUNT_USAGE` (or with `--use-fallbacks`): the check's own SQL with each view swapped for a stand-in in `app/queries/shims/` (49 views, from table functions, per-database INFORMATION_SCHEMA views and SHOW). A stand-in with `each:` runs once per database, warehouse, role or policy, and the parts are joined. Gates: MONITOR USAGE (spend, storage), MANAGE GRANTS (SHOW-based: users, roles, grants, policies), the APPLY policy privileges (policy references); the manifest has `monitor_usage` and `manage_grants`. 22 coverable checks are left out on purpose (a needed column is NULL: spill, password age, IP lists, policy settings, revoked grants, Snowpipe loads). Tested live: all 85 ran (53 ok, 32 empty, none failed), and the kit.
@@ -20,20 +21,21 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
 - **History:** squashed to one commit on 15 Oct 2026.
 
 ## Next
-1. **A run on a busy account.** The user's narrow role (no `ACCOUNT_USAGE`, no organization views) got 6 of 279 checks on the old version; the three query fallbacks timed out. Re-run it with the new fallbacks and read the manifest (`monitor_usage`, which fallbacks ran).
+1. **A run on a busy account.** The user's narrow role (no `ACCOUNT_USAGE`, no organization views) got 6 of 279 checks on the old version; the query fallbacks timed out. The feed now runs as 28 six-hour slices, each under its own timeout. Re-run it and read the manifest (`monitor_usage`, `manage_grants`; which fallbacks ran is per check, `source: information_schema`).
+   - The feed keeps at most 10,000 queries per slice (`RESULT_LIMIT`), and nothing flags a full slice, so a busy account undercounts the query fallbacks silently.
    - Fallbacks: compare a few against ACCOUNT_USAGE on a role with MANAGE GRANTS (the test role lacks it, so the user and grant stand-ins were run with the gate off).
-   - Run `app/queries/verify/cost.sql` queries 1–3 next to Overview and Cost on a full-access export.
+   - Run `app/queries/verify/cost.sql` queries 1–3 next to Overview and Cost on a full-access export. Queries 1–2 use one credit price, so they differ from the app when the AI credit price is not the credit price.
    - Add any real names seen in an export to the name grep before the next commit.
-2. **`sf_ai_model_serving_spend`** fails with error 100038 on the trial account. Find the column or type that differs from the docs.
-3. **Chargeback** splits $22 on the trial account against $19 metered and $21 billed. Find where the extra comes from.
-4. **More fallbacks, if narrow roles are common:** warehouse metering, data transfer, warehouse load, task and serverless histories have INFORMATION_SCHEMA table functions.
+2. **`sf_ai_model_serving_spend`** fails with error 100038 on the trial account. The SQL has no cast or VARIANT read; the likely cause is `CREDITS` (or an id) not being NUMBER. Get the error text and `DESC VIEW SNOWFLAKE.ACCOUNT_USAGE.MODEL_SERVING_USAGE_HISTORY` on the trial first.
+3. **Chargeback** splits $22 on the trial account against $19 metered and $21 billed. None of the known bug classes is in the chargeback SQL. The dimensions have different scopes: Database adds storage, Service and Account add estimated storage and transfer and price AI at the AI credit price. Compare the same dimension against metered on a live export.
+4. **More fallbacks, if narrow roles are common:** warehouse metering, data transfer, warehouse load, task and serverless histories already have shims. The checks still without a fallback are blocked by `QUERY_ATTRIBUTION_HISTORY` (no INFORMATION_SCHEMA equivalent), `TASK_VERSIONS` and `WAREHOUSE_EVENTS_HISTORY`.
 5. **Small leftovers:**
-   - the circular import between `area_ai_storage.tsx` and `ai_cortex_agents.tsx`;
-   - the tags CSV caps examples at 10 per key;
-   - no Copy link on mobile;
-   - `check_queries.py` doesn't lint the fallback SQL;
-   - the database-role counts in the README's "Roles and privileges" were made at 274 checks; recount them.
-6. **Access & Audit enrichment.** Effective user → role → table access with the path, the objects each query touched, object dependencies, and sensitive reads at odd hours. Before starting, settle two open questions: how deep the access path goes, and what counts as odd hours.
+   - the circular import between `area_ai_storage.tsx` and `ai_cortex_agents.tsx` (harmless now: every cross-use is inside function bodies);
+   - the tags CSV lists the first 10 objects per key (`EXAMPLES` in the tags API; the file name says so), and the "+N more" link on screen understates what is hidden;
+   - the database-role counts in the README's "Roles and privileges" disagree (about 225 vs 248 of 274); a recount from the `reads:` headers gives about 228 of 284, before deciding whether the organization checks count.
+6. **Scan ACCESS_HISTORY once for Activity.** Each Activity check flattens ACCESS_HISTORY on its own (6 scans). Plan: the exporter runs the `sf_use_access_events` include once as a feed and the checks read it with RESULT_SCAN, as the fallbacks read the query feed; the kit keeps the inline include. Also confirm on a live account which objectDomain values ACCESS_HISTORY records for functions, procedures and streams.
+7. **Failing tests not from Activity:** `test_guide_sql_route_returns_every_check_with_params_filled` (`__AI_CREDIT_PRICE__` not filled in the Guide SQL for 19 cost checks), three price tests in `test_export_more.py` and `test_every_money_figure_in_the_findings_list_matches_the_detail_aggregate` (`discount_pct` missing).
+8. **Access & Audit enrichment.** Effective user → role → table access with the path, the objects each query touched, object dependencies, and sensitive reads at odd hours. Before starting, settle two open questions: how deep the access path goes, and what counts as odd hours.
 
 ## Working preferences
 - POC: commit and push to `main` after every finished change, don't over-engineer, and don't keep compatibility with older versions.

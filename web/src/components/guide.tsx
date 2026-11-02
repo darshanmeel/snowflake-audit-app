@@ -584,27 +584,57 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
   },
   lineage: {
     lens: "Data governance",
-    represents: "What depends on what, which databases, users and views are used, and which views point at objects that are gone.",
-    flags: "Retire unused databases and views; fix broken views; review the objects most others depend on.",
-    wrong: "Usage is from query history; an object read only by shares shows less use.",
-    lede: "Objects the most others depend on, table flows, broken views, and the most and least used databases, users and views.",
+    represents: "What depends on what, which tables feed which, and which views point at objects that are gone.",
+    flags: "Fix broken views; review the objects most others depend on before you change them.",
+    wrong: "Dependencies are the declared ones; table flows come from what queries wrote.",
+    lede: "Objects the most others depend on, table flows and broken views.",
     questions: [
-      "Which databases and schemas are used, and which are not?",
-      "Who holds roles but runs nothing?",
+      "What breaks if this table changes?",
+      "Which tables feed the most other tables?",
       "Which views point at dropped objects?",
     ],
     screen: [
       { sub: "dependencies", d: "Blast radius of a change, broken views, table flows and the view inventory." },
-      { sub: "usage", d: "Database, user and view activity, unused views and object counts." },
     ],
-    measure: "Access history, query history and object dependencies.",
-    judge: "Unused days and broken references against config/thresholds.yml.",
-    price: "Storage of unused objects is $ per month.",
+    measure: "Object dependencies and access history.",
+    judge: "Broken references against config/thresholds.yml.",
+    price: "Not priced.",
     troubles: [
-      { see: "A used database reads unused", why: "It is read only through a share or outside the window.", doit: "Confirm before you drop it." },
+      { see: "A view shows no dependents", why: "Dependencies list only what the role can see.", doit: "Run the export with a role that sees every database." },
     ],
     limits: [
       "Dependencies are declared ones; a table read only through a pipeline or copy shows in Table flows, not in Blast radius.",
+    ],
+  },
+  activity: {
+    lens: "Data governance · Data engineering",
+    represents: "What is used in the account: databases, schemas, tables, users, roles, stages and other objects, with their reads, writes and DDL.",
+    flags: "Retire unused schemas, tables and views; check that the busiest users and roles are the expected ones.",
+    wrong: "Use is from access history; a read through a share, a BI extract or replication is not in it.",
+    lede: "The most and least used databases, schemas and tables, who uses them, and which stages, views, tasks and pipes are in use.",
+    questions: [
+      "Which databases, schemas and tables are used, and which are not?",
+      "What happened to one table, day by day, over the last month?",
+      "Which users and roles read and write which tables?",
+      "Which stages, views, functions, tasks and pipes are in use?",
+    ],
+    screen: [
+      { sub: "databases", d: "Reads, writes, DDL and users per database, with storage." },
+      { sub: "schemas", d: "The busiest and never-used schemas, with storage per month." },
+      { sub: "tables", d: "Tables by use (active, cooling, written never read, idle), the busiest tables and one table day by day." },
+      { sub: "users", d: "The most active users and roles, who uses which tables, and users who hold roles but run nothing." },
+      { sub: "objects", d: "Stages, views, functions, procedures, pipes and tasks in use, and views never read." },
+    ],
+    measure: "Access history, query history, table DML history, task and pipe history.",
+    judge: "Never-used schemas against config/thresholds.yml; the other checks describe use and never flag.",
+    price: "Storage of never-used schemas is $ per month; the rest is not priced.",
+    troubles: [
+      { see: "Every Activity check reads not assessed", why: "Access history is empty: Standard edition, or the role cannot read it.", doit: "Use an Enterprise account and a role with IMPORTED PRIVILEGES on SNOWFLAKE." },
+      { see: "A used table reads idle", why: "It is read only through a share or outside the window.", doit: "Confirm before you drop it." },
+    ],
+    limits: [
+      "Access history needs Enterprise edition, lags up to 3 hours and keeps 365 days.",
+      "Reads, writes and DDL are counted in distinct queries; a query that reads and writes counts in both.",
     ],
   },
   sharing: {
@@ -1955,7 +1985,7 @@ interface GuideTabPageProps {
 export const VERIFY_FILES: Record<string, string> = {
   warehouses: "warehouses.sql", queries: "queries.sql", storage: "storage.sql", tasks: "pipelines.sql", loading: "pipelines.sql",
   overview: "cost.sql", money: "cost.sql", cost: "cost.sql", waste: "cost.sql",
-  access: "governance.sql", audit: "governance.sql", pii: "governance.sql", lineage: "governance.sql", sharing: "governance.sql",
+  access: "governance.sql", audit: "governance.sql", pii: "governance.sql", lineage: "governance.sql", activity: "governance.sql", sharing: "governance.sql",
   ai: "ai.sql", serverless: "cost.sql",
 };
 

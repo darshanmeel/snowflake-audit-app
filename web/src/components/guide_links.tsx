@@ -19,6 +19,7 @@ export const TAB_CONCEPTS: Record<string, { slug: string; label: string }[]> = {
   access: [{ slug: "visibility", label: "Role visibility" }],
   pii: [{ slug: "visibility", label: "Role visibility" }],
   lineage: [{ slug: "visibility", label: "Role visibility" }, { slug: "latency", label: "Latency" }],
+  activity: [{ slug: "visibility", label: "Role visibility" }, { slug: "latency", label: "Latency" }],
   audit: [{ slug: "visibility", label: "Role visibility" }],
   sharing: [{ slug: "visibility", label: "Role visibility" }],
   storage: [{ slug: "failsafe", label: "Time Travel and Fail-safe" }, { slug: "upper-bound", label: "\"Up to\" figures" }],

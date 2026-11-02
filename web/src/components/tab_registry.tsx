@@ -382,22 +382,27 @@ export const PII_SUBTABS: SubtabDef[] = [
   },
 ];
 
-// ─────────── Lineage & usage ─── what depends on what, and what is used. Unused tables and clones stay
-// on Storage, where they carry a $ figure.
+// ─────────── Lineage ─── what depends on what.
 export const LINEAGE_SUBTABS: SubtabDef[] = [
   {
     key: "dependencies", label: "Dependencies & lineage",
     ids: ["sf_lin_blast_radius", "sf_obj_broken_views", "sf_lin_table_flows"],
     refIds: ["access_views_inventory"],
   },
-  {
-    key: "usage", label: "Usage",
-    ids: ["sf_use_database_activity", "sf_use_user_activity", "sf_lin_unused_views"],
-    refIds: ["sf_acct_object_counts"],
-  },
 ];
 export const LINEAGE_IDS = LINEAGE_SUBTABS.flatMap((s) => s.ids);
 export const LINEAGE_REF_IDS = LINEAGE_SUBTABS.flatMap((s) => s.refIds);
+
+// ─────────── Activity ─── what is used: databases, schemas, tables, users and roles, and the other
+// objects. Unused tables and clones stay on Storage, where they carry a $ figure.
+export const ACTIVITY_SUBTABS: SubtabDef[] = [
+  { key: "databases", label: "Databases", ids: ["sf_use_database_activity"], refIds: [] },
+  // Reads the schema rows of sf_use_database_activity, homed on Databases.
+  { key: "schemas", label: "Schemas", ids: [], refIds: [] },
+  { key: "tables", label: "Tables", ids: ["sf_use_table_activity", "sf_use_table_daily"], refIds: [] },
+  { key: "users", label: "Users & roles", ids: ["sf_use_user_activity", "sf_use_user_data_io", "sf_use_table_readers"], refIds: [] },
+  { key: "objects", label: "Stages & other objects", ids: ["sf_use_object_activity", "sf_lin_unused_views"], refIds: ["sf_acct_object_counts"] },
+];
 
 // ─────────── Sharing & org ─── the org sub-tabs read ORGANIZATION_USAGE and hide when the role
 // cannot see it.
@@ -482,7 +487,8 @@ export const AREA_REGISTRY: Record<string, AreaDef> = {
   access: { label: "Access", scope: "Account-wide · what the audit role can see", subtabs: ACCESS_SUBTABS },
   audit: { label: "Audit", scope: "Account-wide · what the audit role can see", subtabs: AUDIT_SUBTABS },
   pii: { label: "PII & policies", scope: "Account-wide · what the audit role can see", subtabs: PII_SUBTABS },
-  lineage: { label: "Lineage & usage", scope: "Account-wide · what the audit role can see", subtabs: LINEAGE_SUBTABS },
+  lineage: { label: "Lineage", scope: "Account-wide · what the audit role can see", subtabs: LINEAGE_SUBTABS },
+  activity: { label: "Activity", scope: "Account-wide · what the audit role can see · reads, writes and DDL need Enterprise (ACCESS_HISTORY)", subtabs: ACTIVITY_SUBTABS },
   sharing: { label: "Sharing & org", scope: "Shares of this account · organization views need an organization role", subtabs: SHARING_SUBTABS },
   storage: { label: "Storage", scope: "Storage at your $ per TB per month · what the audit role can see", subtabs: STORAGE_SUBTABS },
   findings: { label: "All findings", scope: "Every check, one list", subtabs: [] },
@@ -494,7 +500,7 @@ export const AREA_REGISTRY: Record<string, AreaDef> = {
 };
 export const AREA_ORDER = [
   "overview", "actions", "cost", "waste", "warehouses", "serverless", "queries", "tasks", "loading", "ai",
-  "access", "pii", "lineage", "audit", "sharing", "storage", "findings", "coverage",
+  "access", "pii", "lineage", "activity", "audit", "sharing", "storage", "findings", "coverage",
 ];
 
 // The one money column cost_dollarized_by_service_day carries.

@@ -4792,6 +4792,7 @@
     "ACCOUNT_USAGE.ACCESS_HISTORY",
     "ACCOUNT_USAGE.TABLES",
     "ACCOUNT_USAGE.SCHEMATA",
+    "ACCOUNT_USAGE.DATABASES",
     "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
     "ACCOUNT_USAGE.TABLE_DML_HISTORY"
    ],
@@ -4800,6 +4801,26 @@
     "crit_usd": 100
    },
    "needs_enterprise": false
+  },
+  "sf_use_object_activity": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.VIEWS",
+    "ACCOUNT_USAGE.STAGES",
+    "ACCOUNT_USAGE.FUNCTIONS",
+    "ACCOUNT_USAGE.PROCEDURES",
+    "ACCOUNT_USAGE.PIPES",
+    "ACCOUNT_USAGE.TASKS",
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.PIPE_USAGE_HISTORY"
+   ],
+   "params": {
+    "top_n": 200
+   },
+   "needs_enterprise": true
   },
   "sf_use_query_type_mix": {
    "domain": "performance",
@@ -4817,6 +4838,21 @@
    },
    "needs_enterprise": false
   },
+  "sf_use_table_activity": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.TABLE_DML_HISTORY"
+   ],
+   "params": {
+    "top_n": 1000
+   },
+   "needs_enterprise": true
+  },
   "sf_use_table_churn": {
    "domain": "storage",
    "windowed": true,
@@ -4833,6 +4869,38 @@
     "crit_usd": 250
    },
    "needs_enterprise": false
+  },
+  "sf_use_table_daily": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_DML_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "top_n": 50
+   },
+   "needs_enterprise": false
+  },
+  "sf_use_table_readers": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "top_n": 100,
+    "top_users": 25
+   },
+   "needs_enterprise": true
   },
   "sf_use_unused_clones": {
    "domain": "storage",
@@ -4867,6 +4935,21 @@
     "crit_roles": 5
    },
    "needs_enterprise": false
+  },
+  "sf_use_user_data_io": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.ROLES"
+   ],
+   "params": {
+    "top_n": 500
+   },
+   "needs_enterprise": true
   },
   "sf_wh_adaptive_attribution": {
    "domain": "compute",

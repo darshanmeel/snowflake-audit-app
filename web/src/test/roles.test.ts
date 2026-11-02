@@ -28,7 +28,7 @@ describe("roles to pages", () => {
   });
 
   it("filters Actions and All findings to the sidebar's areas", () => {
-    expect(roleAreasFor("governance")).toEqual(["actions", "access", "pii", "lineage", "sharing", "storage", "audit", "coverage"]);
+    expect(roleAreasFor("governance")).toEqual(["actions", "access", "pii", "lineage", "activity", "sharing", "storage", "audit", "coverage"]);
     expect(roleAreasFor("nobody")).toEqual(roleAreasFor("finops"));
   });
 
