@@ -467,6 +467,7 @@ def sql_text(query_id: str) -> dict:
         "__ACCOUNT_ID__": "'<account_id>'",
         "__CLOUD__": "'<cloud>'",
         "__CREDIT_PRICE__": _literal(price.get("credit_price_usd")),
+        "__AI_CREDIT_PRICE__": _literal(price.get("ai_credit_price_usd")),
         "__STORAGE_PRICE_TB_MONTH__": _literal(price.get("storage_price_usd_tb_month")),
         "__QUERY_SOURCE__": "'<query_tag>'",
         "__WITH_SNOWFLAKE_TASKS__": _literal(bool((direct or {}).get("include_snowflake_tasks"))),

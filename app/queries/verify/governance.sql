@@ -1,4 +1,4 @@
--- Test queries: Access, Audit, PII and Lineage. Read-only (SELECT and WITH only); paste one at a time
+-- Test queries: Access, Audit, PII, Lineage and Activity. Read-only (SELECT and WITH only); paste one at a time
 -- into a worksheet. Each recomputes a figure the app shows, straight from SNOWFLAKE.ACCOUNT_USAGE.
 -- Only names, counts and flags are read: never policy bodies, IP lists or query text.
 -- Change the numbers in the p CTE: days = the window you picked in the app, end_date = the export date.
@@ -93,3 +93,127 @@ m AS (
 SELECT s.db || '.' || s.sch || '.' || s.tbl AS table_fqn, s.col AS column_name, m.col IS NOT NULL AS column_masked
 FROM s LEFT JOIN m ON m.db = s.db AND m.sch = s.sch AND m.tbl = s.tbl AND m.col = s.col
 ORDER BY column_masked, table_fqn, column_name;
+
+-- 7. Reads, writes and DDL per database in the window, in distinct queries; a query that reads and
+--    writes counts in both (Activity > Databases; check sf_use_database_activity). Enterprise edition.
+WITH p AS (SELECT 30 AS days, CURRENT_DATE() AS end_date),
+ah AS (
+  SELECT a.* FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY a, p
+  WHERE a.query_start_time >= DATEADD(day, -p.days, p.end_date) AND a.query_start_time < p.end_date
+),
+e AS (
+  SELECT a.query_id, a.user_name, 'read' AS kind, UPPER(f.value:"objectName"::STRING) AS object_name
+  FROM ah a, LATERAL FLATTEN(input => a.base_objects_accessed) f
+  UNION ALL
+  SELECT a.query_id, a.user_name, 'write', UPPER(f.value:"objectName"::STRING)
+  FROM ah a, LATERAL FLATTEN(input => a.objects_modified) f
+  UNION ALL
+  SELECT a.query_id, a.user_name, 'ddl', UPPER(a.object_modified_by_ddl:"objectName"::STRING)
+  FROM ah a WHERE a.object_modified_by_ddl IS NOT NULL
+)
+SELECT SPLIT_PART(object_name, '.', 1) AS database_name,
+       COUNT(DISTINCT IFF(kind = 'read', query_id, NULL)) AS read_queries,
+       COUNT(DISTINCT IFF(kind = 'write', query_id, NULL)) AS write_queries,
+       COUNT(DISTINCT IFF(kind = 'ddl', query_id, NULL)) AS ddl_queries,
+       COUNT(DISTINCT user_name) AS users
+FROM e
+WHERE object_name LIKE '%.%'
+GROUP BY 1
+ORDER BY read_queries + write_queries + ddl_queries DESC;
+
+-- 8. One table, day by day: reads, writes and DDL in distinct queries (Activity > Tables; check
+--    sf_use_table_daily). Put the table's DATABASE.SCHEMA.TABLE in the p CTE, upper case.
+WITH p AS (SELECT 30 AS days, CURRENT_DATE() AS end_date, 'MY_DB.MY_SCHEMA.MY_TABLE' AS table_fqn),
+ah AS (
+  SELECT a.* FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY a, p
+  WHERE a.query_start_time >= DATEADD(day, -p.days, p.end_date) AND a.query_start_time < p.end_date
+),
+e AS (
+  SELECT a.query_id, DATE(a.query_start_time) AS usage_date, 'read' AS kind, UPPER(f.value:"objectName"::STRING) AS object_name
+  FROM ah a, LATERAL FLATTEN(input => a.base_objects_accessed) f
+  UNION ALL
+  SELECT a.query_id, DATE(a.query_start_time), 'write', UPPER(f.value:"objectName"::STRING)
+  FROM ah a, LATERAL FLATTEN(input => a.objects_modified) f
+  UNION ALL
+  SELECT a.query_id, DATE(a.query_start_time), 'ddl', UPPER(a.object_modified_by_ddl:"objectName"::STRING)
+  FROM ah a WHERE a.object_modified_by_ddl IS NOT NULL
+)
+SELECT usage_date,
+       COUNT(DISTINCT IFF(kind = 'read', query_id, NULL)) AS read_queries,
+       COUNT(DISTINCT IFF(kind = 'write', query_id, NULL)) AS write_queries,
+       COUNT(DISTINCT IFF(kind = 'ddl', query_id, NULL)) AS ddl_queries
+FROM e, p
+WHERE e.object_name = p.table_fqn
+GROUP BY usage_date
+ORDER BY usage_date;
+
+-- 9. The columns queries filter (WHERE) and join (JOIN) on, per table, and the share of micro-partitions
+--    those queries skipped (Activity > Tables; check sf_use_table_columns). GROUP BY is not recorded.
+WITH p AS (SELECT 30 AS days, CURRENT_DATE() AS end_date)
+SELECT UPPER(database_name || '.' || schema_name || '.' || table_name) AS table_fqn, UPPER(column_name) AS column_name,
+       UPPER(access_type) AS access_type, SUM(num_queries) AS queries,
+       ROUND(100 * SUM(partitions_pruned) / NULLIF(SUM(partitions_scanned) + SUM(partitions_pruned), 0), 1) AS prune_pct
+FROM SNOWFLAKE.ACCOUNT_USAGE.COLUMN_QUERY_PRUNING_HISTORY, p
+WHERE interval_start_time >= DATEADD(day, -p.days, p.end_date) AND interval_start_time < p.end_date
+  AND UPPER(access_type) IN ('WHERE', 'JOIN') AND column_name IS NOT NULL
+GROUP BY 1, 2, 3
+ORDER BY table_fqn, access_type DESC, queries DESC;
+
+-- 10. Every role a user can use and the path to it, through the role tree (Access > Explorer; check
+--     sf_acc_grant_links). Put the user name in the p CTE. Account roles only: the explorer also counts PUBLIC
+--     (every user holds it, with no grant row) and database roles (DATABASE.ROLE), so its count is higher.
+WITH RECURSIVE p AS (SELECT 'MY_USER' AS user_name),
+walk AS (
+  SELECT gu.role AS role_name, 1 AS depth, gu.grantee_name || ' > ' || gu.role AS path
+  FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS gu, p
+  WHERE gu.deleted_on IS NULL AND gu.grantee_name = p.user_name
+  UNION ALL
+  SELECT g.name, w.depth + 1, w.path || ' > ' || g.name
+  FROM walk w
+  JOIN SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES g
+    ON g.grantee_name = w.role_name AND g.granted_on = 'ROLE' AND g.privilege = 'USAGE'
+   AND g.granted_to IN ('ROLE', 'ACCOUNT ROLE') AND g.deleted_on IS NULL
+  WHERE w.depth < 20
+)
+SELECT role_name, MIN(depth) AS shortest_depth, MIN_BY(path, depth) AS shortest_path, COUNT(*) AS paths
+FROM walk
+GROUP BY role_name
+ORDER BY shortest_depth, role_name;
+
+-- 11. Who can read one table: users holding SELECT or OWNERSHIP on it through any role, PUBLIC included
+--     (Access > Explorer, object view; check sf_acc_sensitive_reach counts the same for sensitive tables).
+--     Put the table in the p CTE, upper case.
+WITH RECURSIVE p AS (SELECT 'MY_DB' AS db, 'MY_SCHEMA' AS sch, 'MY_TABLE' AS tbl),
+holders AS (
+  SELECT DISTINCT g.grantee_name AS role_name
+  FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES g, p
+  WHERE g.deleted_on IS NULL AND g.granted_to IN ('ROLE', 'ACCOUNT ROLE') AND g.privilege IN ('SELECT', 'OWNERSHIP')
+    AND UPPER(g.table_catalog) = p.db AND UPPER(g.table_schema) = p.sch AND UPPER(g.name) = p.tbl
+),
+up AS (
+  SELECT role_name FROM holders
+  UNION ALL
+  SELECT g.grantee_name
+  FROM up
+  JOIN SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES g
+    ON g.name = up.role_name AND g.granted_on = 'ROLE' AND g.privilege = 'USAGE'
+   AND g.granted_to IN ('ROLE', 'ACCOUNT ROLE') AND g.deleted_on IS NULL
+)
+SELECT u.name AS user_name, COALESCE(UPPER(u.type), 'PERSON') AS user_type,
+       COALESCE(TRY_TO_BOOLEAN(TO_VARCHAR(u.disabled)), FALSE) AS is_disabled, u.last_success_login
+FROM SNOWFLAKE.ACCOUNT_USAGE.USERS u
+WHERE u.deleted_on IS NULL
+  AND (EXISTS (SELECT 1 FROM up WHERE up.role_name = 'PUBLIC')
+       OR EXISTS (SELECT 1 FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS gu
+                  JOIN up ON up.role_name = gu.role
+                  WHERE gu.deleted_on IS NULL AND gu.grantee_name = u.name))
+ORDER BY is_disabled DESC, user_name;
+
+-- 12. Disabled users that still hold roles (Access > Users & sign-ins; check sf_acc_disabled_users_roles).
+SELECT u.name AS user_name, COUNT(DISTINCT gu.role) AS direct_roles,
+       LISTAGG(DISTINCT gu.role, ', ') WITHIN GROUP (ORDER BY gu.role) AS roles
+FROM SNOWFLAKE.ACCOUNT_USAGE.USERS u
+JOIN SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS gu ON gu.grantee_name = u.name AND gu.deleted_on IS NULL
+WHERE u.deleted_on IS NULL AND COALESCE(TRY_TO_BOOLEAN(TO_VARCHAR(u.disabled)), FALSE)
+GROUP BY u.name
+ORDER BY direct_roles DESC, user_name;

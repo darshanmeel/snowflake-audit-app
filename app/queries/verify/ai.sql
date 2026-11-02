@@ -51,3 +51,20 @@ FROM SNOWFLAKE.ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY, p
 WHERE start_time >= DATEADD(day, -p.days, p.end_date) AND start_time < p.end_date
 GROUP BY compute_pool_name
 ORDER BY credits DESC;
+
+-- 5. Cortex Code use per user and client, cost included, so free use shows too (AI & apps > Cortex;
+--     check sf_ai_cortex_code_spend). Snowflake records each request with its token credits.
+WITH p AS (SELECT 30 AS days, CURRENT_DATE() AS end_date),
+u AS (
+  SELECT 'CLI' AS surface, user_name, request_id, usage_time, token_credits FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_CLI_USAGE_HISTORY
+  UNION ALL
+  SELECT 'SNOWSIGHT', user_name, request_id, usage_time, token_credits FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_SNOWSIGHT_USAGE_HISTORY
+  UNION ALL
+  SELECT 'DESKTOP', user_name, request_id, usage_time, token_credits FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_DESKTOP_USAGE_HISTORY
+)
+SELECT surface, user_name, COUNT(DISTINCT request_id) AS requests,
+       COUNT(DISTINCT DATE(usage_time)) AS active_days, SUM(token_credits) AS credits, MAX(usage_time) AS last_used
+FROM u, p
+WHERE usage_time >= DATEADD(day, -p.days, p.end_date) AND usage_time < p.end_date
+GROUP BY surface, user_name
+ORDER BY credits DESC, requests DESC;
