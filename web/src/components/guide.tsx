@@ -526,6 +526,8 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     troubles: [
       { see: "A check reads Not assessed", why: "The role can't see that view, or the edition doesn't have it.", doit: "Coverage & Gaps names the view and the grant." },
       { see: "POLICY_REFERENCES lacks session policies", why: "It does not list session, password or authentication policies.", doit: "Those are read from the account and user settings instead." },
+      { see: "The explorer says there are no grant links", why: "The export did not run sf_acc_grant_links, or the role can't read GRANTS_TO_ROLES.", doit: "Grant IMPORTED PRIVILEGES on the SNOWFLAKE database and export again." },
+      { see: "A path count reads \"+9+\"", why: "The explorer keeps the 10 shortest paths per role; past that it only knows there are more.", doit: "Use Path to, or select the row, to see the paths that matter." },
     ],
     limits: [
       "It sees only what the audit role can see.",
@@ -571,7 +573,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     screen: [
       { sub: "sensitive", d: "Classification coverage, unprotected sensitive columns and untagged copies." },
       { sub: "policies", d: "Unused or broken policies and who a policy lets through." },
-      { sub: "reads", d: "Who read sensitive columns and what left the account, including shares that carry sensitive columns." },
+      { sub: "reads", d: "Who read sensitive columns, who can read or change each sensitive table (dormant and disabled users included), and what left the account, including shares that carry sensitive columns." },
       { sub: "quality", d: "Data quality: which databases have data metric functions on their tables." },
     ],
     measure: "Data classification, policy references and access history.",
