@@ -15,6 +15,7 @@ procedures, sequences, file formats, apps and views pointing at dropped tables.
 from __future__ import annotations
 
 import datetime as dt
+import random
 
 from tests.fake_snowflake import schema
 from tests.fake_snowflake.data import ACCOUNT_LOCATOR, ACCOUNT_NAME, HISTORY_DAYS, ORG_NAME, REGION
@@ -34,6 +35,13 @@ SCHEMAS = [  # id, db, name
     (4307, "ARCHIVE_DB", "LEDGER"), (4308, "ARCHIVE_DB", "EXPORTS"), (4309, "LEGACY_DW_DB", "MARTS"),
     (4310, "LEGACY_DW_DB", "PUBLIC"),
 ]
+# The columns queries filter (WHERE) and join on, by table kind: (date filter, join key, attribute filter).
+KIND_COLS = {"ORDERS": ("ORDER_DATE", "CUSTOMER_ID", "STATUS"), "EVENTS": ("EVENT_DATE", "SESSION_ID", "EVENT_TYPE"),
+             "CUSTOMERS": ("UPDATED_AT", "CUSTOMER_ID", "SEGMENT"), "LEADS": ("CREATED_AT", "ACCOUNT_ID", "SOURCE"),
+             "PAYMENTS": ("PAID_AT", "ORDER_ID", "METHOD"), "INVOICES": ("INVOICE_DATE", "ACCOUNT_ID", "STATUS"),
+             "SESSIONS": ("SESSION_DATE", "USER_ID", "DEVICE"), "TICKETS": ("OPENED_AT", "CUSTOMER_ID", "PRIORITY"),
+             "POLICIES": ("START_DATE", "CUSTOMER_ID", "PRODUCT"), "CLAIMS": ("CLAIM_DATE", "POLICY_ID", "STATUS"),
+             "LEDGER": ("POSTING_DATE", "ACCOUNT_ID", "ENTITY")}
 COLUMN_IDS = {"SESSION_ID": 3, "EVENT_DATE": 1, "EVENT_TS": 2, "PAGE_ID": 4, "ITEM_ID": 5, "CUSTOMER_ID": 6}
 # Archive tiers on ARCHIVE_DB: a lifecycle policy set ARCH_START days ago moved old rows over ARCH_RAMP days.
 ARCH_START, ARCH_RAMP = 190, 150
@@ -61,6 +69,7 @@ def add(b) -> None:
     S.code_and_apps()
     S.broken_views()
     S.reconcile_levels()
+    S.column_use()
 
 
 class _Store:
@@ -465,6 +474,37 @@ class _Store:
             for q in take(n, ok):
                 emit(q, s["fqn"], tid, cols=cols)
         self.extra_reads = (take, emit)               # used by the external and Iceberg tables below
+
+    # ---- which columns queries filter and join on, for Activity > Tables -------------------------------------
+    def column_use(self) -> None:
+        """WHERE and JOIN columns of the unclustered base tables; its own generator, so other stories keep theirs."""
+        b = self.b
+        for t in self.cat["tables"]:
+            if t["type"] != "BASE TABLE" or t["clustered"]:
+                continue
+            rng = random.Random(f"column_use:{t['id']}")
+            when, key, attr = KIND_COLS.get(t["name"].rsplit("_", 1)[0], ("CREATED_AT", "ID", "REGION"))
+            whn = f"WH_{t['team']}_BI" if f"WH_{t['team']}_BI" in self.whs else f"WH_{t['team']}_ETL"
+            w = self.whs.get(whn) or next(iter(self.whs.values()))
+            heat = rng.uniform(0.2, 3.0)
+            parts = max(10, int(t["gb"] * 60))
+            for k in range(1, 91, 6):
+                for i, (col, access, share, prunes) in enumerate(((when, "WHERE", 1.0, 0.85), (attr, "WHERE", 0.4, 0.15),
+                                                                   (key, "JOIN", 0.7, 0.05))):
+                    q = max(1, int(30 * heat * share * rng.uniform(0.6, 1.4)))
+                    scanned = int(parts * q * (1 - prunes)) + q
+                    pruned = int(parts * q * prunes)
+                    rows = t["rows"] * q
+                    self.au("COLUMN_QUERY_PRUNING_HISTORY", interval_start_time=b.ts(k, 9), interval_end_time=b.ts(k, 10),
+                            table_id=t["id"], table_name=t["name"], schema_id=t["schema_id"], schema_name=t["schema"],
+                            database_id=t["db_id"], database_name=t["db"], warehouse_id=w["id"], warehouse_name=w["name"],
+                            query_hash=f"hcu{t['id']}{i}", query_parameterized_hash=f"hcu{t['id']}{i}",
+                            column_id=t["id"] * 10 + i, column_name=col, variant_path=None, access_type=access,
+                            search_optimization_supported_expressions=None, num_queries=q,
+                            aggregate_query_elapsed_time=q * 2400, aggregate_query_compilation_time=q * 200,
+                            aggregate_query_execution_time=q * 2200, partitions_scanned=scanned, partitions_pruned=pruned,
+                            rows_scanned=int(rows * (1 - prunes)), rows_pruned=int(rows * prunes),
+                            rows_matched=int(rows * 0.02))
 
     # ---- column pruning and automatic clustering ---------------------------------------------------------------
     def pruning_and_clustering(self) -> None:

@@ -321,6 +321,11 @@ def _queue_shape(wname: str, start: dt.datetime, drawn: int, n: int) -> int:
     return int(rng.uniform(20000, 150000) if peak else rng.uniform(2000, 25000))
 
 
+# Share of dashboard tile runs the result cache answers; SALES and MARKETING always miss (data reloads all day).
+CACHE_HIT = {"WH_STREAMLIT_APPS": 0.5, "WH_DATA_SCIENCE_BI": 0.3, "WH_FINANCE_BI": 0.55, "WH_PRODUCT_BI": 0.25,
+             "WH_RISK_BI": 0.4, "WH_PLATFORM_BI": 0.35, "WH_OPS_BI": 0.6}
+
+
 def dashboards(g: Gen) -> None:
     """BI dashboards refreshed through the day: the same tiles again and again, some tagged, some not."""
     # wh, team, client, dashboard, tag style, runs/day, credits per run, tile weights
@@ -372,7 +377,8 @@ def dashboards(g: Gen) -> None:
                     text = "-- Looker Query Context '{\"user_id\":12,\"dashboard_id\":\"%s\",\"history_slug\":\"a%d\"}'\nselect ..." % (dash, tile)
                 elif style == "sigma":
                     text = '-- Sigma Σ {"workbook-id":"%s","url":"https://app.example.com/wb/%s"}\nselect ...' % (dash, dash)
-                hit = wname == "WH_STREAMLIT_APPS" and g.rng.random() < 0.5
+                # drawn from a hash, not g.rng, so the other demo stories keep their draws
+                hit = wname == "WH_STREAMLIT_APPS" and g.rng.random() < 0.5 if wname == "WH_STREAMLIT_APPS"                     else int(h("hit", wname, g.n)[:4], 16) / 65536 < CACHE_HIT.get(wname, 0.0)
                 row = g.q(wname, user, client, start, "SELECT", 12 if hit else ms, attribute=not hit, phash=ph,
                           tag=tag, text=text, queued=0 if hit else queued, cached=hit, comp_ms=g.rng.randint(15, 60) if hit else None,
                           cache=0.0 if hit else round(g.rng.uniform(0, 0.15), 3),

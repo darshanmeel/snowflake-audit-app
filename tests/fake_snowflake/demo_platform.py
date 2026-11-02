@@ -329,6 +329,12 @@ class _P:
                      request_id=f"dcode-{user['id']}-{k}", usage_time=b.ts(k, 16), token_credits=c,
                      tokens=int(c * 90000), metadata={"model_name": "claude-sonnet"})
                 self.meter(k, 16, "CORTEX_CODE_CLI", c, None, user["name"], "USER")
+        # Snowsight use billed at 0 credits (an included period): use to list, nothing to price.
+        free = self.person("SALES", 1)
+        for k in range(1, DAYS, 3):
+            b.au("CORTEX_CODE_SNOWSIGHT_USAGE_HISTORY", user_id=free["id"], user_name=free["name"],
+                 request_id=f"dcss-{free['id']}-{k}", usage_time=b.ts(k, 11), token_credits=0.0,
+                 tokens=40000 + 100 * k, metadata={"model_name": "claude-sonnet"})
 
     # ---- serverless features -------------------------------------------------------------------------------
     def serverless(self) -> None:

@@ -54,3 +54,4 @@ button.ax-node:hover { border-color: var(--text-3); }
 .ax-lane { display: flex; flex-direction: column; gap: 6px; min-width: 160px; }
 .ax-lane-head { font-size: 12px; color: var(--text-3); }
 .ax-who { margin: 0 0 12px; font-size: 13.5px; color: var(--text-2); }
+.act-db-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 13.5px; }

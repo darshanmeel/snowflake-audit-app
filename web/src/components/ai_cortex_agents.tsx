@@ -103,7 +103,8 @@ export function cortexProductCells(p: ApPageProps, k: CortexProducts): CxStripCe
       const tokens = sumCol(rows, "current_tokens");
       const last = codeLastDay(p.meta && p.meta.as_of_date);
       const to = last ? ` to ${last}, the last day left out to tie to the bill` : "";
-      return totals.length ? `${fmtInt(tokens)} tokens${to}; bill ${fmtCr(sumCol(totals, "billed_credits"))}.` : `${fmtInt(tokens)} tokens${to}; no billed total.`;
+      const used = `${fmtInt(sumCol(rows, "current_requests"))} requests, ${fmtInt(tokens)} tokens`;
+      return totals.length ? `${used}${to}; bill ${fmtCr(sumCol(totals, "billed_credits"))}.` : `${used}${to}; no billed total.`;
     }),
     productCell("cowork", "Snowflake CoWork", k.cowork, (r) => perRequest(r, "requests") || "No requests counted."),
   ];
@@ -164,6 +165,11 @@ function TopAgents({ rows, c }: { rows: Row[]; c: Chk }) {
 
 function ClientSplit({ rows, c }: { rows: Row[]; c: Chk }) {
   const s = spend(rows, c.disc);
+  // Nothing billed (an included period): split by requests instead, so use still shows.
+  if (rows.every((r) => !numOrZero(r.current_credits) && !numOrZero(r.previous_credits)) && rows.some((r) => numOrZero(r.current_requests) > 0)) {
+    const by = groupBy(rows, surfaceOf, (r) => numOrZero(r.current_requests), () => 0).sort((a, b) => b.value - a.value);
+    return <StackedShareBar segments={by.map((x) => ({ key: x.name, label: x.name, value: x.value }))} valueFmt={(v) => `${fmtInt(v)} requests · free`} ariaLabel="Cortex Code requests by client" />;
+  }
   const by = groupBy(rows, surfaceOf, s.cur, s.prev).sort((a, b) => b.value - a.value);
   const colors: Record<string, string> = { CLI: "var(--c1)", Desktop: "var(--c2)", Snowsight: "var(--c3)" };
   const segs: ShareSegment[] = by.map((x) => ({ key: x.name, label: x.name, value: x.value, color: colors[x.name] }));
@@ -198,9 +204,10 @@ function UserTable({ p, checks }: { p: ApPageProps; checks: CortexProducts }) {
   };
   add(checks.analyst, ANALYST, () => "Analyst", "current_requests");
   add(checks.agent, AGENT, () => "Agents", "current_requests");
-  add(checks.code, CODE, (r) => `Code · ${surfaceOf(r)}`, null);
+  add(checks.code, CODE, (r) => `Code · ${surfaceOf(r)}`, "current_requests");
   add(checks.cowork, COWORK, () => "CoWork", "requests");
-  const list = out.filter((u) => u.credits > 0 || u.prev > 0).sort((a, b) => b.credits - a.credits);
+  // Use that cost nothing (requests at 0 credits) stays listed, after the paid rows.
+  const list = out.filter((u) => u.credits > 0 || u.prev > 0 || (u.req || 0) > 0).sort((a, b) => b.credits - a.credits || (b.req || 0) - (a.req || 0));
   return (
     <CxTable aria={`${PRODUCTS} spend by user`} n={10} minWidth={640}
       empty={noDataText(p.meta, p.filters.window)}
@@ -212,9 +219,10 @@ function UserTable({ p, checks }: { p: ApPageProps; checks: CortexProducts }) {
           key: u.key, status: u.status,
           onOpen: () => DrawerBus.open({ id: u.id, col: "user_name", val: u.user, label: u.user }),
           cells: [<span key="u">{u.user} <span className="cx-sub">· {u.product}</span></span>,
-            u.usd === null ? <span title="No credit price in this export">–</span> : fmtMoney(u.usd, 0), fmtCr(u.credits, false),
+            u.credits === 0 && (u.req || 0) > 0 ? <span className="cx-muted" title="Requests billed at 0 credits">free</span>
+              : u.usd === null ? <span title="No credit price in this export">–</span> : fmtMoney(u.usd, 0), fmtCr(u.credits, false),
             ch ? (u.status === "CRITICAL" || u.status === "WARN" ? dtChip(ch, u.status) : ch) : "–",
-            u.req ? fmtCr(u.credits / u.req, false) : "–"],
+            u.req && u.credits ? fmtCr(u.credits / u.req, false) : u.req ? `${fmtInt(u.req)} requests` : "–"],
         };
       })} />
   );

@@ -4951,6 +4951,19 @@
    },
    "needs_enterprise": false
   },
+  "sf_use_table_columns": {
+   "domain": "storage",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.COLUMN_QUERY_PRUNING_HISTORY"
+   ],
+   "params": {
+    "top_n": 200,
+    "top_columns": 10
+   },
+   "needs_enterprise": false
+  },
   "sf_use_table_daily": {
    "domain": "storage",
    "windowed": true,

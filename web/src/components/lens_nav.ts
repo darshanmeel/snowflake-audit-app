@@ -42,14 +42,14 @@ export const LENS_NAV: Record<string, NavGroup[]> = {
   ],
   data_engineer: [
     TOP,
-    { label: "Pipelines", items: ["tasks", "loading", "activity"].map(area) },
+    { label: "Pipelines", items: [...["tasks", "loading", "activity"].map(area), sub("access", "explorer", "Who can access what")] },
     { label: "Queries & compute", items: ["queries", "warehouses", "serverless"].map(area) },
     { label: "Cost", items: ["cost", "waste", "storage"].map(area) },
     REFERENCE,
   ],
   governance: [
     TOP,
-    { label: "Access", items: [sub("access", "roles", "Roles & grants"), sub("access", "users", "Users & sign-ins"), sub("access", "perimeter", "Account perimeter")] },
+    { label: "Access", items: [sub("access", "roles", "Roles & grants"), sub("access", "users", "Users & sign-ins"), sub("access", "perimeter", "Account perimeter"), sub("access", "explorer", "Who can access what")] },
     { label: "Data", items: ["pii", "lineage", "activity", "sharing", "storage"].map(area) },
     { label: "Trail", items: [area("audit")] },
     REFERENCE,

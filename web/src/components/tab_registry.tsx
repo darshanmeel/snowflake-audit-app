@@ -405,7 +405,7 @@ export const ACTIVITY_SUBTABS: SubtabDef[] = [
   { key: "databases", label: "Databases", ids: ["sf_use_database_activity"], refIds: [] },
   // Reads the schema rows of sf_use_database_activity, homed on Databases.
   { key: "schemas", label: "Schemas", ids: [], refIds: [] },
-  { key: "tables", label: "Tables", ids: ["sf_use_table_activity", "sf_use_table_daily"], refIds: [] },
+  { key: "tables", label: "Tables", ids: ["sf_use_table_activity", "sf_use_table_daily", "sf_use_table_columns"], refIds: [] },
   { key: "users", label: "Users & roles", ids: ["sf_use_user_activity", "sf_use_user_data_io", "sf_use_table_readers"], refIds: [] },
   { key: "objects", label: "Stages & other objects", ids: ["sf_use_object_activity", "sf_lin_unused_views"], refIds: ["sf_acct_object_counts"] },
 ];

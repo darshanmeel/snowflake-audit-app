@@ -624,7 +624,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     screen: [
       { sub: "databases", d: "Reads, writes, DDL and users per database, with storage." },
       { sub: "schemas", d: "The busiest and never-used schemas, with storage per month." },
-      { sub: "tables", d: "Tables by use (active, cooling, written never read, idle), the busiest tables and one table day by day." },
+      { sub: "tables", d: "Tables by use (active, cooling, written never read, idle), the busiest tables by reads, writes, rows changed or DDL, and one table day by day with who uses it and the columns it is filtered and joined on. Pick a database to see only its tables." },
       { sub: "users", d: "The most active users and roles, who uses which tables, and users who hold roles but run nothing." },
       { sub: "objects", d: "Stages, views, functions, procedures, pipes and tasks in use, and views never read." },
     ],

@@ -216,28 +216,47 @@ const CLASSES: [string, string, string][] = [
   ["new", "New", "var(--c3)"], ["idle", "Idle", "var(--c-other)"],
 ];
 const CLASS_WORD: Record<string, string> = Object.fromEntries(CLASSES.map(([k, w]) => [k, w]));
+// Busiest tables ranked by one kind of use: [key, button, value, unit one, unit many].
+const RANK_BY: [string, string, (r: Row) => number, string, string][] = [
+  ["all", "All", touches, "query", "queries"], ["read", "Reads", (r) => numOrZero(r.read_queries), "read", "reads"],
+  ["write", "Writes", (r) => numOrZero(r.write_queries), "write", "writes"], ["dml", "Rows changed", (r) => numOrZero(r.dml_rows), "row changed", "rows changed"],
+  ["ddl", "DDL", (r) => numOrZero(r.ddl_queries), "DDL", "DDL"],
+];
 
 export function ApActivityTables(p: ApPageProps) {
   const ta = useCheck(p, "sf_use_table_activity");
   const td = useCheck(p, "sf_use_table_daily");
   const tr = useCheck(p, "sf_use_table_readers");
-  const classes = levelRows(ta.allRows, "class");
+  const tc = useCheck(p, "sf_use_table_columns");
+  const allTables = levelRows(ta.rows, "table");
+  const dbOf = (fqn: any) => String(fqn || "").split(".")[0];
+  const dbs = React.useMemo(() => [...new Set(allTables.map((r) => String(r.database_name || dbOf(r.table_fqn))))].filter(Boolean).sort(), [ta.rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [db, setDb] = React.useState("");
+  const inDb = (fqn: any) => !db || dbOf(fqn) === db;
+  const tables = allTables.filter((r) => inDb(r.table_fqn));
+  // One database: its classes are counted from its table rows; the account keeps the uncapped class rows.
+  const classes = db ? CLASSES.map(([k]) => {
+    const rs = tables.filter((r) => r.usage_class === k);
+    return { usage_class: k, tables: rs.length, storage_gb: rs.reduce((s, r) => s + numOrZero(r.storage_gb), 0) } as Row;
+  }) : levelRows(ta.allRows, "class");
   const cls = (k: string) => classes.find((r) => r.usage_class === k);
-  const tables = levelRows(ta.rows, "table");
+  // Table rows are capped (most active and largest), so a database's counts can miss quiet small tables.
+  const capped = !!db && allTables.length < levelRows(ta.allRows, "class").reduce((s, r) => s + numOrZero(r.tables), 0);
   const nTables = classes.reduce((s, r) => s + numOrZero(r.tables), 0);
   const gb = classes.reduce((s, r) => s + numOrZero(r.storage_gb), 0);
   // The tables the daily check kept, busiest first: the picker for the day-by-day view.
   const dailyTables = React.useMemo(() => {
     const m = new Map<string, number>();
-    (td.rows || []).forEach((r) => { if (!m.has(String(r.table_fqn))) m.set(String(r.table_fqn), numOrZero(r.table_rank)); });
+    (td.rows || []).forEach((r) => { if (inDb(r.table_fqn) && !m.has(String(r.table_fqn))) m.set(String(r.table_fqn), numOrZero(r.table_rank)); });
     return [...m.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k);
-  }, [td.rows]);
+  }, [td.rows, db]); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = React.useState<string | null>(null);
+  const [rankBy, setRankBy] = React.useState("all");
   const cur = sel && dailyTables.includes(sel) ? sel : dailyTables[0] || null;
   const pick = (fqn: string) => (dailyTables.includes(fqn) ? () => { setSel(fqn); document.getElementById("act-table-day")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
     : drawerBy("sf_use_table_activity", "table_fqn", fqn, fqn));
   const nRead = numOrZero(cls("active")?.tables) + numOrZero(cls("cooling")?.tables);
-  useLede(p, ta.loading, classes.length ? `${fmtInt(nRead)} of ${plural(nTables, "table")} were read in the window; ${fmtInt(numOrZero(cls("written_never_read")?.tables))} were written but never read.` : null);
+  useLede(p, ta.loading, classes.length ? `${db ? `In ${db}, ` : ""}${fmtInt(nRead)} of ${plural(nTables, "table")} were read in the window; ${fmtInt(numOrZero(cls("written_never_read")?.tables))} were written but never read.` : null);
   const classTile = (k: string, label: string, cause: string) => (
     <CheckTile c={ta} label={label} build={() => {
       const r = cls(k);
@@ -249,6 +268,17 @@ export function ApActivityTables(p: ApPageProps) {
   );
   return (
     <div className="ais-page cx-e">
+      {dbs.length > 1 && (
+        <div className="act-db-pick">
+          <label className="cx-muted">{"Database "}
+            <select value={db} onChange={(e) => setDb(e.target.value)} aria-label="Database">
+              <option value="">{`All ${plural(dbs.length, "database")}`}</option>
+              {dbs.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>
+          {capped && <span className="cx-muted">{" Counts for one database come from the tables the export listed (the most active and the largest)."}</span>}
+        </div>
+      )}
       <SummaryTileRow compact>
         {classTile("active", "Active tables", "Read in the newer half of the window.")}
         {classTile("cooling", "Cooling", "Read only in the older half of the window.")}
@@ -269,20 +299,29 @@ export function ApActivityTables(p: ApPageProps) {
             ) : okNote("No live table.");
           }}
         </Slot>
-        <Slot c={ta} title="Busiest tables" subtitle="Reads, writes and DDL in the window · select one for its days">
+        <Slot c={ta} title="Busiest tables" subtitle="Most reads, writes, rows changed or DDL in the window · select one for its days">
           {() => {
-            const items: CxRankItem[] = tables.filter((r) => r.activity_rank != null && touches(r) > 0).sort(byTouches).map((r) => ({
-              key: String(r.table_fqn), label: <CxObjName full={String(r.table_fqn)} id={r.table_id} />, value: touches(r),
-              strong: plural(touches(r), "query", "queries"), rest: `${plural(numOrZero(r.readers), "reader")} · ${plural(numOrZero(r.writers), "writer")}`,
+            const [, word, val, one, many] = RANK_BY.find((x) => x[0] === rankBy) || RANK_BY[0];
+            const items: CxRankItem[] = tables.filter((r) => r.activity_rank != null && val(r) > 0).sort((a, b) => val(b) - val(a)).map((r) => ({
+              key: String(r.table_fqn), label: <CxObjName full={String(r.table_fqn)} id={r.table_id} />, value: val(r),
+              strong: plural(val(r), one, many), rest: rankBy === "all" ? `${plural(numOrZero(r.readers), "reader")} · ${plural(numOrZero(r.writers), "writer")}` : rwd(r),
               onClick: pick(String(r.table_fqn)),
             }));
-            return items.length ? <div><RankedAbove items={items} noun="tables" ariaLabel="Busiest tables" /><div className="cx-foot">{TOUCH_FOOT}</div></div>
-              : okNote("No table had a read, write or DDL in the window.");
+            return (
+              <div>
+                <div className="cx-seg" role="group" aria-label="Rank by">
+                  {RANK_BY.map(([k, w]) => <button key={k} type="button" className={rankBy === k ? "on" : ""} aria-pressed={rankBy === k} onClick={() => setRankBy(k)}>{w}</button>)}
+                </div>
+                {items.length ? <div className="cx-block"><RankedAbove key={rankBy} items={items} noun="tables" ariaLabel={`Busiest tables by ${word}`} />
+                  <div className="cx-foot">{rankBy === "dml" ? "Rows inserted, updated and deleted (TABLE_DML_HISTORY)." : TOUCH_FOOT}</div></div>
+                  : okNote(`No table had ${many} in the window.`)}
+              </div>
+            );
           }}
         </Slot>
       </Row2>
       <div id="act-table-day">
-        <Slot c={td} title="One table, day by day" subtitle="Reads, writes, DDL and rows changed per day · each panel on its own scale">
+        <Slot c={td} title="One table, day by day" subtitle="Reads, writes, DDL and rows changed per day, who uses it and the columns it is filtered and joined on">
           {(rows) => {
             if (!cur) return okNote("No table had activity in the window.");
             const mine = rows.filter((r) => String(r.table_fqn) === cur).sort((a, b) => String(a.usage_date).localeCompare(String(b.usage_date)));
@@ -305,6 +344,7 @@ export function ApActivityTables(p: ApPageProps) {
                   })}
                 </div>
                 <div className="cx-foot"><span>{dmlOnly ? "Reads, writes and DDL need ACCESS_HISTORY (Enterprise edition): only rows changed are shown." : "Reads, writes and DDL in distinct queries; rows changed from TABLE_DML_HISTORY."}</span></div>
+                <TableColumns rows={(tc.rows || []).filter((r) => String(r.table_fqn) === cur)} loading={tc.loading} why={tc.why} />
                 {users.length > 0 && (
                   <div className="cx-block">
                     <CxTable ariaLabel={`Who uses ${cur}`} n={8}
@@ -336,6 +376,27 @@ export function ApActivityTables(p: ApPageProps) {
           ) : okNote("Every table was read in the window.");
         }}
       </Slot>
+    </div>
+  );
+}
+
+/** The columns queries filter (WHERE) and join on for one table, with the share of partitions they skip. */
+function TableColumns({ rows, loading, why }: { rows: Row[]; loading: boolean; why: string | null }) {
+  if (loading) return <div className="chart-note-oneline">…</div>;
+  if (why) return <div className="chart-note-oneline">{`Filter and join columns: – ${why}`}</div>;
+  if (!rows.length) return <div className="chart-note-oneline">No WHERE or JOIN columns recorded for this table in the window.</div>;
+  const list = (kind: string): CxRankItem[] => rows.filter((r) => r.access_type === kind).sort((a, b) => numOrZero(b.queries) - numOrZero(a.queries)).map((r) => ({
+    key: `${kind}|${r.column_name}`, label: String(r.column_name), value: numOrZero(r.queries), strong: plural(numOrZero(r.queries), "query", "queries"),
+    rest: r.prune_pct != null ? `skips ${fmtShare(numOrZero(r.prune_pct))} of partitions` : "",
+  }));
+  const where = list("WHERE"), join = list("JOIN");
+  return (
+    <div className="cx-block">
+      <Row2>
+        <div><div className="cx-eyebrow">Filtered on (WHERE)</div>{where.length ? <CxRanked items={where} layout="above" max={Math.max(...where.map((x) => x.value))} ariaLabel="WHERE columns" /> : okNote("None recorded.")}</div>
+        <div><div className="cx-eyebrow">Joined on (JOIN)</div>{join.length ? <CxRanked items={join} layout="above" max={Math.max(...join.map((x) => x.value))} ariaLabel="JOIN columns" /> : okNote("None recorded.")}</div>
+      </Row2>
+      <div className="cx-foot"><span>{"Snowflake records WHERE and JOIN columns only, not GROUP BY. A busy filter column that skips few partitions is a clustering candidate."}</span></div>
     </div>
   );
 }

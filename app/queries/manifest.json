@@ -13351,7 +13351,7 @@
     },
     {
       "query_id": "sf_ai_cortex_code_spend",
-      "title": "Cortex Code (CLI, Snowsight and Desktop) spend per user, checked against the billed total",
+      "title": "Cortex Code (CLI, Snowsight and Desktop) use and spend per user, checked against the billed total",
       "domain": "serving_ai",
       "tier": "standard",
       "runnable": true,
@@ -13410,7 +13410,7 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one user of one Cortex Code surface (CLI, Snowsight or Desktop), plus a billed-total row per surface. gap_credits = usage credits minus billed credits; it is a check on the data, not spend. current = the window, previous = the window before.",
+      "read_this": "one row = one user of one Cortex Code surface (CLI, Snowsight or Desktop), plus a billed-total row per surface. gap_credits = usage credits minus billed credits; it is a check on the data, not spend. current = the window, previous = the window before. current_requests, active_days and last_used count use, so a user whose requests cost 0 credits (a free or included period) still has a row.",
       "healthy": "status = OK when a user's spend is small or flat and the usage credits match the billed total.",
       "investigate_if": "WARN when a user spending >= min_spend_usd is new, grew >= warn_increase_pct, or makes >= warn_share_pct of a surface; CRITICAL when it grew >= crit_increase_pct; the total row reads WARN when the gap is >= warn_gap_pct of the billed credits.",
       "actions": [
@@ -15948,6 +15948,59 @@
       ],
       "next": [],
       "sql_url": "app/queries/checks/sf_use_table_churn.sql"
+    },
+    {
+      "query_id": "sf_use_table_columns",
+      "title": "The columns queries filter and join on, per table",
+      "domain": "storage",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [],
+      "money": null,
+      "entity": {
+        "noun": "table columns",
+        "columns": [
+          "table_fqn",
+          "column_name",
+          "access_type"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.COLUMN_QUERY_PRUNING_HISTORY"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 200,
+          "meaning": "tables: only the tables with the most such queries are kept"
+        },
+        {
+          "name": "top_columns",
+          "default": 10,
+          "meaning": "columns: kept per table and access type"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one column of a table x how queries used it (access_type WHERE or JOIN). queries counts the queries that filtered or joined on it; prune_pct is the share of micro-partitions those queries skipped, so a busy WHERE column with a low prune_pct is a clustering or search optimization candidate. table_rank 1 = the table with the most such queries.",
+      "healthy": "n/a - inventory",
+      "investigate_if": "n/a - inventory",
+      "actions": [],
+      "next": [
+        {
+          "query_id": "sf_storage_clustering_candidates",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_table_columns.sql"
     },
     {
       "query_id": "sf_use_table_daily",

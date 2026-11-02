@@ -1,5 +1,5 @@
 -- query_id: sf_ai_cortex_code_spend
--- title: Cortex Code (CLI, Snowsight and Desktop) spend per user, checked against the billed total
+-- title: Cortex Code (CLI, Snowsight and Desktop) use and spend per user, checked against the billed total
 -- domain: serving_ai   tier: standard
 -- windowed: yes
 -- reads: SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_CLI_USAGE_HISTORY,
@@ -19,7 +19,8 @@
 -- confidence_note: Not yet run on a live account.
 -- read_this: one row = one user of one Cortex Code surface (CLI, Snowsight or Desktop), plus a billed-total row per
 --   surface. gap_credits = usage credits minus billed credits; it is a check on the data, not spend.
---   current = the window, previous = the window before.
+--   current = the window, previous = the window before. current_requests, active_days and last_used
+--   count use, so a user whose requests cost 0 credits (a free or included period) still has a row.
 -- healthy: status = OK when a user's spend is small or flat and the usage credits match the billed total.
 -- investigate_if: WARN when a user spending >= min_spend_usd is new, grew >= warn_increase_pct, or makes
 --   >= warn_share_pct of a surface; CRITICAL when it grew >= crit_increase_pct; the total row reads WARN
@@ -38,15 +39,15 @@
 --   Desktop has no documented service type in METERING_DAILY_HISTORY: its total row ties out only if the
 --   bill carries CORTEX_CODE_DESKTOP, and a missing billed figure is not flagged.
 WITH u AS (
-  SELECT 'CLI' AS surface, user_id, user_name, token_credits, tokens,
+  SELECT 'CLI' AS surface, user_id, user_name, token_credits, tokens, request_id, usage_time,
          CAST(CONVERT_TIMEZONE('UTC', usage_time) AS DATE) AS usage_day
   FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_CLI_USAGE_HISTORY
   UNION ALL
-  SELECT 'SNOWSIGHT', user_id, user_name, token_credits, tokens,
+  SELECT 'SNOWSIGHT', user_id, user_name, token_credits, tokens, request_id, usage_time,
          CAST(CONVERT_TIMEZONE('UTC', usage_time) AS DATE)
   FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_SNOWSIGHT_USAGE_HISTORY
   UNION ALL
-  SELECT 'DESKTOP', user_id, user_name, token_credits, tokens,
+  SELECT 'DESKTOP', user_id, user_name, token_credits, tokens, request_id, usage_time,
          CAST(CONVERT_TIMEZONE('UTC', usage_time) AS DATE)
   FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_DESKTOP_USAGE_HISTORY
 ),
@@ -55,7 +56,10 @@ w AS (
          COALESCE(user_name || ' (' || TO_VARCHAR(user_id) || ')', 'unknown (' || COALESCE(TO_VARCHAR(user_id), '?') || ')') AS user_name,
          SUM(IFF(usage_day >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), token_credits, 0)) AS cur_credits,
          SUM(IFF(usage_day < DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), token_credits, 0)) AS prev_credits,
-         SUM(IFF(usage_day >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), tokens, 0)) AS cur_tokens
+         SUM(IFF(usage_day >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), tokens, 0)) AS cur_tokens,
+         COUNT(DISTINCT IFF(usage_day >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), request_id, NULL)) AS cur_requests,
+         COUNT(DISTINCT IFF(usage_day >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), usage_day, NULL)) AS active_days,
+         MAX(IFF(usage_day >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), usage_time, NULL)) AS last_used
   FROM u
   WHERE usage_day >= DATEADD(day, -(2 * :period_days + :settle_days), __AS_OF_DATE__)
     AND usage_day < DATEADD(day, -:settle_days, __AS_OF_DATE__)
@@ -88,7 +92,8 @@ users AS (
 totals AS (
   SELECT COALESCE(w.surface, b.surface) AS surface, '(all users, billed total)' AS user_name,
          COALESCE(SUM(w.cur_credits), 0) AS cur_credits, CAST(NULL AS DOUBLE) AS prev_credits,
-         COALESCE(SUM(w.cur_tokens), 0) AS cur_tokens, 'total' AS row_kind,
+         COALESCE(SUM(w.cur_tokens), 0) AS cur_tokens, COALESCE(SUM(w.cur_requests), 0) AS cur_requests,
+         CAST(NULL AS INTEGER) AS active_days, MAX(w.last_used) AS last_used, 'total' AS row_kind,
          CAST(NULL AS DOUBLE) AS change_pct, CAST(NULL AS DOUBLE) AS share_pct,
          MAX(b.billed_credits) AS billed_credits,
          COALESCE(SUM(w.cur_credits), 0) - COALESCE(MAX(b.billed_credits), 0) AS gap_credits
@@ -101,16 +106,19 @@ r AS (
   SELECT * FROM totals
 )
 SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id, surface, row_kind, row_kind = 'total' AS is_total_row, user_name,
-       cur_tokens AS current_tokens, cur_credits AS current_credits, prev_credits AS previous_credits,
+       cur_tokens AS current_tokens, cur_requests AS current_requests, active_days, last_used,
+       cur_credits AS current_credits, prev_credits AS previous_credits,
        change_pct, share_pct AS share_of_surface_pct, billed_credits, gap_credits,
        IFF(row_kind = 'user', cur_credits * __AI_CREDIT_PRICE__, NULL) AS est_current_usd_list,
        IFF(row_kind = 'user', prev_credits * __AI_CREDIT_PRICE__, NULL) AS est_previous_usd_list,
        IFF(row_kind = 'user' AND __AI_CREDIT_PRICE__ IS NULL, 'unpriced', 'priced') AS price_basis,
-       CASE WHEN row_kind = 'user' AND __AI_CREDIT_PRICE__ IS NULL THEN 'unpriced' END AS not_assessed_reason,
+       CASE WHEN row_kind = 'user' AND cur_credits > 0 AND __AI_CREDIT_PRICE__ IS NULL THEN 'unpriced' END AS not_assessed_reason,
        CASE
          WHEN row_kind = 'total' THEN
            CASE WHEN 100 * ABS(gap_credits) / NULLIF(billed_credits, 0) >= :warn_gap_pct
                      OR (billed_credits IS NULL AND cur_credits > 0 AND surface <> 'DESKTOP') THEN 'WARN' ELSE 'OK' END
+         -- Use that cost nothing is listed, never judged.
+         WHEN cur_credits = 0 THEN 'OK'
          WHEN __AI_CREDIT_PRICE__ IS NULL THEN 'NOT_ASSESSED'
          WHEN cur_credits * __AI_CREDIT_PRICE__ < :min_spend_usd THEN 'OK'
          WHEN prev_credits = 0 THEN 'WARN'
