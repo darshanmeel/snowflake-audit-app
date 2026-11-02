@@ -62,23 +62,101 @@ function Paths({ paths, count, onPick }: { paths: string[][]; count: number; onP
   );
 }
 
-/** Roles a user or role can use, one column per depth: the role tree in lanes. */
-function Lanes({ roles, onPick, user }: { roles: any[]; onPick: (kind: Kind, name: string) => void; user: boolean }) {
-  const byDepth = new Map<number, any[]>();
-  roles.filter((r) => r.depth > 0).forEach((r) => byDepth.set(r.depth, [...(byDepth.get(r.depth) || []), r]));
-  const depths = [...byDepth.keys()].sort((a, b) => a - b);
-  if (!depths.length) return null;
+/** A left-to-right graph from paths that all pass through `focus`: one column per step, one arrow per grant
+ *  ("is granted to" runs left to right). A path's leading user (in `users`) is not drawn: it counts as
+ *  "N users" on the role the user holds. Columns over CAP boxes show "+N more", which opens them. */
+const W = 196, H = 30, GAP = 56, ROW = 40, TOP = 26, CAP = 14;
+
+function RoleGraph({ paths, focus, users, onPick, laneName }: {
+  paths: string[][]; focus: string; users: Set<string>; onPick: (kind: Kind, name: string) => void; laneName: (lane: number) => string;
+}) {
+  const [open, setOpen] = React.useState<Set<number>>(new Set());
+  const [hover, setHover] = React.useState<string | null>(null);
+  const g = React.useMemo(() => {
+    const lane = new Map<string, number>(), held = new Map<string, Set<string>>(), edges = new Map<string, [string, string]>();
+    paths.forEach((p0) => {
+      let p = p0;
+      if (p.length > 1 && p[0] !== focus && users.has(p[0])) {
+        if (!held.has(p[1])) held.set(p[1], new Set());
+        held.get(p[1])!.add(p[0]);
+        p = p.slice(1);
+      }
+      const f = p.indexOf(focus);
+      if (f < 0) return;
+      p.forEach((x, i) => {
+        const l = i - f, cur = lane.get(x);
+        if (cur === undefined || Math.abs(l) < Math.abs(cur)) lane.set(x, l);
+        if (i) edges.set(`${p[i - 1]}>${x}`, [p[i - 1], x]);
+      });
+    });
+    const lanes = [...new Set(lane.values())].sort((a, b) => a - b);
+    const cols = lanes.map((l) => [...lane.entries()].filter(([, v]) => v === l).map(([k]) => k).sort());
+    // Order each column by where its parents sit, so arrows cross as little as possible.
+    const pos = new Map<string, number>();
+    cols.forEach((c) => c.forEach((x, i) => pos.set(x, i)));
+    const all = [...edges.values()];
+    for (let pass = 0; pass < 2; pass++) {
+      cols.forEach((c, ci) => {
+        if (!ci) return;
+        const bary = (x: string) => {
+          const ps = all.filter(([a, b]) => b === x && lane.get(a)! < lane.get(x)!).map(([a]) => pos.get(a)!);
+          return ps.length ? ps.reduce((s, v) => s + v, 0) / ps.length : Infinity;
+        };
+        c.sort((a, b) => bary(a) - bary(b) || a.localeCompare(b));
+        c.forEach((x, i) => pos.set(x, i));
+      });
+    }
+    return { lane, lanes, cols, held, edges: all };
+  }, [paths, focus, users]);
+
+  const xy = new Map<string, [number, number]>();
+  const shown = g.cols.map((c, ci) => (open.has(ci) || c.length <= CAP ? c : c.slice(0, CAP)));
+  shown.forEach((c, ci) => c.forEach((x, i) => xy.set(x, [ci * (W + GAP), TOP + i * ROW])));
+  const rows = Math.max(1, ...shown.map((c, ci) => c.length + (g.cols[ci].length > CAP ? 1 : 0)));
+  const width = Math.max(W, g.cols.length * (W + GAP) - GAP), height = TOP + rows * ROW;
+  const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
   return (
-    <div className="ax-lanes">
-      {depths.map((d) => (
-        <div key={d} className="ax-lane">
-          <div className="ax-lane-head">{d === 1 ? (user ? "Granted" : "Inherits") : `${d} steps down`}</div>
-          {byDepth.get(d)!.map((r) => (
-            <button key={r.role} type="button" className={`ax-node${r.admin ? " admin" : ""}`} onClick={() => onPick("role", r.role)}
-              title={r.paths[0].join(" › ")}>{r.role}</button>
-          ))}
-        </div>
-      ))}
+    <div className="ax-graph-box">
+      <svg className="ax-graph" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Role graph around ${focus}`}>
+        <defs>
+          <marker id="ax-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" className="ax-arrow" /></marker>
+          <marker id="ax-arrow-on" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" className="ax-arrow on" /></marker>
+        </defs>
+        {g.lanes.map((l, ci) => <text key={l} className="ax-lane-label" x={ci * (W + GAP)} y={12}>{laneName(l)}</text>)}
+        {g.edges.map(([a, b]) => {
+          const pa = xy.get(a), pb = xy.get(b);
+          if (!pa || !pb) return null;
+          const fwd = g.lane.get(b)! > g.lane.get(a)!;
+          const x1 = pa[0] + W, y1 = pa[1] + H / 2, x2 = pb[0], y2 = pb[1] + H / 2;
+          // A role also reached by a shorter path sits in an earlier column: that arrow runs back, dashed.
+          const d = fwd ? `M${x1},${y1} C${x1 + GAP / 2},${y1} ${x2 - GAP / 2},${y2} ${x2 - 2},${y2}`
+            : `M${pa[0] + W / 2},${pa[1] + H} C${pa[0] + W / 2},${pa[1] + H + 40} ${x2 - 40},${y2} ${x2 - 2},${y2}`;
+          const on = hover !== null && (a === hover || b === hover);
+          return <path key={`${a}>${b}`} d={d} className={`ax-edge${fwd ? "" : " back"}${on ? " on" : ""}`} markerEnd={`url(#${on ? "ax-arrow-on" : "ax-arrow"})`} />;
+        })}
+        {[...xy.entries()].map(([x, [px, py]]) => {
+          const isFocus = x === focus;
+          const n = g.held.get(x)?.size || 0;
+          const kind: Kind | null = isFocus ? null : users.has(x) ? "user" : g.lane.get(x)! > 0 || g.lane.get(x)! < 0 ? "role" : null;
+          return (
+            <g key={x} className={`ax-gnode${isFocus ? " focus" : ""}${ADMIN.has(x) ? " admin" : ""}${kind ? " link" : ""}`}
+              transform={`translate(${px},${py})`} onMouseEnter={() => setHover(x)} onMouseLeave={() => setHover(null)}
+              onClick={kind ? () => onPick(kind, x) : undefined}>
+              <title>{`${x}${n ? ` · granted directly to ${plural(n, "user")}` : ""}${ADMIN.has(x) ? " · admin role" : ""}`}</title>
+              <rect width={W} height={H} rx={users.has(x) ? H / 2 : 6} />
+              <text x={10} y={H / 2 + 4}>{clip(x, n ? 18 : 26)}</text>
+              {n > 0 && <text className="ax-badge" x={W - 8} y={H / 2 + 4} textAnchor="end">{`${fmtInt(n)} ${n === 1 ? "user" : "users"}`}</text>}
+            </g>
+          );
+        })}
+        {g.cols.map((c, ci) => (c.length > CAP ? (
+          <g key={`more-${ci}`} className="ax-gnode link more" transform={`translate(${ci * (W + GAP)},${TOP + shown[ci].length * ROW})`}
+            onClick={() => setOpen((s) => { const o = new Set(s); if (o.has(ci)) o.delete(ci); else o.add(ci); return o; })}>
+            <rect width={W} height={H} rx={6} />
+            <text x={10} y={H / 2 + 4}>{open.has(ci) ? "Show fewer" : `+${fmtInt(c.length - CAP)} more`}</text>
+          </g>
+        ) : null))}
+      </svg>
     </div>
   );
 }
@@ -193,6 +271,14 @@ export function ApAccessExplorer(p: ApPageProps) {
   const adminGrants = grants.filter((g) => g.admin).length;
   const deepest = Math.max(0, ...roles.map((r) => r.depth));
   const objects = new Set(grants.map((g) => g.object)).size;
+  // The graph: a user's or role's paths down its roles, a role's holders above it, an object's roles before it.
+  const graphPaths: string[][] = React.useMemo(() => (!res ? [] : [
+    ...(res.roles || []).flatMap((r: any) => r.paths), ...(res.holders || []).flatMap((h: any) => h.paths)]), [res]);
+  const userNames = React.useMemo(() => new Set<string>([...(res && res.kind === "user" ? [res.name] : []),
+    ...((res && res.holders) || []).filter((h: any) => h.kind === "user").map((h: any) => h.name)]), [res]);
+  const laneName = (l: number) => (l === 0 ? (sel.kind === "user" ? "User" : sel.kind === "role" ? "This role" : "This object")
+    : l > 0 ? (l === 1 ? (sel.kind === "user" ? "Granted" : "Inherits") : `${l} steps down`)
+    : l === -1 ? (sel.kind === "object" ? "Granted on it" : "Granted to") : `${-l} steps up`);
 
   useLede(p, !names && !err, names ? `${plural(names.users.length, "user")}, ${plural(names.roles.length, "role")} and ${plural(names.objects.length, "object")} with grants. Pick one to see every path from a user to an object.` : null);
 
@@ -237,9 +323,10 @@ export function ApAccessExplorer(p: ApPageProps) {
         <div className="ax-who">{<span><b>{res.name}</b>{` · ${String(res.user.user_type || "PERSON").toLowerCase()}${res.user.is_disabled ? " · disabled" : ""} · default role ${res.user.default_role || "none"} · last sign-in ${lastDay(res.user.last_success_login)}`}</span>}</div>
       )}
       {tiles}
-      {res && sel.kind !== "object" && roles.some((r) => r.depth > 0) && (
-        <ChartCard title="Roles it can use" subtitle="One column per step down the role tree · red = admin role · select a role to explore it" takeaway={null}>
-          <Lanes roles={roles} onPick={pick} user={sel.kind === "user"} />
+      {res && graphPaths.length > 0 && (
+        <ChartCard title={sel.kind === "user" ? "Roles it can use" : sel.kind === "role" ? "Where it sits in the role tree" : "Roles that reach it"}
+          subtitle={`Arrow = is granted to · one column per step · red = admin role · hover a box to see its arrows, select a role to explore it${sel.kind !== "user" ? " · N users = users granted that role directly" : ""}`} takeaway={null}>
+          <RoleGraph paths={graphPaths} focus={res.name} users={userNames} onPick={pick} laneName={laneName} />
         </ChartCard>
       )}
       {res && sel.kind !== "object" && (
