@@ -518,7 +518,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
       { sub: "roles", d: "Broad and PUBLIC grants, role hygiene, direct and grant-option privileges, access roles handed to users, roles granted twice, read-only roles that can write." },
       { sub: "users", d: "MFA, password and key-pair age, stale users, disabled users that still hold roles, failed and new sign-ins, clients and SSO." },
       { sub: "perimeter", d: "Trust Center findings and their age, network, session, password and authentication policies, integrations, PrivateLink, failover readiness and secrets." },
-      { sub: "explorer", d: "Who can access what. Pick a user, role or object: a graph with an arrow per grant (a few users on the left, the roles, the 10 most used tables on the right), then every privilege with every path, and who else holds it. Select a row to see its whole path in the graph." },
+      { sub: "explorer", d: "Who can access what. Pick a user, role or object: a graph with an arrow per grant, a few users on the left, the roles, and what they reach grouped by schema (counts by type, sensitive tables, arrows coloured read, write, own or use). Open a schema box to see its objects one by one. 'Path to' shows only the routes to a second user, role or table; selecting a row shows its whole path." },
     ],
     measure: "Grants, users, login history and account parameters from ACCOUNT_USAGE and SHOW.",
     judge: "Broad grantees, stale days and failed sign-ins flag against config/thresholds.yml.",
@@ -623,7 +623,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     ],
     screen: [
       { sub: "databases", d: "Reads, writes, DDL and users per database, with storage." },
-      { sub: "schemas", d: "The busiest and never-used schemas, with storage per month." },
+      { sub: "schemas", d: "The busiest and never-used schemas, with storage per month. Pick a database to see only its schemas." },
       { sub: "tables", d: "Tables by use (active, cooling, written never read, idle), the busiest tables by reads, writes, rows changed or DDL, and one table day by day with who uses it and the columns it is filtered and joined on. Pick a database to see only its tables." },
       { sub: "users", d: "The most active users and roles, who uses which tables, and users who hold roles but run nothing." },
       { sub: "objects", d: "Stages, views, functions, procedures, pipes and tasks in use, and views never read." },

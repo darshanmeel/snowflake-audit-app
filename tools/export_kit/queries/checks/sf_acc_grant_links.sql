@@ -46,7 +46,7 @@ g AS (
   WHERE deleted_on IS NULL AND granted_to IN ('ROLE', 'ACCOUNT ROLE', 'DATABASE_ROLE')
 )
 SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, 'user' AS link_kind, user_name AS grantee,
-       'USER' AS grantee_kind, default_role AS name, 'USER' AS granted_on, CAST(NULL AS VARCHAR) AS privilege,
+       'USER' AS grantee_type, default_role AS name, 'USER' AS granted_on, CAST(NULL AS VARCHAR) AS privilege,
        CAST(NULL AS VARCHAR) AS database_name, CAST(NULL AS VARCHAR) AS schema_name, FALSE AS grant_option,
        user_type, is_disabled, last_success_login, default_role
 FROM sf_sec_users

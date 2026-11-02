@@ -22,10 +22,10 @@ from app.core import config as app_config
 # database, schema, table, role, task, account), an owner role, an id or a user type.
 _PERSON_COLUMN_RE = re.compile(
     r"^(?:(?:[a-z0-9]+_)*user_name|login_name|executed_by|actor|email|top_user|requester|identity_run_as"
-    r"|principal|resized_by|created_by|users|sample_users|blocked_users)$",
+    r"|principal|resized_by|created_by|users|sample_users|blocked_users|idle_users|writing_users)$",
     re.IGNORECASE,
 )
-_LIST_COLUMN_RE = re.compile(r"^(?:users|sample_users|blocked_users)$", re.IGNORECASE)
+_LIST_COLUMN_RE = re.compile(r"^(?:users|sample_users|blocked_users|idle_users|writing_users)$", re.IGNORECASE)
 
 # A value already in this shape (e.g. read back out of a dim the export masked) is never re-hashed.
 _MASKED_RE = re.compile(r"^\S+ .{0,2}\*\*\*$")

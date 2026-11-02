@@ -10,6 +10,8 @@ Both take an optional account_id (default: the first account in the export).
 """
 from __future__ import annotations
 
+from collections import deque
+
 import duckdb
 from fastapi import APIRouter, HTTPException
 
@@ -49,7 +51,7 @@ def _load(account_id: str | None) -> dict:
             return _cache[key]
         accounts = [r[0] for r in con.execute(f"SELECT DISTINCT account_id FROM findings.{TABLE} ORDER BY 1").fetchall()]
         acct = account_id if account_id in accounts else (accounts[0] if accounts else None)
-        rows = con.execute(f"SELECT link_kind, grantee, grantee_kind, name, granted_on, privilege, grant_option, "
+        rows = con.execute(f"SELECT link_kind, grantee, grantee_type, name, granted_on, privilege, grant_option, "
                            f"user_type, is_disabled, last_success_login, default_role "
                            f"FROM findings.{TABLE} WHERE account_id IS NOT DISTINCT FROM ?", [acct]).fetchall()
         try:  # queries per table, so the graph can show the most used ones; none when Activity did not run
@@ -85,11 +87,12 @@ def _load(account_id: str | None) -> dict:
 
 def _walk(starts: list[list[str]], step: dict) -> dict:
     """Every role reachable from the start paths along `step` (children down, parents up): {role: (paths, n)}.
-    Paths are lists of names, shortest first, at most MAX_PATHS kept; n counts them all."""
+    Breadth first, so the MAX_PATHS paths kept are the shortest; n counts the paths found, and stops growing
+    once a role is past the cap (n >= MAX_PATHS means "at least")."""
     out: dict = {}
-    stack = [p for p in starts]
+    stack = deque(starts)
     while stack:
-        path = stack.pop()
+        path = stack.popleft()
         role = path[-1]
         paths, n = out.get(role, ([], 0))
         if len(paths) < MAX_PATHS:
@@ -97,7 +100,7 @@ def _walk(starts: list[list[str]], step: dict) -> dict:
         out[role] = (paths, n + 1)
         if len(path) <= MAX_DEPTH and n < MAX_PATHS:   # past the cap only count, don't walk again
             stack.extend(path + [c] for c in step.get(role, []) if c not in path)
-    return {r: (sorted(p, key=len), n) for r, (p, n) in out.items()}
+    return {r: (p, n) for r, (p, n) in out.items()}
 
 
 def _who(name: str, mask: bool) -> str:
@@ -125,6 +128,7 @@ def _grants_from(g: dict, starts: list[list[str]], is_user: bool, mask: bool) ->
             row["grant_option"] = row["grant_option"] or opt
             row["paths"].extend(p + [obj] for p in paths)
             row["path_count"] += n
+            row["capped"] = row.get("capped", False) or n >= MAX_PATHS
     off = 1 if is_user else 0
     fix = (lambda p: [_who(p[0], mask)] + p[1:]) if is_user else (lambda p: p)
     rows = []
@@ -137,7 +141,8 @@ def _grants_from(g: dict, starts: list[list[str]], is_user: bool, mask: bool) ->
         rows.append(row)
     rows.sort(key=lambda r: (r["object"], r["privilege"]))
     # depth: steps from the start; a user's granted roles and a role's own children are 1, the role itself 0
-    roles = [{"role": r, "depth": len(p[0]) - 1, "admin": r in ADMIN, "paths": [fix(x) for x in p], "path_count": n}
+    roles = [{"role": r, "depth": len(p[0]) - 1, "admin": r in ADMIN, "paths": [fix(x) for x in p], "path_count": n,
+              "capped": n >= MAX_PATHS}
              for r, (p, n) in reached.items()]
     roles.sort(key=lambda r: (r["depth"], r["role"]))
     return rows, roles
@@ -149,18 +154,22 @@ def _holders_of(g: dict, roles: list[str], mask: bool) -> list:
     out = []
     for role, (paths, n) in up.items():
         out.append({"kind": "role", "name": role, "admin": role in ADMIN, "depth": len(paths[0]) - 1,
-                    "paths": [list(reversed(p)) for p in paths], "path_count": n})
+                    "paths": [list(reversed(p)) for p in paths], "path_count": n, "capped": n >= MAX_PATHS})
     users: dict = {}
+    capped: set = set()
     for u, held in g["user_roles"].items():
         for r in held:
-            for p in up.get(r, ([], 0))[0]:
+            paths, n = up.get(r, ([], 0))
+            if n >= MAX_PATHS:
+                capped.add(u)
+            for p in paths:
                 users.setdefault(u, []).append([_who(u, mask)] + list(reversed(p)))
     for u, paths in users.items():
         paths.sort(key=len)
         info = g["users"].get(u, {})
         out.append({"kind": "user", "name": _who(u, mask), **info, "depth": len(paths[0]) - 1,
                     "admin": any(r in ADMIN for p in paths for r in p[1:]), "paths": paths[:MAX_PATHS],
-                    "path_count": len(paths)})
+                    "path_count": len(paths), "capped": u in capped})
     out.sort(key=lambda h: (h["kind"] != "user", h["depth"], h["name"]))
     return out
 
@@ -201,7 +210,8 @@ def get_explore(kind: str, name: str, account_id: str | None = None) -> dict:
         for role, priv, on, opt in held:
             for h in _holders_of(g, [role], mask):
                 row = by.setdefault((h["kind"], h["name"], priv), {**h, "privilege": priv, "cls": priv_class(priv, on),
-                                                                   "grant_option": False, "paths": [], "path_count": 0})
+                                                                   "grant_option": False, "paths": [], "path_count": 0, "capped": False})
+                row["capped"] = row["capped"] or h["capped"]
                 row["grant_option"] = row["grant_option"] or opt
                 row["paths"].extend(p + [name] for p in h["paths"])
                 row["path_count"] += h["path_count"]

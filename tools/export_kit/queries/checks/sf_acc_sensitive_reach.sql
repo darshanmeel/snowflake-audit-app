@@ -197,9 +197,9 @@ per AS (
          COUNT(DISTINCT IFF(a.can_read AND u.is_disabled, a.user_name, NULL)) AS disabled_readers,
          COUNT(DISTINCT IFF(a.can_write AND u.is_person AND NOT u.is_disabled, a.user_name, NULL)) AS people_writers,
          LISTAGG(DISTINCT IFF(a.can_read AND (u.is_dormant OR u.is_disabled), a.user_name, NULL), ', ')
-           WITHIN GROUP (ORDER BY IFF(a.can_read AND (u.is_dormant OR u.is_disabled), a.user_name, NULL)) AS idle_reader_list,
+           WITHIN GROUP (ORDER BY IFF(a.can_read AND (u.is_dormant OR u.is_disabled), a.user_name, NULL)) AS idle_users,
          LISTAGG(DISTINCT IFF(a.can_write AND u.is_person AND NOT u.is_disabled, a.user_name, NULL), ', ')
-           WITHIN GROUP (ORDER BY IFF(a.can_write AND u.is_person AND NOT u.is_disabled, a.user_name, NULL)) AS writer_list
+           WITHIN GROUP (ORDER BY IFF(a.can_write AND u.is_person AND NOT u.is_disabled, a.user_name, NULL)) AS writing_users
   FROM tables_ t
   LEFT JOIN access_ a ON a.database_name = t.database_name AND a.schema_name = t.schema_name AND a.table_name = t.table_name
   LEFT JOIN users_ u ON u.user_name = a.user_name
@@ -209,8 +209,8 @@ per AS (
 SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, database_name, schema_name, table_name,
        database_name || '.' || schema_name || '.' || table_name AS table_fqn,
        sensitive_columns, masked_columns, has_row_policy, column_list, readers, people_readers, dormant_readers,
-       disabled_readers, people_writers, NULLIF(idle_reader_list, '') AS idle_reader_list,
-       NULLIF(writer_list, '') AS writer_list,
+       disabled_readers, people_writers, NULLIF(idle_users, '') AS idle_users,
+       NULLIF(writing_users, '') AS writing_users,
        ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT(
          IFF(dormant_readers > 0, 'dormant people who can read it: ' || dormant_readers, NULL),
          IFF(disabled_readers > 0, 'disabled users with a path to it: ' || disabled_readers, NULL),

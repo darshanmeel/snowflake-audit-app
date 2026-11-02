@@ -178,3 +178,4 @@ button.cx-lbar:hover .cx-lbar-label, button.cx-nbar:hover .cx-nbar-name { color:
    from its own --cx-cols, so take the rules back inside .cx-table-wrap. */
 .cx-table-wrap > .cx-table { display: flex; flex-direction: column; }
 .cx-table-wrap .cx-tr { grid-column: auto; grid-template-columns: var(--cx-cols); }
+@media (max-width: 700px) { .cx-table-wrap .cx-has-ph .cx-tr { grid-template-columns: var(--cx-ph-cols); } }

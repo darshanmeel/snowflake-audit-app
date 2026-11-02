@@ -75,11 +75,11 @@ agg AS (
   GROUP BY role_name
 ),
 holders AS (
-  SELECT role_name, COUNT(DISTINCT user_name) AS users FROM sf_sec_user_roles GROUP BY role_name
+  SELECT role_name, COUNT(DISTINCT user_name) AS user_count FROM sf_sec_user_roles GROUP BY role_name
 ),
 s AS (
   SELECT r.role_name, COALESCE(a.tables_, 0) AS tables_, COALESCE(a.read_only_tables, 0) AS read_only_tables,
-         COALESCE(a.write_objects, 0) AS write_objects, a.example_path, COALESCE(h.users, 0) AS users,
+         COALESCE(a.write_objects, 0) AS write_objects, a.example_path, COALESCE(h.user_count, 0) AS user_count,
          REGEXP_LIKE(r.role_name, '(^|.*_)(READ|RO|R|READER|READERS|VIEWER|VIEWERS|RPT|REPORTING|READONLY|READ_ONLY)(_.*|$)', 'i')
            AS name_says_read,
          COALESCE(a.tables_, 0) >= :min_objects
@@ -89,7 +89,7 @@ s AS (
   LEFT JOIN holders h ON h.role_name = r.role_name
 )
 SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, role_name, name_says_read, mostly_reads, tables_ AS tables,
-       read_only_tables, write_objects, users, example_path,
+       read_only_tables, write_objects, user_count, example_path,
        IFF(write_objects > 0,
            IFF(name_says_read, 'name says read-only', 'only reads ' || read_only_tables || ' of ' || tables_ || ' tables')
              || ' but can change ' || write_objects || IFF(write_objects = 1, ' object', ' objects'), NULL) AS reasons,
@@ -97,4 +97,4 @@ SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, role_name, name_says_read
        IFF(write_objects > 0, 'WARN', 'OK') AS status
 FROM s
 WHERE name_says_read OR (mostly_reads AND write_objects > 0)
-ORDER BY CASE status WHEN 'WARN' THEN 0 ELSE 1 END, users DESC, role_name
+ORDER BY CASE status WHEN 'WARN' THEN 0 ELSE 1 END, user_count DESC, role_name

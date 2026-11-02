@@ -11,7 +11,7 @@
 -- confidence: needs_confirmation
 -- confidence_note: Not yet run on a live account.
 -- read_this: one row = one user (row_level = user) or one role (row_level = role), the top_n busiest of
---   each. read_queries, write_queries and ddl_queries count distinct queries that read, wrote or changed
+--   each. One more row (row_level = total, is_total_row) holds the uncapped totals over every user. read_queries, write_queries and ddl_queries count distinct queries that read, wrote or changed
 --   a data object; data_queries counts distinct queries that did any of the three, so the kinds can add
 --   up to more than data_queries. tables_read / tables_written count distinct table-like objects (base,
 --   dynamic, Iceberg and external tables, materialized views); objects_ddl counts any object type changed.
@@ -95,6 +95,18 @@ tt AS (
   FROM tq
   GROUP BY row_level, pkey
 ),
+-- The whole window, uncapped: the Users page counts users and shares from this row, not the top_n list.
+tot AS (
+  SELECT COUNT(DISTINCT user_name) AS users, COUNT(DISTINCT role_name) AS roles_used,
+         COUNT(DISTINCT IFF(kind = 'read', query_id, NULL)) AS read_queries,
+         COUNT(DISTINCT IFF(kind = 'write', query_id, NULL)) AS write_queries,
+         COUNT(DISTINCT IFF(kind = 'ddl', query_id, NULL)) AS ddl_queries,
+         COUNT(DISTINCT query_id) AS data_queries,
+         100 * COUNT(DISTINCT IFF(is_service_user, query_id, NULL)) / NULLIF(COUNT(DISTINCT query_id), 0) AS service_query_pct,
+         COUNT(DISTINCT IFF(is_service_user, user_name, NULL)) AS service_users,
+         MAX(query_start_time) AS last_activity_at
+  FROM ev
+),
 s AS (
   SELECT a.*, tt.top_tables,
          RANK() OVER (PARTITION BY a.row_level ORDER BY a.data_queries DESC) AS activity_rank,
@@ -102,7 +114,8 @@ s AS (
   FROM a
   LEFT JOIN tt ON tt.row_level = a.row_level AND tt.pkey = a.pkey
 )
-SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id, s.row_level,
+SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id, s.row_level, FALSE AS is_total_row,
+       CAST(NULL AS NUMBER) AS service_users,
        IFF(s.row_level = 'user', s.pkey, NULL) AS user_name, s.user_id, s.user_type, s.is_service_user,
        IFF(s.row_level = 'role', s.pkey, NULL) AS role_name,
        IFF(s.row_level = 'role', rl.role_id, NULL) AS role_id,
@@ -114,7 +127,15 @@ FROM s
 LEFT JOIN rl ON rl.role_name = s.pkey
 WHERE s.rn <= :top_n
 UNION ALL
-SELECT :period_days, __ACCOUNT_ID__, CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
+SELECT :period_days, __ACCOUNT_ID__, 'total', TRUE, t.service_users, CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
+       CAST(NULL AS VARCHAR), CAST(NULL AS BOOLEAN), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
+       t.users, t.roles_used, t.read_queries, t.write_queries, t.ddl_queries, t.data_queries,
+       NULL, NULL, NULL, NULL, NULL, t.last_activity_at, CAST(NULL AS VARCHAR), t.service_query_pct, NULL,
+       CAST(NULL AS VARCHAR), 'OK'
+FROM tot t, seen
+WHERE seen.access_rows > 0
+UNION ALL
+SELECT :period_days, __ACCOUNT_ID__, CAST(NULL AS VARCHAR), FALSE, CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
        CAST(NULL AS VARCHAR), CAST(NULL AS BOOLEAN), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, CAST(NULL AS TIMESTAMP_NTZ),
        CAST(NULL AS VARCHAR), NULL, NULL, 'no_access_history', 'NOT_ASSESSED'

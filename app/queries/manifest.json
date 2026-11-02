@@ -5289,7 +5289,7 @@
       "params": [],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one direct role grant (to a user or a role) that the grantee also gets through another of its roles. through_roles lists those roles; example_path shows one way round.",
+      "read_this": "one row = one direct role grant (to a user or a role) that the grantee also gets through another of its roles. through_roles lists those roles; example_path shows one way round, from the other role.",
       "healthy": "status = OK never appears; no rows means no role is granted twice.",
       "investigate_if": "WARN on every row: the direct grant adds nothing today and keeps the access when the other role is taken away.",
       "actions": [
@@ -9222,7 +9222,7 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one user (row_level = user) or one role (row_level = role), the top_n busiest of each. read_queries, write_queries and ddl_queries count distinct queries that read, wrote or changed a data object; data_queries counts distinct queries that did any of the three, so the kinds can add up to more than data_queries. tables_read / tables_written count distinct table-like objects (base, dynamic, Iceberg and external tables, materialized views); objects_ddl counts any object type changed. databases_touched counts databases of the tables and views used. users (role rows) are distinct users who used the role; roles_used (user rows) are distinct roles the user used. top_tables lists up to 5 table names by queries. service_query_pct (role rows) is the share of the role's queries run by service users. activity_rank orders by data_queries within the row level (1 = busiest).",
+      "read_this": "one row = one user (row_level = user) or one role (row_level = role), the top_n busiest of each. One more row (row_level = total, is_total_row) holds the uncapped totals over every user. read_queries, write_queries and ddl_queries count distinct queries that read, wrote or changed a data object; data_queries counts distinct queries that did any of the three, so the kinds can add up to more than data_queries. tables_read / tables_written count distinct table-like objects (base, dynamic, Iceberg and external tables, materialized views); objects_ddl counts any object type changed. databases_touched counts databases of the tables and views used. users (role rows) are distinct users who used the role; roles_used (user rows) are distinct roles the user used. top_tables lists up to 5 table names by queries. service_query_pct (role rows) is the share of the role's queries run by service users. activity_rank orders by data_queries within the row level (1 = busiest).",
       "healthy": "status = OK for every ranked row; this check describes use and flags nothing. NOT_ASSESSED when ACCESS_HISTORY is empty.",
       "investigate_if": "NOT_ASSESSED (no_access_history) means ACCESS_HISTORY has no rows in the window, so check the edition and the role's access to the SNOWFLAKE database.",
       "actions": [

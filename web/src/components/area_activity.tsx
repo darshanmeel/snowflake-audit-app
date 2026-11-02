@@ -29,6 +29,25 @@ const touches = (r: Row) => numOrZero(r.read_queries) + numOrZero(r.write_querie
 const rwd = (r: Row) => `${fmtInt(numOrZero(r.read_queries))} reads · ${fmtInt(numOrZero(r.write_queries))} writes · ${fmtInt(numOrZero(r.ddl_queries))} DDL`;
 const byTouches = (a: Row, b: Row) => touches(b) - touches(a);
 const levelRows = (rows: Row[] | null, level: string) => (rows || []).filter((r) => r.row_level === level);
+// One schema's rows: by id, since a schema name such as PUBLIC repeats across databases.
+const schemaDrawer = (r: Row) => (r.schema_id != null ? drawerBy("sf_use_database_activity", "schema_id", r.schema_id, `${r.database_name}.${r.schema_name}`)
+  : drawerBy("sf_use_database_activity", "schema_name", r.schema_name, `${r.database_name}.${r.schema_name}`));
+
+/** A database picker over the rows' databases; "" = all. */
+function DbPick({ dbs, db, setDb, note }: { dbs: string[]; db: string; setDb: (d: string) => void; note?: string | null }) {
+  if (dbs.length < 2) return null;
+  return (
+    <div className="act-db-pick">
+      <label className="cx-muted">{"Database "}
+        <select value={db} onChange={(e) => setDb(e.target.value)} aria-label="Database">
+          <option value="">{`All ${plural(dbs.length, "database")}`}</option>
+          {dbs.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </label>
+      {note && <span className="cx-muted">{` ${note}`}</span>}
+    </div>
+  );
+}
 
 /** A day as "Sep 19", with the year when it falls before the window. */
 function dayYear(v: any, p: ApPageProps): string {
@@ -131,14 +150,18 @@ export function ApActivityDatabases(p: ApPageProps) {
 
 export function ApActivitySchemas(p: ApPageProps) {
   const da = useCheck(p, "sf_use_database_activity");
-  const schemas = levelRows(da.rows, "schema");
+  const allSchemas = levelRows(da.rows, "schema");
+  const dbs = React.useMemo(() => [...new Set(allSchemas.map((r) => String(r.database_name || "")))].filter(Boolean).sort(), [da.rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [db, setDb] = React.useState("");
+  const schemas = db ? allSchemas.filter((r) => r.database_name === db) : allSchemas;
   const never = schemas.filter((r) => isTrue(r.never_used));
   const usd = (r: Row) => numOrZero(r.est_storage_usd_month) * (1 - da.disc);
   const live = schemas.reduce((s, r) => s + numOrZero(r.live_tables), 0);
   const read = schemas.reduce((s, r) => s + numOrZero(r.tables_read), 0);
-  useLede(p, da.loading, schemas.length ? `${fmtInt(never.length)} of ${plural(schemas.length, "schema")} were never used; ${fmtInt(read)} of ${plural(live, "live table")} were read.` : null);
+  useLede(p, da.loading, schemas.length ? `${db ? `In ${db}, ` : ""}${fmtInt(never.length)} of ${plural(schemas.length, "schema")} were never used; ${fmtInt(read)} of ${plural(live, "live table")} were read.` : null);
   return (
     <div className="ais-page cx-e">
+      <DbPick dbs={dbs} db={db} setDb={setDb} />
       <SummaryTileRow compact>
         <CheckTile c={da} label="Schemas nobody uses" badge build={(rows) => {
           const priced = rows.some((r) => r.price_basis === "priced");
@@ -169,7 +192,7 @@ export function ApActivitySchemas(p: ApPageProps) {
             const items: CxRankItem[] = [...schemas].sort(byTouches).filter((r) => touches(r) > 0).map((r) => ({
               key: `${r.database_name}.${r.schema_name}`, label: <CxObjName full={`${r.database_name}.${r.schema_name}`} />, value: touches(r),
               strong: fmtShare(pctOf(touches(r), all)), rest: `${rwd(r)} · ${plural(numOrZero(r.active_users), "user")}`,
-              onClick: drawerBy("sf_use_database_activity", "schema_name", r.schema_name, `${r.database_name}.${r.schema_name}`),
+              onClick: schemaDrawer(r),
             }));
             return items.length ? <div><RankedAbove items={items} noun="schemas" ariaLabel="Schemas by activity" /><div className="cx-foot">{TOUCH_FOOT}</div></div>
               : okNote("No schema had a read, write or DDL in the window.");
@@ -184,7 +207,7 @@ export function ApActivitySchemas(p: ApPageProps) {
               key: `${r.database_name}.${r.schema_name}`, name: `${r.database_name}.${r.schema_name}`, id: r.schema_id, value: valOf(r),
               status: isTrue(r.never_used) ? "WARN" : "OK", strong: fmtV(valOf(r)),
               rest: isTrue(r.never_used) ? "never used" : `${fmtInt(numOrZero(r.read_queries) + numOrZero(r.write_queries))} queries`,
-              onClick: drawerBy("sf_use_database_activity", "schema_name", r.schema_name, `${r.database_name}.${r.schema_name}`),
+              onClick: schemaDrawer(r),
             })).filter((it) => it.value > 0).sort((x, y) => y.value - x.value);
             return items.length ? <CxBarRows rows={items} ariaLabel="Schema storage and queries" /> : null;
           }}
@@ -197,7 +220,7 @@ export function ApActivitySchemas(p: ApPageProps) {
               { label: "Writes", num: true }, { label: "DDL", num: true }, { label: "Users", num: true }, { label: "Last activity", num: true }]}
             rows={[...schemas].sort(byTouches).map((r) => ({
               key: `${r.database_name}.${r.schema_name}`, status: r.status,
-              onClick: drawerBy("sf_use_database_activity", "schema_name", r.schema_name, `${r.database_name}.${r.schema_name}`),
+              onClick: schemaDrawer(r),
               cells: [<CxObjName full={`${r.database_name}.${r.schema_name}`} id={r.schema_id} />,
                 `${fmtInt(numOrZero(r.tables_read))} of ${fmtInt(numOrZero(r.live_tables))}`, fmtInt(numOrZero(r.tables_written)),
                 fmtInt(numOrZero(r.read_queries)), fmtInt(numOrZero(r.write_queries)), fmtInt(numOrZero(r.ddl_queries)),
@@ -268,17 +291,7 @@ export function ApActivityTables(p: ApPageProps) {
   );
   return (
     <div className="ais-page cx-e">
-      {dbs.length > 1 && (
-        <div className="act-db-pick">
-          <label className="cx-muted">{"Database "}
-            <select value={db} onChange={(e) => setDb(e.target.value)} aria-label="Database">
-              <option value="">{`All ${plural(dbs.length, "database")}`}</option>
-              {dbs.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </label>
-          {capped && <span className="cx-muted">{" Counts for one database come from the tables the export listed (the most active and the largest)."}</span>}
-        </div>
-      )}
+      <DbPick dbs={dbs} db={db} setDb={setDb} note={capped ? "Counts for one database come from the tables the export listed (the most active and the largest)." : null} />
       <SummaryTileRow compact>
         {classTile("active", "Active tables", "Read in the newer half of the window.")}
         {classTile("cooling", "Cooling", "Read only in the older half of the window.")}
@@ -313,7 +326,8 @@ export function ApActivityTables(p: ApPageProps) {
                   {RANK_BY.map(([k, w]) => <button key={k} type="button" className={rankBy === k ? "on" : ""} aria-pressed={rankBy === k} onClick={() => setRankBy(k)}>{w}</button>)}
                 </div>
                 {items.length ? <div className="cx-block"><RankedAbove key={rankBy} items={items} noun="tables" ariaLabel={`Busiest tables by ${word}`} />
-                  <div className="cx-foot">{rankBy === "dml" ? "Rows inserted, updated and deleted (TABLE_DML_HISTORY)." : TOUCH_FOOT}</div></div>
+                  <div className="cx-foot">{rankBy === "dml" ? "Rows inserted, updated and deleted (TABLE_DML_HISTORY)." : TOUCH_FOOT}
+                    {rankBy === "dml" || rankBy === "ddl" ? " Ranked among the tables the export kept: the most active and the largest." : ""}</div></div>
                   : okNote(`No table had ${many} in the window.`)}
               </div>
             );
@@ -344,11 +358,11 @@ export function ApActivityTables(p: ApPageProps) {
                   })}
                 </div>
                 <div className="cx-foot"><span>{dmlOnly ? "Reads, writes and DDL need ACCESS_HISTORY (Enterprise edition): only rows changed are shown." : "Reads, writes and DDL in distinct queries; rows changed from TABLE_DML_HISTORY."}</span></div>
-                <TableColumns rows={(tc.rows || []).filter((r) => String(r.table_fqn) === cur)} loading={tc.loading} why={tc.why} />
+                <TableColumns rows={(tc.rows || []).filter((r) => String(r.table_fqn).toUpperCase() === String(cur).toUpperCase())} loading={tc.loading} why={tc.why} />
                 {users.length > 0 && (
                   <div className="cx-block">
                     <CxTable ariaLabel={`Who uses ${cur}`} n={8}
-                      foot={users[0] && numOrZero(users[0].table_users) > users.length ? `${fmtInt(users.length)} of ${plural(numOrZero(users[0].table_users), "user")} shown.` : undefined}
+                      foot={users[0] && numOrZero(users[0].table_users) > new Set(users.map((r) => r.user_name)).size ? `${fmtInt(new Set(users.map((r) => r.user_name)).size)} of ${plural(numOrZero(users[0].table_users), "user")} shown.` : undefined}
                       cols={[{ label: "User" }, { label: "Role" }, { label: "Reads", num: true }, { label: "Writes", num: true }, { label: "DDL", num: true }, { label: "Days", num: true }, { label: "Last", num: true }]}
                       rows={users.map((r) => ({
                         key: `${r.user_name}|${r.role_name}`,
@@ -411,15 +425,18 @@ export function ApActivityUsers(p: ApPageProps) {
   const tr = useCheck(p, "sf_use_table_readers");
   const users = levelRows(io.rows, "user");
   const roles = levelRows(io.rows, "role");
-  // One query has one user and one primary role, so these sums are whole totals.
-  const allQ = users.reduce((s, r) => s + numOrZero(r.data_queries), 0);
-  const svcQ = users.filter((r) => isTrue(r.is_service_user)).reduce((s, r) => s + numOrZero(r.data_queries), 0);
-  const roleQ = roles.reduce((s, r) => s + numOrZero(r.data_queries), 0);
+  // The user and role lists are capped; the counts and shares come from the check's uncapped total row.
+  const tot = levelRows(io.allRows, "total")[0] || null;
+  const nUsers = tot ? numOrZero(tot.users) : users.length;
+  const allQ = tot ? numOrZero(tot.data_queries) : users.reduce((s, r) => s + numOrZero(r.data_queries), 0);
+  const svcPct = tot ? numOrZero(tot.service_query_pct) : pctOf(users.filter((r) => isTrue(r.is_service_user)).reduce((s, r) => s + numOrZero(r.data_queries), 0), allQ);
+  const nSvc = tot ? numOrZero(tot.service_users) : users.filter((r) => isTrue(r.is_service_user)).length;
+  const roleQ = allQ;
   const topRole = [...roles].sort((a, b) => numOrZero(b.data_queries) - numOrZero(a.data_queries))[0];
   const idle = (ua.rows || []).filter((r) => isTrue(r.idle_with_roles));
   const asOf = p.meta && p.meta.as_of_date ? Date.parse(`${String(p.meta.as_of_date).slice(0, 10)}T00:00:00Z`) : NaN;
   useLede(p, io.loading || ua.loading, [
-    users.length ? `${plural(users.length, "user")} read, wrote or changed data; service users ran ${fmtShare(pctOf(svcQ, allQ))} of those queries.` : null,
+    nUsers ? `${plural(nUsers, "user")} read, wrote or changed data; service users ran ${fmtShare(svcPct)} of those queries.` : null,
     ua.rows ? `${fmtInt(idle.length)} of ${plural(ua.rows.length, "user")} hold roles but ran nothing.` : null,
   ].filter(Boolean).join(" ") || null);
   const userItem = (r: Row): CxRankItem => ({
@@ -432,12 +449,12 @@ export function ApActivityUsers(p: ApPageProps) {
     <div className="ais-page cx-e">
       <SummaryTileRow compact>
         <CheckTile c={io} label="Users touching data" build={() => ({
-          headline: fmtInt(users.length), unit: " users",
+          headline: fmtInt(nUsers), unit: " users",
           base: `${plural(allQ, "query", "queries")} read, wrote or changed a data object.`,
         })} />
         <CheckTile c={io} label="Run by service users" build={() => ({
-          headline: fmtShare(pctOf(svcQ, allQ)), unit: " of data queries",
-          base: `${fmtInt(users.filter((r) => isTrue(r.is_service_user)).length)} of ${plural(users.length, "user")} are service users.`,
+          headline: fmtShare(svcPct), unit: " of data queries",
+          base: `${fmtInt(nSvc)} of ${plural(nUsers, "user")} are service users.`,
         })} />
         <CheckTile c={io} label="Busiest role" build={() => ({
           headline: topRole ? fmtShare(pctOf(numOrZero(topRole.data_queries), roleQ)) : null, unit: " of data queries", missingReason: topRole ? undefined : "no role rows",

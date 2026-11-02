@@ -11,6 +11,7 @@ import type { ApPageProps } from "./area_pages";
 import { IssueTile } from "./blocks";
 import { ChartCard } from "./primitives";
 import { Row2, Slot, isFlagged, useCheck, useLede } from "./area_ai_storage";
+import type { Row } from "../types";
 import { SummaryTileRow } from "./overview_tile";
 import { CxChip, CxStat, CxTable } from "./cx_e";
 
@@ -26,6 +27,10 @@ const CLS_WORD: Record<string, string> = { own: "own", write: "write", read: "re
 // A link can open the explorer on one name (#...&explore=role:NAME); read at load, before the shell rewrites the hash.
 const START_M = /[#&]explore=(user|role|object):([^&]+)/.exec(window.location.hash);
 const START = START_M ? { kind: START_M[1] as Kind, name: decodeURIComponent(START_M[2]) } : null;
+const START_TO_M = /[#&]to=([^&]+)/.exec(window.location.hash);
+let startTo = START_TO_M ? decodeURIComponent(START_TO_M[1]) : "";   // used once, on the first result
+const START_OPEN_M = /[#&]open=([^&]+)/.exec(window.location.hash);
+let startOpen = START_OPEN_M ? decodeURIComponent(START_OPEN_M[1]) : "";   // a schema box opened by the link, once
 const ADMIN = new Set(["ACCOUNTADMIN", "SECURITYADMIN", "USERADMIN", "SYSADMIN", "ORGADMIN", "GLOBALORGADMIN"]);
 
 /** One path as chips: user › role › role › object; admin roles in red, the last step plain. */
@@ -45,7 +50,7 @@ function PathLine({ path, onPick }: { path: string[]; onPick?: (kind: Kind, name
 }
 
 /** The shortest path, and the others behind "+N more paths". */
-function Paths({ paths, count, onPick }: { paths: string[][]; count: number; onPick: (kind: Kind, name: string) => void }) {
+function Paths({ paths, count, onPick, capped }: { paths: string[][]; count: number; onPick: (kind: Kind, name: string) => void; capped?: boolean }) {
   const [all, setAll] = React.useState(false);
   if (!paths.length) return <span className="cx-muted">–</span>;
   const more = count - 1;
@@ -54,7 +59,7 @@ function Paths({ paths, count, onPick }: { paths: string[][]; count: number; onP
       {(all ? paths : paths.slice(0, 1)).map((p, i) => <PathLine key={i} path={p} onPick={onPick} />)}
       {more > 0 && (
         <button type="button" className="cx-linkbtn" onClick={(e) => { e.stopPropagation(); setAll(!all); }}>
-          {all ? "Show fewer" : `+${fmtInt(more)} more ${more === 1 ? "path" : "paths"}`}
+          {all ? "Show fewer" : `+${fmtInt(more)}${capped ? "+" : ""} more ${more === 1 && !capped ? "path" : "paths"}`}
         </button>
       )}
       {all && count > paths.length && <span className="cx-muted">{`First ${fmtInt(paths.length)} of ${fmtInt(count)} shown.`}</span>}
@@ -69,9 +74,15 @@ const W = 196, H = 30, GAP = 56, ROW = 40, TOP = 26, CAP = 14;
 // Users drawn on the left of a role or object graph: a few per role, so the reader sees who; the table lists all.
 const USERS_PER_ROLE = 2, USERS_DRAWN = 12;
 
-function RoleGraph({ paths, focus, users, objects, onPick, laneName }: {
+/** A box in the graph's last column: a schema (or warehouse, account, ...) with its counts, or one object. */
+interface GBox { key: string; title: string; sub: string; sensitive?: number; more?: boolean }
+/** An arrow from a role to a box, labelled with its privileges and coloured by the strongest class. */
+interface GBoxEdge { from: string; to: string; label: string; full?: string; cls: string }
+const BW = 300, BGAP = 150, BROW = 19;
+
+function RoleGraph({ paths, focus, users, objects, onPick, laneName, boxes, boxEdges, boxLabel, onBox }: {
   paths: string[][]; focus: string; users: Set<string>; objects: Set<string>; onPick: (kind: Kind, name: string) => void;
-  laneName: (lane: number) => string;
+  laneName: (lane: number) => string; boxes?: GBox[]; boxEdges?: GBoxEdge[]; boxLabel?: string; onBox?: (key: string) => void;
 }) {
   const [open, setOpen] = React.useState<Set<number>>(new Set());
   const [hover, setHover] = React.useState<string | null>(null);
@@ -136,7 +147,20 @@ function RoleGraph({ paths, focus, users, objects, onPick, laneName }: {
   const shown = g.cols.map((c, ci) => (open.has(ci) || c.length <= CAP ? c : c.slice(0, CAP)));
   shown.forEach((c, ci) => c.forEach((x, i) => xy.set(x, [ci * (W + GAP), TOP + i * ROW])));
   const rows = Math.max(1, ...shown.map((c, ci) => c.length + (g.cols[ci].length > CAP ? 1 : 0)));
-  const width = Math.max(W, g.cols.length * (W + GAP) - GAP), height = TOP + rows * ROW;
+  const rolesW = Math.max(W, g.cols.length * (W + GAP) - GAP);
+  // Boxes: stacked in one column; a box grows so each incoming arrow gets its own entry point and label.
+  const bx = rolesW + BGAP;
+  const inc = new Map<string, GBoxEdge[]>();
+  (boxEdges || []).filter((e) => xy.has(e.from)).forEach((e) => inc.set(e.to, [...(inc.get(e.to) || []), e]));
+  inc.forEach((es) => es.sort((a, b) => xy.get(a.from)![1] - xy.get(b.from)![1]));
+  const bxy = new Map<string, [number, number]>();
+  let by = TOP;
+  (boxes || []).forEach((b) => {
+    const h = Math.max(44, 16 + (inc.get(b.key)?.length || 0) * BROW);
+    bxy.set(b.key, [by, h]);
+    by += h + 10;
+  });
+  const width = boxes && boxes.length ? bx + BW : rolesW, height = Math.max(TOP + rows * ROW, by);
   const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
   return (
     <div className="ax-graph-box">
@@ -147,6 +171,24 @@ function RoleGraph({ paths, focus, users, objects, onPick, laneName }: {
         </defs>
         {g.lanes.map((l, ci) => <text key={l} className="ax-lane-label" x={ci * (W + GAP)} y={12}>
           {g.cols[ci].some((x) => objects.has(x) && x !== focus) ? "Tables" : g.cols[ci].every((x) => users.has(x) && x !== focus) ? "Users" : laneName(l)}</text>)}
+        {boxes && boxes.length > 0 && <text className="ax-lane-label" x={bx} y={12}>{boxLabel || "Objects"}</text>}
+        {[...inc.entries()].flatMap(([to, es]) => {
+          const pb = bxy.get(to);
+          if (!pb) return [];
+          return es.map((e, i) => {
+            const pa = xy.get(e.from)!;
+            const x1 = pa[0] + W, y1 = pa[1] + H / 2;
+            const y2 = es.length === 1 ? pb[0] + pb[1] / 2 : pb[0] + 12 + i * ((pb[1] - 24) / (es.length - 1));
+            const on = hover === e.from || hover === to;
+            return (
+              <g key={`${e.from}>${to}`} className={`ax-bedge ${e.cls}${on ? " on" : ""}`}>
+                <path d={`M${x1},${y1} C${x1 + 70},${y1} ${bx - 70},${y2} ${bx - 2},${y2}`} className="ax-edge" markerEnd="url(#ax-arrow)" />
+                <title>{`${e.from} → ${to}: ${e.full || e.label}`}</title>
+                <text x={bx - 8} y={y2 - 4} textAnchor="end">{e.label}</text>
+              </g>
+            );
+          });
+        })}
         {g.edges.map(([a, b]) => {
           const pa = xy.get(a), pb = xy.get(b);
           if (!pa || !pb) return null;
@@ -173,6 +215,19 @@ function RoleGraph({ paths, focus, users, objects, onPick, laneName }: {
             </g>
           );
         })}
+        {(boxes || []).map((b) => {
+          const [py, h] = bxy.get(b.key)!;
+          return (
+            <g key={b.key} className={`ax-box${b.more ? " more" : ""}${onBox ? " link" : ""}`} transform={`translate(${bx},${py})`}
+              onMouseEnter={() => setHover(b.key)} onMouseLeave={() => setHover(null)} onClick={onBox ? () => onBox(b.key) : undefined}>
+              <title>{`${b.title}${b.sub ? ` · ${b.sub}` : ""}`}</title>
+              <rect width={BW} height={h} rx={6} />
+              <text className="ax-box-title" x={10} y={18}>{b.title.length > 38 ? `${b.title.slice(0, 37)}…` : b.title}</text>
+              <text className="ax-box-sub" x={10} y={34}>{b.sub.length > 44 ? `${b.sub.slice(0, 43)}…` : b.sub}
+                {b.sensitive ? <tspan className="ax-sens">{` · ${fmtInt(b.sensitive)} sensitive`}</tspan> : null}</text>
+            </g>
+          );
+        })}
         {g.cols.map((c, ci) => (c.length > CAP ? (
           <g key={`more-${ci}`} className="ax-gnode link more" transform={`translate(${ci * (W + GAP)},${TOP + shown[ci].length * ROW})`}
             onClick={() => setOpen((s) => { const o = new Set(s); if (o.has(ci)) o.delete(ci); else o.add(ci); return o; })}>
@@ -189,7 +244,41 @@ const grantKey = (r: any) => `${r.privilege}|${r.granted_on}|${r.object}`;
 const holderKey = (r: any) => `${r.kind}|${r.name}|${r.privilege || ""}`;
 // Object types drawn as the graph's last column: the data a user ends up reading or changing.
 const DATA_KINDS = new Set(["TABLE", "VIEW", "MATERIALIZED_VIEW", "MATERIALIZED VIEW", "DYNAMIC_TABLE", "EXTERNAL_TABLE", "ICEBERG_TABLE", "EVENT_TABLE"]);
-const TOP_TABLES = 10;
+const PRIV_RANK: Record<string, number> = { own: 4, write: 3, read: 2, use: 1 };
+const SCHEMA_BOXES = 16, OBJECT_BOXES = 12;
+const kindWord = (k: string) => String(k || "object").replace(/_/g, " ").toLowerCase();
+
+/** The box a privilege row lands in: its schema, or one box for the account, the databases, each warehouse,
+ *  and each other object type. */
+function groupOf(r: any): { key: string; title: string; kind: string } {
+  const parts = String(r.object).split(".");
+  if (r.granted_on === "ACCOUNT") return { key: "@account", title: "Account", kind: "account" };
+  if (r.granted_on === "WAREHOUSE") return { key: `@wh:${r.object}`, title: r.object, kind: "warehouse" };
+  if (r.granted_on === "DATABASE") return { key: "@databases", title: "Databases", kind: "databases" };
+  if (r.granted_on === "SCHEMA") return { key: r.object, title: r.object, kind: "schema" };
+  if (parts.length >= 3) return { key: `${parts[0]}.${parts[1]}`, title: `${parts[0]}.${parts[1]}`, kind: "schema" };
+  return { key: `@${r.granted_on}`, title: `${kindWord(r.granted_on)}s`, kind: "other" };
+}
+
+/** Arrows from each role that holds a privilege to the box it lands in: privilege counts, strongest class. */
+function edgesTo(rows: any[], keyOf: (r: any) => string, counts: boolean): GBoxEdge[] {
+  const m = new Map<string, { from: string; to: string; privs: Map<string, Set<string>>; cls: string }>();
+  rows.forEach((r) => (r.holders || []).forEach((h: string) => {
+    const k = `${h}>${keyOf(r)}`;
+    const cur = m.get(k) || { from: h, to: keyOf(r), privs: new Map<string, Set<string>>(), cls: "use" };
+    if (!cur.privs.has(r.privilege)) cur.privs.set(r.privilege, new Set());
+    cur.privs.get(r.privilege)!.add(r.object);
+    if ((PRIV_RANK[r.cls] || 0) > (PRIV_RANK[cur.cls] || 0)) cur.cls = r.cls;
+    m.set(k, cur);
+  }));
+  return [...m.values()].map((e) => {
+    const ps = [...e.privs.entries()].sort((a, b) => b[1].size - a[1].size);
+    // One privilege per label keeps the labels of a busy box apart; the rest show as "+N" (all in the hover).
+    const label = (counts ? `${ps[0][0]} ${fmtInt(ps[0][1].size)}` : ps[0][0]) + (ps.length > 1 ? ` +${ps.length - 1}` : "");
+    const full = ps.map(([pv, s]) => `${pv} ${fmtInt(s.size)}`).join(" · ");
+    return { from: e.from, to: e.to, label, full, cls: e.cls };
+  });
+}
 
 /** Text, class and privilege filters over the rows: "can X do P on Y?". */
 function useFilter(rows: any[]) {
@@ -226,7 +315,7 @@ function GrantsTable({ rows, onPick, onRow, selKey }: {
           cells: [<CxChip status={CLS_STATUS[r.cls]}>{r.privilege}</CxChip>,
             r.granted_on !== "ACCOUNT" ? <button type="button" className="ax-namebtn" onClick={(e) => { e.stopPropagation(); onPick("object", r.object); }}>{r.object}</button>
               : <code className="ax-obj">{r.object}</code>,
-            String(r.granted_on || "").replace(/_/g, " ").toLowerCase(), <Paths paths={r.paths} count={r.path_count} onPick={onPick} />],
+            String(r.granted_on || "").replace(/_/g, " ").toLowerCase(), <Paths paths={r.paths} count={r.path_count} onPick={onPick} capped={r.capped} />],
         }))} />
     </div>
   );
@@ -241,15 +330,42 @@ function HoldersTable({ rows, onPick, withPriv, onRow, selKey }: {
       {withPriv && bar}
       <CxTable ariaLabel="Who holds it" n={25}
         cols={[{ label: "Who" }, ...(withPriv ? [{ label: "Privilege" }] : []), { label: "Last sign-in", num: true }, { label: "Path", width: "50%" }]}
-        foot={`${plural(shown.filter((r) => r.kind === "user").length, "user")} and ${plural(shown.filter((r) => r.kind === "role").length, "role")}.`}
+        foot={`${plural(new Set(shown.filter((r) => r.kind === "user").map((r) => r.name)).size, "user")} and ${plural(new Set(shown.filter((r) => r.kind === "role").map((r) => r.name)).size, "role")}${withPriv ? `, in ${plural(shown.length, "row")} (one per privilege)` : ""}.`}
         rows={shown.map((r) => ({
           key: holderKey(r), status: r.admin ? "CRITICAL" : r.is_disabled ? "WARN" : undefined, on: holderKey(r) === selKey, onClick: () => onRow(r),
           cells: [
             <span><button type="button" className={`ax-namebtn${r.kind === "user" ? " user" : ""}`} onClick={(e) => { e.stopPropagation(); onPick(r.kind, r.name); }}>{r.name}</button>{r.kind === "user" && r.is_disabled ? <> <CxChip status="WARN">disabled</CxChip></> : null}{r.kind === "user" && r.user_type && r.user_type !== "PERSON" ? <> <CxChip>{String(r.user_type).toLowerCase()}</CxChip></> : null}</span>,
             ...(withPriv ? [<CxChip status={CLS_STATUS[r.cls]}>{r.privilege}</CxChip>] : []),
             r.kind === "user" ? lastDay(r.last_success_login) : "–",
-            <Paths paths={r.paths} count={r.path_count} onPick={onPick} />],
+            <Paths paths={r.paths} count={r.path_count} onPick={onPick} capped={r.capped} />],
         }))} />
+    </div>
+  );
+}
+
+/** "Path to": a second name the explored user, role or object reaches; the graph then shows only those paths. */
+function PathTo({ targets, value, onPick, placeholder }: {
+  targets: Map<string, { paths: string[][]; count: number }>; value: string; onPick: (n: string) => void; placeholder: string;
+}) {
+  const [text, setText] = React.useState(value);
+  React.useEffect(() => setText(value), [value]);
+  const t = text.trim().toUpperCase();
+  const names = [...targets.keys()];
+  const hits = t ? names.filter((n) => n.toUpperCase().includes(t)).slice(0, 12) : [];
+  const exact = names.find((n) => n.toUpperCase() === t);
+  return (
+    <div className="ax-pick">
+      <span className="cx-muted">{"Path to"}</span>
+      <input className="ax-input wide" value={text} placeholder={placeholder} aria-label="Path to"
+        onChange={(e) => { setText(e.target.value); if (!e.target.value.trim()) onPick(""); }}
+        onKeyDown={(e) => { if (e.key === "Enter" && (exact || hits[0])) onPick(exact || hits[0]); }} />
+      {t && !exact && hits.length > 0 && (
+        <div className="cx-pick-list" role="listbox" aria-label="Path to">
+          {hits.map((n) => <button key={n} type="button" onClick={() => onPick(n)}>{n}</button>)}
+        </div>
+      )}
+      {t && !exact && !hits.length && <span className="cx-muted">{"Not reached from here."}</span>}
+      {value && <button type="button" className="cx-linkbtn" onClick={() => onPick("")}>{"Clear"}</button>}
     </div>
   );
 }
@@ -290,18 +406,47 @@ export function ApAccessExplorer(p: ApPageProps) {
       .catch((e) => setErr(String(e.message || e)));
   }, [acct]);
   React.useEffect(() => {
+    setRes(null);   // never show the last result under a new kind or name
     if (!sel.name) return;
     setLoading(true);
+    let live = true;   // a quick second pick must not be overwritten by the first answer
     getJson("/api/access/explore", { kind: sel.kind, name: sel.name, ...(acct ? { account_id: acct } : {}) })
-      .then((d) => { setRes(d); setErr(null); }).catch((e) => { setRes(null); setErr(String(e.message || e)); })
-      .finally(() => setLoading(false));
+      .then((d) => { if (live) { setRes(d); setErr(null); } }).catch((e) => { if (live) { setRes(null); setErr(String(e.message || e)); } })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
   }, [sel.kind, sel.name, acct]);
 
   const pick = (kind: Kind, name: string) => { setSel({ kind, name }); window.scrollTo({ top: 0, behavior: "smooth" }); };
   // A row picked in a table: the graph shows only its paths.
   const [focusRow, setFocusRow] = React.useState<{ key: string; label: string; paths: string[][]; count: number } | null>(null);
   React.useEffect(() => setFocusRow(null), [sel.kind, sel.name]);
+  const targets = React.useMemo(() => {
+    const m = new Map<string, { paths: string[][]; count: number }>();
+    const add = (name: string, paths: string[][], count: number) => {
+      const cur = m.get(name) || { paths: [], count: 0 };
+      cur.paths.push(...paths);
+      cur.count += count;
+      m.set(name, cur);
+    };
+    if (!res) return m;
+    (res.roles || []).filter((r: any) => r.depth > 0).forEach((r: any) => add(r.role, r.paths, r.path_count));
+    (res.grants || []).filter((r: any) => r.granted_on !== "ACCOUNT").forEach((r: any) => add(r.object, r.paths, r.path_count));
+    (res.holders || []).forEach((h: any) => add(h.name, h.paths, h.path_count));
+    return m;
+  }, [res]);
+  const [pathTo, setPathTo] = React.useState("");
+  React.useEffect(() => setPathTo(""), [sel.kind, sel.name]);
+  const choosePath = (name: string) => {
+    setPathTo(name);
+    const tgt = name ? targets.get(name) : null;
+    setFocusRow(tgt ? { key: `to|${name}`, label: sel.kind === "object" ? `${name} reaches ${res.name}` : `${res.name} reaches ${name}`,
+      paths: tgt.paths, count: tgt.count } : null);
+  };
+  React.useEffect(() => {
+    if (startTo && targets.has(startTo)) { choosePath(startTo); startTo = ""; }
+  }, [targets]); // eslint-disable-line react-hooks/exhaustive-deps
   const showRow = (key: string, label: string, r: any) => {
+    setPathTo("");
     setFocusRow((f) => (f && f.key === key ? null : { key, label, paths: r.paths, count: r.path_count }));
     document.getElementById("ax-graph")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -312,22 +457,78 @@ export function ApAccessExplorer(p: ApPageProps) {
   const adminGrants = grants.filter((g) => g.admin).length;
   const deepest = Math.max(0, ...roles.map((r) => r.depth));
   const objects = new Set(grants.map((g) => g.object)).size;
-  // The graph: a user's or role's paths down its roles, a role's holders above it, an object's roles before it.
-  // The most used tables it can reach end the graph (by queries in the window, else by name); the rest stay in the table.
-  const topTables = React.useMemo(() => {
-    if (!res || res.kind === "object") return [] as any[];
-    const best = new Map<string, any>();
-    (res.grants || []).filter((r: any) => DATA_KINDS.has(r.granted_on)).forEach((r: any) => {
-      const cur = best.get(r.object);
-      if (!cur || r.paths[0].length < cur.paths[0].length) best.set(r.object, r);
+  // What a user or role reaches, one box per schema (and one per warehouse, the account, the databases and
+  // each other object type); a box opened shows that group's objects one by one.
+  const sens = useCheck(p, "sf_acc_sensitive_reach");
+  const sensSet = React.useMemo(() => new Set((sens.rows || []).map((r: Row) => String(r.table_fqn).toUpperCase())), [sens.rows]);
+  const [drill, setDrill] = React.useState<string | null>(null);
+  const [drillAll, setDrillAll] = React.useState(false);
+  const [moreBoxes, setMoreBoxes] = React.useState(false);
+  React.useEffect(() => { setDrill(null); setDrillAll(false); setMoreBoxes(false); }, [sel.kind, sel.name]);
+  const groups = React.useMemo(() => {
+    const m = new Map<string, { key: string; title: string; kind: string; rows: any[] }>();
+    if (!res || res.kind === "object") return m;
+    (res.grants || []).forEach((r: any) => {
+      const gr = groupOf(r);
+      if (!m.has(gr.key)) m.set(gr.key, { ...gr, rows: [] });
+      m.get(gr.key)!.rows.push(r);
     });
-    return [...best.values()].sort((a, b) => (b.queries || 0) - (a.queries || 0) || a.object.localeCompare(b.object)).slice(0, TOP_TABLES);
+    return m;
   }, [res]);
-  const graphPaths: string[][] = React.useMemo(() => (!res ? [] : focusRow ? focusRow.paths : [
-    ...(res.roles || []).flatMap((r: any) => r.paths), ...(res.holders || []).flatMap((h: any) => h.paths),
-    ...topTables.flatMap((r: any) => r.paths.slice(0, 2))]), [res, focusRow, topTables]);
-  const graphObjects = React.useMemo(() => new Set<string>([
-    ...topTables.map((r: any) => r.object), ...(focusRow ? focusRow.paths.map((p) => p[p.length - 1]) : [])].filter((x) => res && x !== res.name)), [topTables, focusRow, res]);
+  React.useEffect(() => { if (startOpen && groups.has(startOpen)) { setDrill(startOpen); startOpen = ""; } }, [groups]);
+  const openGroup = drill ? groups.get(drill) || null : null;
+  const box = React.useMemo(() => {
+    if (focusRow || !groups.size) return null;
+    const sensOf = (objs: string[]) => objs.filter((o) => sensSet.has(o.toUpperCase())).length;
+    if (openGroup) {
+      const byObj = new Map<string, any[]>();
+      openGroup.rows.forEach((r) => byObj.set(r.object, [...(byObj.get(r.object) || []), r]));
+      const list = [...byObj.entries()].sort((a, b) => (b[1][0].queries || 0) - (a[1][0].queries || 0) || a[0].localeCompare(b[0]));
+      const shownList = drillAll ? list : list.slice(0, OBJECT_BOXES);
+      const boxes: GBox[] = shownList.map(([o, rs]) => ({
+        key: o, title: openGroup.kind === "schema" ? o.slice(openGroup.key.length + 1) || o : o,
+        sub: `${kindWord(rs[0].granted_on)} · ${[...new Set(rs.map((r) => r.privilege))].join(", ")}`, sensitive: sensSet.has(o.toUpperCase()) ? 1 : 0,
+      }));
+      if (list.length > OBJECT_BOXES) boxes.push({ key: "@more", title: drillAll ? "Show fewer" : `+${fmtInt(list.length - OBJECT_BOXES)} more`, sub: "objects in this group", more: true });
+      const keep = new Set(shownList.map(([o]) => o));
+      const rows = openGroup.rows.filter((r) => keep.has(r.object));
+      return { boxes, edges: edgesTo(rows, (r) => r.object, false), paths: rows.flatMap((r) => r.paths.map((pp: string[]) => pp.slice(0, -1))),
+        label: `${openGroup.title}: ${plural(byObj.size, "object")}` };
+    }
+    const order = (k: string) => (k === "@account" ? 4 : k === "@databases" ? 3 : k.startsWith("@wh:") ? 2 : k.startsWith("@") ? 1 : 0);
+    const all = [...groups.values()].sort((a, b) => order(a.key) - order(b.key) || b.rows.length - a.rows.length || a.key.localeCompare(b.key));
+    const shownGroups = moreBoxes ? all : all.slice(0, SCHEMA_BOXES);
+    const boxes: GBox[] = shownGroups.map((gr) => {
+      const kinds = new Map<string, Set<string>>();
+      gr.rows.forEach((r) => {
+        if ((gr.kind === "schema" && r.granted_on === "SCHEMA") || gr.kind === "account") return;
+        if (!kinds.has(r.granted_on)) kinds.set(r.granted_on, new Set());
+        kinds.get(r.granted_on)!.add(r.object);
+      });
+      const subTxt = gr.kind === "account" ? plural(gr.rows.length, "account privilege")
+        : gr.kind === "databases" ? `USAGE and more on ${plural(new Set(gr.rows.map((r) => r.object)).size, "database")}`
+        : gr.kind === "warehouse" ? [...new Set(gr.rows.map((r) => r.privilege))].join(", ")
+        : [...kinds.entries()].sort((a, b) => b[1].size - a[1].size).map(([k, s]) => plural(s.size, kindWord(k))).join(" · ") || "schema privileges only";
+      return { key: gr.key, title: gr.kind === "warehouse" ? `${gr.title} · warehouse` : gr.title, sub: subTxt,
+        sensitive: sensOf([...new Set(gr.rows.map((r) => r.object))]) };
+    });
+    if (all.length > SCHEMA_BOXES) boxes.push({ key: "@moreboxes", title: moreBoxes ? "Show fewer" : `+${fmtInt(all.length - SCHEMA_BOXES)} more`, sub: "schemas and groups", more: true });
+    const keep = new Set(shownGroups.map((gr) => gr.key));
+    const nSchemas = all.filter((gr) => gr.kind === "schema").length;
+    return { boxes, edges: edgesTo(grants.filter((r) => keep.has(groupOf(r).key)), (r) => groupOf(r).key, true), paths: null as string[][] | null,
+      label: `${plural(objects, "object")} in ${plural(nSchemas, "schema")}` };
+  }, [groups, openGroup, drillAll, moreBoxes, focusRow, sensSet]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onBox = (key: string) => {
+    if (key === "@more") setDrillAll((v) => !v);
+    else if (key === "@moreboxes") setMoreBoxes((v) => !v);
+    else if (!drill) { setDrill(key); setDrillAll(false); }
+  };
+  // The graph: a user's or role's paths down its roles, a role's holders above it, an object's roles before it.
+  const graphPaths: string[][] = React.useMemo(() => (!res ? [] : focusRow ? focusRow.paths : box && box.paths ? box.paths : [
+    ...(res.roles || []).flatMap((r: any) => r.paths), ...(res.holders || []).flatMap((h: any) => h.paths)]), [res, focusRow, box]);
+  const graphObjects = React.useMemo(() => new Set<string>(
+    (focusRow ? focusRow.paths.map((pp) => pp[pp.length - 1]) : []).filter((x) => res && x !== res.name)), [focusRow, res]);
+  const shownGrants = openGroup ? openGroup.rows : grants;
   const userNames = React.useMemo(() => new Set<string>([...(res && res.kind === "user" ? [res.name] : []),
     ...((res && res.holders) || []).filter((h: any) => h.kind === "user").map((h: any) => h.name)]), [res]);
   const laneName = (l: number) => (l === 0 ? (sel.kind === "user" ? "User" : sel.kind === "role" ? "This role" : "This object")
@@ -344,8 +545,9 @@ export function ApAccessExplorer(p: ApPageProps) {
         base={deepest ? `Deepest chain: ${plural(deepest, "role")}` : "No roles"} />
       <IssueTile label="Through an admin role" headline={fmtInt(adminGrants)} unit={` of ${plural(grants.length, "privilege")}`}
         status={adminGrants ? "critical" : "ok"} base={adminGrants ? "Reached through ACCOUNTADMIN, SECURITYADMIN, SYSADMIN or USERADMIN" : "No path goes through an admin role"} />
-      <IssueTile label="Can change data" headline={fmtInt(grants.filter((g) => g.cls === "write" || g.cls === "own").length)} unit=" privileges" status="neutral"
-        base={`Write or own; ${fmtInt(grants.filter((g) => g.cls === "read").length)} read only`} />
+      <IssueTile label="Can change data" headline={fmtInt(grants.filter((g) => DATA_KINDS.has(g.granted_on) && (g.cls === "write" || g.cls === "own")).length)}
+        unit={` of ${plural(grants.filter((g) => DATA_KINDS.has(g.granted_on)).length, "table privilege")}`} status="neutral"
+        base={`Write or own on tables and views; ${fmtInt(grants.filter((g) => DATA_KINDS.has(g.granted_on) && g.cls === "read").length)} read only`} />
     </SummaryTileRow>
   ) : res && sel.kind === "object" ? (
     <SummaryTileRow compact>
@@ -371,6 +573,10 @@ export function ApAccessExplorer(p: ApPageProps) {
         </div>
         <NamePicker kind={sel.kind} names={names} value={sel.name} onPick={(n) => setSel({ kind: sel.kind, name: n })} />
         {loading && <span className="cx-muted">…</span>}
+        {res && targets.size > 0 && (
+          <PathTo targets={targets} value={pathTo} onPick={choosePath}
+            placeholder={sel.kind === "user" ? "a role or table" : sel.kind === "role" ? "a user, role or table" : "a user or role"} />
+        )}
       </div>
       {err && <CxStat>{`– ${err}`}</CxStat>}
       {res && sel.kind === "user" && res.user && (
@@ -379,18 +585,20 @@ export function ApAccessExplorer(p: ApPageProps) {
       {tiles}
       {res && graphPaths.length > 0 && (
         <div id="ax-graph">
-          <ChartCard title={focusRow ? `How ${focusRow.label}` : sel.kind === "user" ? "Roles and tables it can use" : sel.kind === "role" ? "Where it sits in the role tree" : "Roles that reach it"}
-            subtitle={focusRow ? `Every path for the row picked below${focusRow.count > focusRow.paths.length ? ` · the first ${fmtInt(focusRow.paths.length)} of ${fmtInt(focusRow.count)}` : ""}`
-              : `Arrow = is granted to · one column per step · red = admin role${topTables.length ? ` · the ${fmtInt(topTables.length)} most used tables it can reach, the rest in the table below` : ""} · select a row below for its whole path${sel.kind !== "user" ? " · N users = users granted that role directly" : ""}`}
+          <ChartCard title={focusRow ? `How ${focusRow.label}` : openGroup ? `What ${res.name} reaches in ${openGroup.title}` : sel.kind === "user" ? "Roles and what they reach" : sel.kind === "role" ? "Where it sits in the role tree" : "Roles that reach it"}
+            subtitle={focusRow ? `Every path ${pathTo ? "between the two" : "for the row picked below"}${focusRow.count > focusRow.paths.length ? ` · the first ${fmtInt(focusRow.paths.length)} of ${fmtInt(focusRow.count)}` : ""}`
+              : `${box ? `${box.label} · ${openGroup ? "one box per object" : "grouped by schema · select a box to open it"} · ` : ""}arrow = is granted to · arrow colour: blue read, amber write, red own, grey use · red box = admin role${sel.kind !== "user" ? " · N users = users granted that role directly" : ""}`}
             takeaway={null}>
-            {focusRow && <div className="ax-graph-bar"><button type="button" className="cx-linkbtn" onClick={() => setFocusRow(null)}>{"← Show the whole graph"}</button></div>}
-            <RoleGraph key={focusRow ? focusRow.key : "all"} paths={graphPaths} focus={res.name} users={userNames} objects={graphObjects} onPick={pick} laneName={laneName} />
+            {(focusRow || openGroup) && <div className="ax-graph-bar"><button type="button" className="cx-linkbtn" onClick={() => { setFocusRow(null); setPathTo(""); setDrill(null); }}>
+              {focusRow ? "← Show the whole graph" : "← All schemas"}</button></div>}
+            <RoleGraph key={focusRow ? focusRow.key : drill || "all"} paths={graphPaths} focus={res.name} users={userNames} objects={graphObjects} onPick={pick} laneName={laneName}
+              boxes={box ? box.boxes : undefined} boxEdges={box ? box.edges : undefined} boxLabel={openGroup ? openGroup.title : "Objects, by schema"} onBox={box ? onBox : undefined} />
           </ChartCard>
         </div>
       )}
       {res && sel.kind !== "object" && (
-        <ChartCard title={`What ${res.name} can do`} subtitle="Every privilege, with the path it comes through · select a row for its whole path in the graph, a name to explore it" takeaway={null}>
-          {grants.length ? <GrantsTable rows={grants} onPick={pick} selKey={focusRow && focusRow.key}
+        <ChartCard title={openGroup ? `What ${res.name} can do in ${openGroup.title}` : `What ${res.name} can do`} subtitle="Every privilege, with the path it comes through · select a row for its whole path in the graph, a name to explore it" takeaway={null}>
+          {grants.length ? <GrantsTable key={drill || "all"} rows={shownGrants} onPick={pick} selKey={focusRow && focusRow.key}
             onRow={(r) => showRow(grantKey(r), `${res.name} gets ${r.privilege} on ${r.object}`, r)} /> : <CxStat>{"Holds no privileges on objects."}</CxStat>}
         </ChartCard>
       )}
@@ -440,7 +648,7 @@ export function AccRoleModel({ p }: { p: ApPageProps }) {
               cols={[{ label: "Role" }, { label: "Why read-only" }, { label: "Can change", num: true }, { label: "Users", num: true }]}
               rows={fl.map((r) => ({ key: String(r.role_name), status: r.status, onClick: drawerBy("sf_acc_readonly_roles_write", "role_name", r.role_name, String(r.role_name)),
                 cells: [<code className="ax-obj">{String(r.role_name)}</code>, r.name_says_read ? "its name" : `reads ${fmtInt(numOrZero(r.read_only_tables))} of ${fmtInt(numOrZero(r.tables))} tables`,
-                  <b>{fmtInt(numOrZero(r.write_objects))}</b>, fmtInt(numOrZero(r.users))] }))} />;
+                  <b>{fmtInt(numOrZero(r.write_objects))}</b>, fmtInt(numOrZero(r.user_count))] }))} />;
           }}
         </Slot>
       </Row2>
@@ -448,10 +656,10 @@ export function AccRoleModel({ p }: { p: ApPageProps }) {
         {(rows) => (
           <CxTable ariaLabel="Roles granted twice" n={8}
             cols={[{ label: "Granted to" }, { label: "Role" }, { label: "Also through" }, { label: "Path", width: "40%" }]}
-            foot={`${plural(rows.filter((r) => r.grantee_kind === "USER").length, "grant")} to users, ${plural(rows.filter((r) => r.grantee_kind === "ROLE").length, "grant")} to roles.`}
-            rows={rows.map((r) => ({ key: `${r.grantee_kind}|${r.grantee}|${r.granted_role}`, status: r.status,
+            foot={`${plural(rows.filter((r) => r.grantee_type === "USER").length, "grant")} to users, ${plural(rows.filter((r) => r.grantee_type === "ROLE").length, "grant")} to roles.`}
+            rows={rows.map((r) => ({ key: `${r.grantee_type}|${r.grantee}|${r.granted_role}`, status: r.status,
               onClick: drawerBy("sf_acc_redundant_role_grants", "grantee", r.grantee, String(r.grantee)),
-              cells: [r.grantee_kind === "USER" ? <b>{String(r.grantee)}</b> : <code className="ax-obj">{String(r.grantee)}</code>, <code className="ax-obj">{String(r.granted_role)}</code>,
+              cells: [r.grantee_type === "USER" ? <b>{String(r.grantee)}</b> : <code className="ax-obj">{String(r.grantee)}</code>, <code className="ax-obj">{String(r.granted_role)}</code>,
                 String(r.through_roles || ""), <PathLine path={String(r.example_path || "").split(" > ")} />] }))} />
         )}
       </Slot>

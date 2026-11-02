@@ -27,7 +27,7 @@ WITH roles AS (
 ),
 users_ AS (
   SELECT role AS role_name, COUNT(DISTINCT grantee_name) AS direct_users,
-         LISTAGG(DISTINCT grantee_name, ', ') WITHIN GROUP (ORDER BY grantee_name) AS user_list
+         LISTAGG(DISTINCT grantee_name, ', ') WITHIN GROUP (ORDER BY grantee_name) AS users
   FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS
   WHERE deleted_on IS NULL
   GROUP BY role
@@ -47,14 +47,14 @@ parents AS (
   GROUP BY g.name
 ),
 s AS (
-  SELECT r.role_name, u.direct_users, u.user_list, p.privileges,
+  SELECT r.role_name, u.direct_users, u.users, p.privileges,
          COALESCE(pa.parent_count, 0) AS parent_count, pa.parent_roles
   FROM roles r
   JOIN users_ u ON u.role_name = r.role_name
   JOIN privs p ON p.role_name = r.role_name
   LEFT JOIN parents pa ON pa.role_name = r.role_name
 )
-SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, role_name, direct_users, user_list, privileges,
+SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, role_name, direct_users, users, privileges,
        parent_count, parent_roles,
        IFF(parent_count > 0, 'granted to users directly and to ' || parent_roles, NULL) AS reasons,
        CAST(NULL AS VARCHAR) AS not_assessed_reason,
