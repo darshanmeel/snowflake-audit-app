@@ -299,7 +299,7 @@ export function ApActivityTables(p: ApPageProps) {
         {classTile("written_never_read", "Written, never read", "Loaded or changed, but no query read them.")}
         {classTile("idle", "Idle", "No read, write or DDL in the window.")}
       </SummaryTileRow>
-      <Row2>
+      <>
         <Slot c={ta} title="Tables by use" subtitle="Every live table, by count and by storage">
           {() => {
             const seg = (val: (r: Row) => number): ShareSegment[] => CLASSES.map(([k, w, c]) => ({ key: k, label: w, value: val(cls(k) || {}), color: c }));
@@ -334,7 +334,7 @@ export function ApActivityTables(p: ApPageProps) {
             );
           }}
         </Slot>
-      </Row2>
+      </>
       <div id="act-table-day">
         <Slot c={td} title="One table, day by day" subtitle="Reads, writes, DDL and rows changed per day, how its queries run, who uses it, its top queries and the columns they filter and join on">
           {(rows) => {
