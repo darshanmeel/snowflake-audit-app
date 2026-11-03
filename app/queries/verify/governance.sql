@@ -217,3 +217,55 @@ JOIN SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS gu ON gu.grantee_name = u.name AND 
 WHERE u.deleted_on IS NULL AND COALESCE(TRY_TO_BOOLEAN(TO_VARCHAR(u.disabled)), FALSE)
 GROUP BY u.name
 ORDER BY direct_roles DESC, user_name;
+
+-- 13. One table: how the queries on it run, per day on average, and its top 10 query shapes by total time
+--     (Activity > Tables; checks sf_use_query_profile and sf_use_top_query_shapes). Put the table in the p
+--     CTE, upper case. Time, partitions and spill are the whole query's.
+WITH p AS (SELECT 30 AS days, CURRENT_DATE() AS end_date, 'MY_DB.MY_SCHEMA.MY_TABLE' AS table_fqn),
+q AS (
+  SELECT DISTINCT a.query_id
+  FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY a, p,
+       LATERAL FLATTEN(input => ARRAY_CAT(a.base_objects_accessed, a.objects_modified)) f
+  WHERE a.query_start_time >= DATEADD(day, -p.days, p.end_date) AND a.query_start_time < p.end_date
+    AND UPPER(f.value:"objectName"::STRING) = p.table_fqn
+)
+SELECT h.query_parameterized_hash AS shape, MAX(h.query_type) AS query_type, COUNT(*) AS runs,
+       ROUND(COUNT(*) / MAX(p.days), 1) AS runs_per_day, ROUND(AVG(h.total_elapsed_time) / 1000, 1) AS avg_s,
+       ROUND(SUM(h.total_elapsed_time) / 1000) AS total_s, ROUND(AVG(h.partitions_scanned)) AS avg_partitions,
+       ROUND(100 * SUM(h.partitions_scanned) / NULLIF(SUM(h.partitions_total), 0), 1) AS scan_pct,
+       ROUND(SUM(h.bytes_spilled_to_local_storage + h.bytes_spilled_to_remote_storage) / POWER(1024, 3), 2) AS gb_spilled,
+       MAX_BY(h.query_id, h.total_elapsed_time) AS slowest_query_id
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY h
+JOIN q ON q.query_id = h.query_id, p
+WHERE h.start_time >= DATEADD(day, -(p.days + 1), p.end_date)
+GROUP BY h.query_parameterized_hash
+ORDER BY total_s DESC
+LIMIT 10;
+
+-- 14. One query shape's lineage: the tables it read and wrote, and the columns it filtered and joined on
+--     (Activity > Tables, a selected top query). Put the shape (query_parameterized_hash) in the p CTE.
+WITH p AS (SELECT 30 AS days, CURRENT_DATE() AS end_date, 'MY_SHAPE_HASH' AS shape),
+t AS (
+  SELECT 'reads' AS kind, UPPER(f.value:"objectName"::STRING) AS name, COUNT(DISTINCT a.query_id) AS queries
+  FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY a
+  JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY h ON h.query_id = a.query_id, p,
+       LATERAL FLATTEN(input => a.base_objects_accessed) f
+  WHERE a.query_start_time >= DATEADD(day, -p.days, p.end_date) AND h.start_time >= DATEADD(day, -(p.days + 1), p.end_date)
+    AND h.query_parameterized_hash = p.shape
+  GROUP BY 1, 2
+  UNION ALL
+  SELECT 'writes', UPPER(f.value:"objectName"::STRING), COUNT(DISTINCT a.query_id)
+  FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY a
+  JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY h ON h.query_id = a.query_id, p,
+       LATERAL FLATTEN(input => a.objects_modified) f
+  WHERE a.query_start_time >= DATEADD(day, -p.days, p.end_date) AND h.start_time >= DATEADD(day, -(p.days + 1), p.end_date)
+    AND h.query_parameterized_hash = p.shape
+  GROUP BY 1, 2
+  UNION ALL
+  SELECT UPPER(c.access_type), UPPER(c.table_name || '.' || c.column_name), SUM(c.num_queries)
+  FROM SNOWFLAKE.ACCOUNT_USAGE.COLUMN_QUERY_PRUNING_HISTORY c, p
+  WHERE c.interval_start_time >= DATEADD(day, -p.days, p.end_date) AND c.query_parameterized_hash = p.shape
+    AND UPPER(c.access_type) IN ('WHERE', 'JOIN')
+  GROUP BY 1, 2
+)
+SELECT kind, name, queries FROM t ORDER BY kind, queries DESC;

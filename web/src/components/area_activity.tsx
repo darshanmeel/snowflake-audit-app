@@ -4,15 +4,15 @@
 // the storage of never-used schemas, which sf_use_database_activity carries.
 // Registered into AREA_CHART_PAGES by area_pages.tsx.
 import React from "react";
-import { fmtDayShort, fmtInt, fmtMoney } from "../format";
+import { fmtDayShort, fmtDuration, fmtInt, fmtMoney } from "../format";
 import { numOrZero } from "./hooks";
 import { DrawerBus } from "./drawer";
 import type { ApPageProps } from "./area_pages";
 import { StackedShareBar, fmtShare, pctOf } from "./blocks";
 import type { ShareSegment } from "./blocks";
 import { CheckTile, Row2, Slot, fmtSize, isFlagged, useCheck, useLede } from "./area_ai_storage";
-import { SummaryTileRow, windowSpan } from "./overview_tile";
-import { CxBarRows, CxChip, CxMiniCols, CxObjName, CxRanked, CxStat, CxTable, CxTwoBar } from "./cx_e";
+import { SummaryTile, SummaryTileRow, windowSpan } from "./overview_tile";
+import { CxBarRows, CxChip, CxMiniCols, CxObjName, CxRanked, CxStat, CxStrip, CxTable, CxTwoBar } from "./cx_e";
 import type { CxBarRow, CxRankItem } from "./cx_e";
 import type { Row } from "../types";
 
@@ -58,14 +58,13 @@ function dayYear(v: any, p: ApPageProps): string {
   return span && Number.isFinite(t) && t < span.first ? `${fmtDayShort(d)}, ${d.slice(0, 4)}` : fmtDayShort(d);
 }
 
-/** Label-above-bar rows, the first `n`, then "Show N more". */
-function RankedAbove({ items, noun, ariaLabel, n = 8 }: { items: CxRankItem[]; noun: string; ariaLabel: string; n?: number }) {
-  const [all, setAll] = React.useState(false);
+/** Label-above-bar rows: the top `n` only, with how many there are in all. */
+function RankedAbove({ items, noun, ariaLabel, n = 10 }: { items: CxRankItem[]; noun: string; ariaLabel: string; n?: number }) {
   if (!items.length) return null;
   return (
     <div>
-      <CxRanked items={all ? items : items.slice(0, n)} layout="above" max={Math.max(1, ...items.map((x) => x.value))} ariaLabel={ariaLabel} />
-      {items.length > n && <div className="cx-foot"><button type="button" className="cx-linkbtn" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show ${fmtInt(items.length - n)} more ${noun}`}</button></div>}
+      <CxRanked items={items.slice(0, n)} layout="above" max={Math.max(1, ...items.map((x) => x.value))} ariaLabel={ariaLabel} />
+      {items.length > n && <div className="cx-foot"><span>{`Top ${fmtInt(n)} of ${fmtInt(items.length)} ${noun}.`}</span></div>}
     </div>
   );
 }
@@ -129,12 +128,12 @@ export function ApActivityDatabases(p: ApPageProps) {
           }}
         </Slot>
       </Row2>
-      <Slot c={da} title="Every database" subtitle="Select a row for its schemas">
+      <Slot c={da} title="Databases in detail" subtitle="The top 20 by reads, writes and DDL · select a row for its schemas">
         {() => dbs.length ? (
-          <CxTable ariaLabel="Databases" n={15}
+          <CxTable ariaLabel="Databases" foot={dbs.length > 20 ? `Top 20 of ${plural(dbs.length, "database")}.` : undefined}
             cols={[{ label: "Database" }, { label: "Owner" }, { label: "Reads", num: true }, { label: "Writes", num: true }, { label: "DDL", num: true },
               { label: "Users", num: true }, { label: "Last activity", num: true }, { label: "Storage", num: true }]}
-            rows={[...dbs].sort(byTouches).map((r) => ({
+            rows={[...dbs].sort(byTouches).slice(0, 20).map((r) => ({
               key: String(r.database_name), onClick: drawerBy("sf_use_database_activity", "database_name", r.database_name, String(r.database_name)),
               cells: [<span>{String(r.database_name)}{r.database_type && r.database_type !== "STANDARD" ? <div className="cx-muted">{String(r.database_type).toLowerCase()}</div> : null}</span>,
                 String(r.database_owner || "–"), fmtInt(numOrZero(r.read_queries)), fmtInt(numOrZero(r.write_queries)), fmtInt(numOrZero(r.ddl_queries)),
@@ -213,12 +212,12 @@ export function ApActivitySchemas(p: ApPageProps) {
           }}
         </Slot>
       </Row2>
-      <Slot c={da} title="Every schema" subtitle="The busiest first · select a row for the check's rows">
+      <Slot c={da} title="Schemas in detail" subtitle="The top 20 by reads, writes and DDL · select a row for the check's rows">
         {() => schemas.length ? (
-          <CxTable ariaLabel="Schemas" n={15}
+          <CxTable ariaLabel="Schemas" foot={schemas.length > 20 ? `Top 20 of ${plural(schemas.length, "schema")}.` : undefined}
             cols={[{ label: "Schema" }, { label: "Tables read", num: true }, { label: "Tables written", num: true }, { label: "Reads", num: true },
               { label: "Writes", num: true }, { label: "DDL", num: true }, { label: "Users", num: true }, { label: "Last activity", num: true }]}
-            rows={[...schemas].sort(byTouches).map((r) => ({
+            rows={[...schemas].sort(byTouches).slice(0, 20).map((r) => ({
               key: `${r.database_name}.${r.schema_name}`, status: r.status,
               onClick: schemaDrawer(r),
               cells: [<CxObjName full={`${r.database_name}.${r.schema_name}`} id={r.schema_id} />,
@@ -251,6 +250,8 @@ export function ApActivityTables(p: ApPageProps) {
   const td = useCheck(p, "sf_use_table_daily");
   const tr = useCheck(p, "sf_use_table_readers");
   const tc = useCheck(p, "sf_use_table_columns");
+  const qp = useCheck(p, "sf_use_query_profile");
+  const qs = useCheck(p, "sf_use_top_query_shapes");
   const allTables = levelRows(ta.rows, "table");
   const dbOf = (fqn: any) => String(fqn || "").split(".")[0];
   const dbs = React.useMemo(() => [...new Set(allTables.map((r) => String(r.database_name || dbOf(r.table_fqn))))].filter(Boolean).sort(), [ta.rows]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -335,7 +336,7 @@ export function ApActivityTables(p: ApPageProps) {
         </Slot>
       </Row2>
       <div id="act-table-day">
-        <Slot c={td} title="One table, day by day" subtitle="Reads, writes, DDL and rows changed per day, who uses it and the columns it is filtered and joined on">
+        <Slot c={td} title="One table, day by day" subtitle="Reads, writes, DDL and rows changed per day, how its queries run, who uses it, its top queries and the columns they filter and join on">
           {(rows) => {
             if (!cur) return okNote("No table had activity in the window.");
             const mine = rows.filter((r) => String(r.table_fqn) === cur).sort((a, b) => String(a.usage_date).localeCompare(String(b.usage_date)));
@@ -358,13 +359,14 @@ export function ApActivityTables(p: ApPageProps) {
                   })}
                 </div>
                 <div className="cx-foot"><span>{dmlOnly ? "Reads, writes and DDL need ACCESS_HISTORY (Enterprise edition): only rows changed are shown." : "Reads, writes and DDL in distinct queries; rows changed from TABLE_DML_HISTORY."}</span></div>
+                <QueryDetail prof={qp} shapes={qs} level="table" name={cur} />
                 <TableColumns rows={(tc.rows || []).filter((r) => String(r.table_fqn).toUpperCase() === String(cur).toUpperCase())} loading={tc.loading} why={tc.why} />
-                {users.length > 0 && (
+                {users.length > 0 && !levelRows(qp.rows, "table_user").some((r) => String(r.table_fqn).toUpperCase() === String(cur).toUpperCase()) && (
                   <div className="cx-block">
-                    <CxTable ariaLabel={`Who uses ${cur}`} n={8}
-                      foot={users[0] && numOrZero(users[0].table_users) > new Set(users.map((r) => r.user_name)).size ? `${fmtInt(new Set(users.map((r) => r.user_name)).size)} of ${plural(numOrZero(users[0].table_users), "user")} shown.` : undefined}
+                    <CxTable ariaLabel={`Who uses ${cur}`}
+                      foot={users[0] && numOrZero(users[0].table_users) > new Set(users.slice(0, 10).map((r) => r.user_name)).size ? `${fmtInt(new Set(users.slice(0, 10).map((r) => r.user_name)).size)} of ${plural(numOrZero(users[0].table_users), "user")} shown.` : undefined}
                       cols={[{ label: "User" }, { label: "Role" }, { label: "Reads", num: true }, { label: "Writes", num: true }, { label: "DDL", num: true }, { label: "Days", num: true }, { label: "Last", num: true }]}
-                      rows={users.map((r) => ({
+                      rows={users.slice(0, 10).map((r) => ({
                         key: `${r.user_name}|${r.role_name}`,
                         cells: [<span>{String(r.user_name || "–")}{isTrue(r.is_service_user) ? <> <CxChip>{"service"}</CxChip></> : null}</span>, String(r.role_name || "–"),
                           fmtInt(numOrZero(r.read_queries)), fmtInt(numOrZero(r.write_queries)), fmtInt(numOrZero(r.ddl_queries)), fmtInt(numOrZero(r.active_days)), lastDay(r.last_at)],
@@ -380,9 +382,9 @@ export function ApActivityTables(p: ApPageProps) {
         {() => {
           const list = tables.filter((r) => r.usage_class === "written_never_read" || r.usage_class === "idle").sort((a, b) => numOrZero(b.storage_gb) - numOrZero(a.storage_gb));
           return list.length ? (
-            <CxTable ariaLabel="Unread tables" n={10}
+            <CxTable ariaLabel="Unread tables" foot={list.length > 10 ? `Top 10 of ${plural(list.length, "table")}.` : undefined}
               cols={[{ label: "Table" }, { label: "Use" }, { label: "Owner" }, { label: "Storage", num: true }, { label: "Last write", num: true }, { label: "Last DDL", num: true }]}
-              rows={list.map((r) => ({
+              rows={list.slice(0, 10).map((r) => ({
                 key: String(r.table_id ?? r.table_fqn), onClick: drawerBy("sf_use_table_activity", "table_fqn", r.table_fqn, String(r.table_fqn)),
                 cells: [<CxObjName full={String(r.table_fqn)} id={r.table_id} />, CLASS_WORD[String(r.usage_class)] || String(r.usage_class), String(r.table_owner || "–"),
                   fmtSize(numOrZero(r.storage_gb)), r.last_write_at ? dayYear(r.last_write_at, p) : "–", r.last_ddl ? dayYear(r.last_ddl, p) : "–"],
@@ -415,6 +417,92 @@ function TableColumns({ rows, loading, why }: { rows: Row[]; loading: boolean; w
   );
 }
 
+const SHAPE_BY: [string, string, string][] = [["runs", "Runs", "rank_runs"], ["time", "Total time", "rank_time"], ["scanned", "Partitions scanned", "rank_scanned"], ["spilled", "Spilled", "rank_spilled"]];
+const listOf = (v: any) => (v ? String(v).split(", ").filter(Boolean) : []);
+
+/** How the queries on one table (level "table") or of one user (level "user") run: figures, the top 10 users
+ *  or tables, and the top 10 query shapes with what each one reads, writes, filters and joins on. */
+function QueryDetail({ prof, shapes, level, name }: { prof: ReturnType<typeof useCheck>; shapes: ReturnType<typeof useCheck>; level: "table" | "user"; name: string }) {
+  const [by, setBy] = React.useState("runs");
+  const [pick, setPick] = React.useState<string | null>(null);
+  const keyCol = level === "table" ? "table_fqn" : "user_name";
+  const mine = (r: Row) => String(r[keyCol] || "").toUpperCase() === name.toUpperCase();
+  if (prof.loading || shapes.loading) return <div className="chart-note-oneline">…</div>;
+  if (prof.why) return <div className="chart-note-oneline">{`How its queries run: – ${prof.why}`}</div>;
+  const main = levelRows(prof.rows, level).find(mine);
+  if (!main) return <div className="chart-note-oneline">{`How its queries run: not among the ${level === "table" ? "tables" : "users"} with the most queries, which the export keeps.`}</div>;
+  const pairs = levelRows(prof.rows, level === "table" ? "table_user" : "user_table").filter(mine)
+    .sort((a, b) => numOrZero(a.pair_rank) - numOrZero(b.pair_rank)).slice(0, 10);
+  const [, byWord, rankCol] = SHAPE_BY.find((x) => x[0] === by) || SHAPE_BY[0];
+  const list = levelRows(shapes.rows, level).filter(mine).filter((r) => r[rankCol] != null && numOrZero(r[rankCol]) <= 10)
+    .sort((a, b) => numOrZero(a[rankCol]) - numOrZero(b[rankCol]));
+  const cur = list.find((r) => String(r.shape_hash) === pick) || null;
+  const days = numOrZero(main.window_days) || 1;
+  const perDay = numOrZero(main.queries) / days;
+  const pairWord = level === "table" ? "User" : "Table";
+  return (
+    <div className="cx-block">
+      <div className="cx-eyebrow">{level === "table" ? "How queries on it run" : "How their queries run"}</div>
+      <CxStrip>
+        <SummaryTile label="Queries a day" value={perDay < 10 ? perDay.toFixed(1) : fmtInt(Math.round(perDay))} base={`${plural(numOrZero(main.queries), "query", "queries")} in ${plural(days, "day")} · ${plural(numOrZero(main.active_days), "active day")}`} />
+        <SummaryTile label="Time per query" value={fmtDuration(main.avg_elapsed_s)} unit=" on average" base={`90% within ${fmtDuration(main.p90_elapsed_s)} · slowest ${fmtDuration(main.max_elapsed_s)}`} />
+        <SummaryTile label="Partitions per query" value={main.avg_partitions_scanned != null ? fmtInt(Math.round(numOrZero(main.avg_partitions_scanned))) : "–"} base={main.scan_pct != null ? `${fmtShare(numOrZero(main.scan_pct))} of the partitions they could read` : undefined} />
+        <SummaryTile label="Queries that spill" value={main.spill_pct != null ? fmtShare(numOrZero(main.spill_pct)) : "–"} base={`${fmtSize(numOrZero(main.gb_spilled))} spilled · ${fmtSize(numOrZero(main.gb_scanned))} scanned`} />
+      </CxStrip>
+      {pairs.length > 0 && (
+        <div className="cx-block">
+          <CxTable ariaLabel={level === "table" ? `Top users of ${name}` : `Top tables of ${name}`}
+            foot={`Top ${pairs.length} ${level === "table" ? "users" : "tables"} by queries${level === "table" && numOrZero(main.users) > pairs.length ? `, of ${plural(numOrZero(main.users), "user")}` : level === "user" && numOrZero(main.tables) > pairs.length ? `, of ${plural(numOrZero(main.tables), "table")}` : ""}. A query's time and scan are the whole query's.`}
+            cols={[{ label: pairWord }, { label: "Queries", num: true }, { label: "Reads", num: true }, { label: "Writes", num: true }, { label: "Avg time", num: true }, { label: "Partitions / query", num: true }, { label: "Spill", num: true }]}
+            rows={pairs.map((r) => ({
+              key: String(level === "table" ? r.user_name : r.table_id ?? r.table_fqn),
+              cells: [level === "table" ? String(r.user_name || "–") : <CxObjName full={String(r.table_fqn)} id={r.table_id} />,
+                fmtInt(numOrZero(r.queries)), fmtInt(numOrZero(r.read_queries)), fmtInt(numOrZero(r.write_queries)), fmtDuration(r.avg_elapsed_s),
+                r.avg_partitions_scanned != null ? fmtInt(Math.round(numOrZero(r.avg_partitions_scanned))) : "–", r.spill_pct != null && numOrZero(r.spill_pct) > 0 ? fmtShare(numOrZero(r.spill_pct)) : "–"],
+            }))} />
+        </div>
+      )}
+      <div className="cx-block">
+        <div className="cx-eyebrow">{`Top queries by ${byWord.toLowerCase()}`}</div>
+        <div className="cx-seg" role="group" aria-label="Top queries by">
+          {SHAPE_BY.map(([k, w]) => <button key={k} type="button" className={by === k ? "on" : ""} aria-pressed={by === k} onClick={() => setBy(k)}>{w}</button>)}
+        </div>
+        {list.length ? (
+          <div className="cx-block">
+            <CxTable ariaLabel={`Top queries by ${byWord}`}
+              foot="One row = one query shape: the same statement with different values. Select one for the tables and columns it uses."
+              cols={[{ label: "Query" }, { label: "Runs", num: true }, { label: "Users", num: true }, { label: "Avg time", num: true }, { label: "Total time", num: true }, { label: "Partitions / run", num: true }, { label: "Spilled", num: true }]}
+              rows={list.map((r) => ({
+                key: String(r.shape_hash), on: cur === r, onClick: () => setPick(cur === r ? null : String(r.shape_hash)),
+                cells: [<span>{String(r.query_type || "–")}<span className="cx-muted">{` · ${r.warehouse_name || "no warehouse"} · ${String(r.shape_hash || "").slice(0, 8)}`}</span></span>,
+                  fmtInt(numOrZero(r.runs)), fmtInt(numOrZero(r.users)), fmtDuration(r.avg_elapsed_s), fmtDuration(r.total_elapsed_s),
+                  r.avg_partitions_scanned != null ? fmtInt(Math.round(numOrZero(r.avg_partitions_scanned))) : "–", numOrZero(r.gb_spilled) > 0 ? fmtSize(numOrZero(r.gb_spilled)) : "–"],
+              }))} />
+            {cur && <ShapeLineage r={cur} />}
+          </div>
+        ) : okNote(by === "spilled" ? "No query spilled." : "No query shape recorded.")}
+      </div>
+    </div>
+  );
+}
+
+/** What one query shape reads, writes, filters on and joins on, and its slowest run. */
+function ShapeLineage({ r }: { r: Row }) {
+  const line = (label: string, v: any, none: string) => (
+    <CxStat><span><b>{`${label}: `}</b>{listOf(v).length ? listOf(v).join(" · ") : <span className="cx-muted">{none}</span>}</span></CxStat>
+  );
+  return (
+    <div className="cx-block">
+      <div className="cx-eyebrow">{`${r.query_type || "Query"} · ${String(r.shape_hash || "").slice(0, 8)}`}</div>
+      {line("Reads", r.tables_read, "no table")}
+      {line("Writes", r.tables_written, "no table")}
+      {line("Filters on (WHERE)", r.where_columns, "none recorded")}
+      {line("Joins on (JOIN)", r.join_columns, "none recorded")}
+      <div className="cx-foot"><span>{`Slowest run ${fmtDuration(r.max_elapsed_s)}: query id ${r.slowest_query_id || "–"}, to open in Snowsight's query profile. Snowflake records WHERE and JOIN columns, not GROUP BY.`}</span></div>
+    </div>
+  );
+}
+
 // ═══════════════════════ Activity › Users & roles ═══════════════════════
 
 const LOGIN_BANDS: [string, number, number][] = [["within 7 days", 0, 8], ["8-30 days", 8, 31], ["31-90 days", 31, 91], ["over 90 days", 91, Infinity]];
@@ -423,6 +511,11 @@ export function ApActivityUsers(p: ApPageProps) {
   const io = useCheck(p, "sf_use_user_data_io");
   const ua = useCheck(p, "sf_use_user_activity");
   const tr = useCheck(p, "sf_use_table_readers");
+  const qp = useCheck(p, "sf_use_query_profile");
+  const qs = useCheck(p, "sf_use_top_query_shapes");
+  const profUsers = levelRows(qp.rows, "user").sort((a, b) => numOrZero(a.entity_rank) - numOrZero(b.entity_rank)).map((r) => String(r.user_name));
+  const [selUser, setSelUser] = React.useState<string | null>(null);
+  const curUser = selUser && profUsers.includes(selUser) ? selUser : profUsers[0] || null;
   const users = levelRows(io.rows, "user");
   const roles = levelRows(io.rows, "role");
   // The user and role lists are capped; the counts and shares come from the check's uncapped total row.
@@ -443,7 +536,9 @@ export function ApActivityUsers(p: ApPageProps) {
     key: String(r.user_name), value: numOrZero(r.data_queries),
     label: <span>{String(r.user_name || "(no user)")}{isTrue(r.is_service_user) ? <> <CxChip>{"service"}</CxChip></> : null}</span>,
     strong: plural(numOrZero(r.data_queries), "query", "queries"), rest: `${plural(numOrZero(r.tables_read), "table")} read · ${fmtInt(numOrZero(r.tables_written))} written`,
-    onClick: drawerBy("sf_use_user_data_io", "user_name", r.user_name, String(r.user_name)),
+    onClick: profUsers.includes(String(r.user_name))
+      ? () => { setSelUser(String(r.user_name)); document.getElementById("act-user-q")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      : drawerBy("sf_use_user_data_io", "user_name", r.user_name, String(r.user_name)),
   });
   return (
     <div className="ais-page cx-e">
@@ -486,11 +581,25 @@ export function ApActivityUsers(p: ApPageProps) {
           }}
         </Slot>
       </Row2>
-      <Slot c={tr} title="Who uses which tables" subtitle="User and role on each of the busiest tables · the most queries first">
+      <div id="act-user-q">
+        <Slot c={qp} title="One user's queries" subtitle="How their queries run, the tables they use most and their top queries, with the tables and columns each one uses">
+          {() => curUser ? (
+            <div>
+              <label className="cx-muted">{"User "}
+                <select value={curUser} onChange={(e) => setSelUser(e.target.value)} aria-label="User">
+                  {profUsers.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </label>
+              <QueryDetail prof={qp} shapes={qs} level="user" name={curUser} />
+            </div>
+          ) : okNote("No user read or wrote a table in the window.")}
+        </Slot>
+      </div>
+      <Slot c={tr} title="Who uses which tables" subtitle="User and role on the busiest tables · the top 20 by queries">
         {(rows) => rows.length ? (
-          <CxTable ariaLabel="Users on tables" n={15}
+          <CxTable ariaLabel="Users on tables"
             cols={[{ label: "User" }, { label: "Role" }, { label: "Table" }, { label: "Reads", num: true }, { label: "Writes", num: true }, { label: "DDL", num: true }, { label: "Days", num: true }, { label: "Last", num: true }]}
-            rows={[...rows].sort(byTouches).map((r) => ({
+            rows={[...rows].sort(byTouches).slice(0, 20).map((r) => ({
               key: `${r.user_name}|${r.role_name}|${r.table_id ?? r.table_fqn}`,
               onClick: drawerBy("sf_use_table_readers", "user_name", r.user_name, String(r.user_name)),
               cells: [<span>{String(r.user_name || "–")}{isTrue(r.is_service_user) ? <> <CxChip>{"service"}</CxChip></> : null}</span>, String(r.role_name || "–"),
@@ -613,9 +722,9 @@ export function ApActivityObjects(p: ApPageProps) {
       </Row2>
       <Slot c={uv} title="Views never read in the window" subtitle="Views with no reader · select a row for the fix">
         {() => (
-          unread.length ? <CxTable ariaLabel="Views never read" n={10}
+          unread.length ? <CxTable ariaLabel="Views never read" foot={unread.length > 10 ? `Top 10 of ${plural(unread.length, "view")}.` : undefined}
             cols={[{ label: "View" }, { label: "Owner" }, { label: "Created", num: true }, { label: "Last changed", num: true }]}
-            rows={unread.map((r) => ({
+            rows={unread.slice(0, 10).map((r) => ({
               key: `${r.account_id}|${r.view_fqn}`, status: r.status, onClick: drawerBy("sf_lin_unused_views", "view_fqn", r.view_fqn, String(r.view_fqn)),
               cells: [<span><CxObjName full={String(r.view_fqn)} />{isTrue(r.is_secure) ? <div className="cx-muted">{"Secure view"}</div> : null}</span>, String(r.view_owner || "–"),
                 dayYear(r.created, p), dayYear(r.last_altered, p)],

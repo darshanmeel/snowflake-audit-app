@@ -12996,6 +12996,69 @@
       "sql_url": "app/queries/checks/sf_query_result_cache_misses.sql"
     },
     {
+      "query_id": "sf_use_query_profile",
+      "title": "How the queries on each busy table and of each busy user run: count, time, scan and spill",
+      "domain": "performance",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "tables and users",
+        "columns": [
+          "row_level",
+          "table_fqn",
+          "user_name"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 25,
+          "meaning": "tables and users: only the busiest of each by queries are listed"
+        },
+        {
+          "name": "top_pairs",
+          "default": 10,
+          "meaning": "users kept per table and tables kept per user"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one table (row_level = table) or one user (row_level = user), the :top_n busiest of each, or one user on one of those tables (row_level = table_user, the :top_pairs busiest users of the table) or one table of one of those users (row_level = user_table). queries counts distinct queries that read or wrote the table (or that the user ran on tables); the time, scan and spill figures are those queries' own, from QUERY_HISTORY: avg_elapsed_s and p90_elapsed_s are seconds per query, avg_partitions_scanned is micro-partitions per query and scan_pct the share of the partitions they could have read, spill_pct the share of queries that spilled. timed_queries counts the queries found in QUERY_HISTORY; the figures cover those. entity_rank 1 = most queries; pair_rank orders the pairs inside their table or user.",
+      "healthy": "status = OK on every listed row; this check describes how queries run, it does not judge them.",
+      "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the window.",
+      "actions": [
+        "open the table's or user's top query shapes (sf_use_top_query_shapes) when the average time, scan share or spill is high (free)",
+        "cluster a large table that most queries scan in full, or give the spilling shapes a larger warehouse (config)."
+      ],
+      "next": [
+        {
+          "query_id": "sf_use_top_query_shapes",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_query_profile.sql"
+    },
+    {
       "query_id": "sf_use_query_type_mix",
       "title": "What each warehouse is used for, by statement type",
       "domain": "performance",
@@ -13050,6 +13113,66 @@
       ],
       "next": [],
       "sql_url": "app/queries/checks/sf_use_query_type_mix.sql"
+    },
+    {
+      "query_id": "sf_use_top_query_shapes",
+      "title": "The top query shapes on each busy table and of each busy user, with the tables and columns they use",
+      "domain": "performance",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "query shapes",
+        "columns": [
+          "row_level",
+          "table_fqn",
+          "user_name",
+          "shape_hash"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.COLUMN_QUERY_PRUNING_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 25,
+          "meaning": "tables and users: the busiest of each by queries, as in sf_use_query_profile"
+        },
+        {
+          "name": "top_shapes",
+          "default": 10,
+          "meaning": "shapes kept per table or user for each ranking"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one query shape on one of the :top_n busiest tables (row_level = table) or of one of the :top_n busiest users (row_level = user). A shape is Snowflake's query_parameterized_hash: the same statement with different literals, so a dashboard query run 500 times is one row. A shape is kept when it is in the top :top_shapes of its table or user by runs (rank_runs), total time (rank_time), partitions scanned (rank_scanned) or bytes spilled (rank_spilled). Its lineage covers every run of the shape in the window: tables_read and tables_written (from ACCESS_HISTORY), and the columns it filtered (where_columns) and joined (join_columns) on, from COLUMN_QUERY_PRUNING_HISTORY. slowest_query_id is the slowest single run, to open in Snowsight's query profile. No query text is kept.",
+      "healthy": "status = OK on every listed row; this check describes the heaviest shapes, it does not judge them.",
+      "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the window.",
+      "actions": [
+        "open slowest_query_id in Snowsight's query profile, and filter or cluster on the where_columns of a shape that scans most partitions (free)",
+        "give a shape that spills to remote storage a larger warehouse, or split it (config)."
+      ],
+      "next": [],
+      "sql_url": "app/queries/checks/sf_use_top_query_shapes.sql"
     },
     {
       "query_id": "sf_use_user_activity",

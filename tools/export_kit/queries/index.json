@@ -4903,6 +4903,22 @@
    },
    "needs_enterprise": true
   },
+  "sf_use_query_profile": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "top_n": 25,
+    "top_pairs": 10
+   },
+   "needs_enterprise": true
+  },
   "sf_use_query_type_mix": {
    "domain": "performance",
    "windowed": true,
@@ -4993,6 +5009,23 @@
    "params": {
     "top_n": 100,
     "top_users": 25
+   },
+   "needs_enterprise": true
+  },
+  "sf_use_top_query_shapes": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.COLUMN_QUERY_PRUNING_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES"
+   ],
+   "params": {
+    "top_n": 25,
+    "top_shapes": 10
    },
    "needs_enterprise": true
   },
