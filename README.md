@@ -775,3 +775,8 @@ npm run build               # writes app/web/dist
 
 Commit the `web/` source first, then build and commit `app/web/dist`: the build stamps a hash of
 the committed source into `dist/source-hash.txt`, and a test fails when the two differ.
+
+## License
+
+Dual-licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+Unless you say otherwise, any contribution you submit is licensed the same way, with no extra terms.
