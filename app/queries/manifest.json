@@ -12666,7 +12666,7 @@
     },
     {
       "query_id": "sf_query_full_scans",
-      "title": "Statements that scan most partitions of large tables",
+      "title": "Statement shapes that scan most partitions of a large table",
       "domain": "performance",
       "tier": "standard",
       "runnable": true,
@@ -12682,6 +12682,7 @@
         ]
       },
       "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_QUERY_PRUNING_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
       ],
@@ -12720,7 +12721,7 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one statement shape (query_parameterized_hash) on one warehouse whose runs touched at least min_partitions micro-partitions and scanned at least scan_pct of them, i.e. pruning did little. avg_scan_pct = partitions_scanned / partitions_total; credits = attributed credits of those runs.",
+      "read_this": "one row = one statement shape (query_parameterized_hash) on one warehouse that, on at least one table, read at least min_partitions micro-partitions per run and scanned at least scan_pct of them over the window, i.e. pruning did little on that table. table_fqn is the table it scanned most; avg_partitions_total and avg_scan_pct are that table's; tables_fully_scanned counts the tables that qualify. credits = attributed credits of all the shape's runs on that warehouse.",
       "healthy": "status = OK when full scans are rare or cheap",
       "investigate_if": "WARN when runs >= min_runs and credits >= warn_credits; CRITICAL when credits >= crit_credits",
       "actions": [
@@ -13113,6 +13114,75 @@
       ],
       "next": [],
       "sql_url": "app/queries/checks/sf_use_query_type_mix.sql"
+    },
+    {
+      "query_id": "sf_use_table_perf_daily",
+      "title": "Each busy or clustered table, day by day: query time, waiting, partitions skipped and clustering credits",
+      "domain": "performance",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "role_cannot_see",
+        "no_activity",
+        "ingestion_lag"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "tables",
+        "columns": [
+          "table_fqn"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_QUERY_PRUNING_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_PRUNING_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_DML_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [
+        {
+          "name": "period_days",
+          "default": "30, capped at 90",
+          "meaning": "days of history the check looks at, counted back from the export date"
+        },
+        {
+          "name": "top_n",
+          "default": 50,
+          "meaning": "tables kept by most queries, then most rows changed, as in sf_use_table_daily"
+        },
+        {
+          "name": "top_clustering",
+          "default": 20,
+          "meaning": "tables kept by most clustering credits, so a costly table that is rarely read is not missed"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one kept table on one day, with quiet days included so a chart has no gaps. queries, elapsed_s, compile_s and exec_s are the day's sums from TABLE_QUERY_PRUNING_HISTORY. avg_exec_s is execution time per query. avg_wait_s is elapsed minus compile and execution per query: queueing, locks and other time the query did no work; a high figure points at the warehouse, not the table. Both are NULL on a day with no queries. prune_pct is partitions skipped over all partitions from TABLE_PRUNING_HISTORY, from the day's sums, NULL on a day with no scans. clustering_credits and est_clustering_usd_list price the day's automatic clustering as sf_storage_clustering_value does. rank_basis says why the table is here: busy or clustering.",
+      "healthy": "status is always OK: this is a trend series, not a finding.",
+      "investigate_if": "never flags. Read a day where avg_exec_s rises or prune_pct falls against the days around it, next to that day's rows changed and DDL in sf_use_table_daily.",
+      "actions": [
+        "when execution time rises and prune_pct falls, compare the filters of the table's top shapes with its clustering key (free)",
+        "when avg_wait_s rises and execution does not, look at the warehouse in Queries > Waiting (free)",
+        "when clustering credits rise with DML, batch the DML or coarsen the key (config)."
+      ],
+      "next": [
+        {
+          "query_id": "sf_use_top_query_shapes",
+          "if": ""
+        },
+        {
+          "query_id": "sf_storage_clustering_value",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_table_perf_daily.sql"
     },
     {
       "query_id": "sf_use_top_query_shapes",

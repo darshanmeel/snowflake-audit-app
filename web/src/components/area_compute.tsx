@@ -1430,7 +1430,7 @@ function QEfficiency(p: ApPageProps) {
     prune: {
       label: "Queries with poor pruning", noun: "queries", src: prune, whs: pruneWh,
       shapeSrc: scans, shapeTitle: "read most of the table",
-      shapes: () => shapesFrom(scans, "est_usd_list", (r) => `${fmtShare(numOrZero(r.avg_scan_pct))} scanned · ${fmtInt(r.runs)} runs`),
+      shapes: () => shapesFrom(scans, "est_usd_list", (r) => `${fmtShare(numOrZero(r.avg_scan_pct))} of ${r.table_fqn || "a table"} scanned · ${fmtInt(r.runs)} runs`),
     },
     cache: {
       label: "Repeats that missed the result cache", noun: "repeat runs", src: cache,

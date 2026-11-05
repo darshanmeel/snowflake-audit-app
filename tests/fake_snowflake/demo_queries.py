@@ -1093,26 +1093,29 @@ def pruning_views(g: Gen) -> None:
         if r["warehouse_name"] and r["partitions_total"] and r["query_type"] in ("SELECT", "DELETE", "MERGE",
                                                                                   "CREATE_TABLE_AS_SELECT", "INSERT"):
             key = (r["warehouse_id"], r["warehouse_name"], r["query_parameterized_hash"], r["start_time"].date())
-            s = shapes.setdefault(key, [0, 0, 0, 0, 0, r])
+            s = shapes.setdefault(key, [0, 0, 0, 0, 0, r, 0])
             s[0] += 1
             s[1] += r["execution_time"]
             s[2] += r["partitions_scanned"] or 0
             s[3] += max(0, (r["partitions_total"] or 0) - (r["partitions_scanned"] or 0))
             s[4] += r["compilation_time"]
+            s[6] += (r.get("queued_overload_time") or 0) + (r.get("queued_provisioning_time") or 0)
     matched = {"WH_MARKETING_ADHOC": 0.05, "WH_FINANCE_ADHOC": 0.4, "WH_SALES_ETL": 60.0, "WH_PRODUCT_ETL": 0.02,
                "WH_SALES_ADHOC": 12.0, "WH_DATA_SCIENCE_ETL": 30.0, "WH_OPS_BI": 3.0}
-    for (wid, wname, ph, day), (n, ex, ps, pp, comp, r) in shapes.items():
+    for (wid, wname, ph, day), (n, ex, ps, pp, comp, r, queued) in shapes.items():
         if day < g.b.back(DAYS) or wname not in matched:
             continue
         team = g.wh[wname]["team"]
         t = g.big_tables(team, 1)[0]
         rows = ps * 4e5
+        if wname == "WH_SALES_ADHOC" and day >= g.b.back(7):
+            queued += n * 45_000     # a queueing week: the table's own run time does not change
         st = dt.datetime.combine(day, dt.time(r["start_time"].hour))
         g.b.au("TABLE_QUERY_PRUNING_HISTORY", interval_start_time=st, interval_end_time=st + dt.timedelta(hours=1),
                table_id=t["id"], table_name=t["name"], schema_id=g.w.schema_id[(t["db"], t["schema"])],
                schema_name=t["schema"], database_id=g.w.dbs[t["db"]], database_name=t["db"], warehouse_id=wid,
                warehouse_name=wname, query_hash=r["query_hash"], query_parameterized_hash=ph, num_queries=n,
-               aggregate_query_elapsed_time=ex + comp, aggregate_query_compilation_time=comp,
+               aggregate_query_elapsed_time=ex + comp + queued, aggregate_query_compilation_time=comp,
                aggregate_query_execution_time=ex, partitions_scanned=ps, partitions_pruned=pp,
                rows_scanned=int(rows), rows_pruned=int(pp * 4e5),
                rows_matched=int(rows * matched[wname] / 100 * g.rng.uniform(0.8, 1.2)))

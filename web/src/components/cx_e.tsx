@@ -416,17 +416,19 @@ export function CxAreaCounts({ rows, ariaLabel }: { rows: CxAreaRow[]; ariaLabel
   );
 }
 
-/** One small-multiple panel: daily columns on their own scale, 3 y ticks, first / middle / last day. */
-export function CxMiniCols({ title, sub, days, values, color, partialLast, selected, onDay, dayLabel }: {
+/** One small-multiple panel: daily columns on their own scale, 3 y ticks, first / middle / last day.
+ *  `fine` keeps the scale under 1 for small figures; `tip` words a day's figure; `marks` draws a dashed line on those days. */
+export function CxMiniCols({ title, sub, days, values, color, partialLast, selected, onDay, dayLabel, fine, tip, marks }: {
   title: React.ReactNode; sub?: React.ReactNode; days: string[]; values: number[]; color: string; partialLast?: boolean;
   selected?: string | null; onDay?: (d: string) => void; dayLabel: (d: string) => string;
+  fine?: boolean; tip?: (i: number) => string; marks?: string[];
 }) {
-  const max = Math.max(1, ...values);
+  const max = fine ? Math.max(...values, 0) || 1 : Math.max(1, ...values);
   const top = max <= 4 ? max : Math.ceil(max / 2) * 2;
   const W = 240, H = 96, L = 22, B = 16, T = 8;
   const bw = (W - L) / Math.max(1, days.length);
   const y = (v: number) => T + (H - B - T) * (1 - v / top);
-  const ticks = [0, top / 2, top].map((t) => (Number.isInteger(t) ? t : Math.round(t * 10) / 10));
+  const ticks = [0, top / 2, top].map((t) => (fine && t < 1 ? Number(t.toPrecision(2)) : Number.isInteger(t) ? t : Math.round(t * 10) / 10));
   const mid = Math.floor((days.length - 1) / 2);
   return (
     <div className="cx-mini">
@@ -445,8 +447,12 @@ export function CxMiniCols({ title, sub, days, values, color, partialLast, selec
           return (
             <rect key={d} x={L + i * bw + bw * 0.2} y={y(v)} width={Math.max(1, bw * 0.6)} height={(H - B) - y(v)}
               fill={color} opacity={selected && selected !== d ? 0.35 : last ? 0.55 : 1} style={onDay ? { cursor: "pointer" } : undefined}
-              onClick={onDay ? () => onDay(d) : undefined}><title>{`${dayLabel(d)}: ${v}${last ? " (today, partial)" : ""}`}</title></rect>
+              onClick={onDay ? () => onDay(d) : undefined}><title>{`${dayLabel(d)}: ${tip ? tip(i) : v}${last ? " (today, partial)" : ""}`}</title></rect>
           );
+        })}
+        {(marks || []).filter((d) => days.includes(d)).map((d) => {
+          const x = L + days.indexOf(d) * bw + bw / 2;
+          return <line key={`mark-${d}`} x1={x} x2={x} y1={T} y2={H - B} stroke="var(--text-3)" strokeWidth="1" strokeDasharray="2 2"><title>{`${dayLabel(d)}: DDL ran on this table`}</title></line>;
         })}
         {[0, mid, days.length - 1].filter((i, k, a) => days[i] && a.indexOf(i) === k).map((i, k) => (
           <text key={i} x={L + i * bw + bw / 2} y={H - 3} textAnchor={k === 0 ? "start" : k === 2 ? "end" : "middle"} fontSize="9" fill="var(--text-3)">{dayLabel(days[i])}</text>

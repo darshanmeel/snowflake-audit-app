@@ -252,6 +252,7 @@ export function ApActivityTables(p: ApPageProps) {
   const tc = useCheck(p, "sf_use_table_columns");
   const qp = useCheck(p, "sf_use_query_profile");
   const qs = useCheck(p, "sf_use_top_query_shapes");
+  const tp = useCheck(p, "sf_use_table_perf_daily");
   const allTables = levelRows(ta.rows, "table");
   const dbOf = (fqn: any) => String(fqn || "").split(".")[0];
   const dbs = React.useMemo(() => [...new Set(allTables.map((r) => String(r.database_name || dbOf(r.table_fqn))))].filter(Boolean).sort(), [ta.rows]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -268,12 +269,16 @@ export function ApActivityTables(p: ApPageProps) {
   const capped = !!db && allTables.length < levelRows(ta.allRows, "class").reduce((s, r) => s + numOrZero(r.tables), 0);
   const nTables = classes.reduce((s, r) => s + numOrZero(r.tables), 0);
   const gb = classes.reduce((s, r) => s + numOrZero(r.storage_gb), 0);
-  // The tables the daily check kept, busiest first: the picker for the day-by-day view.
+  // The tables the daily check kept, busiest first: the picker for the day-by-day view. Tables kept only
+  // for their clustering credits follow, so a costly table that is rarely read can still be picked.
   const dailyTables = React.useMemo(() => {
     const m = new Map<string, number>();
     (td.rows || []).forEach((r) => { if (inDb(r.table_fqn) && !m.has(String(r.table_fqn))) m.set(String(r.table_fqn), numOrZero(r.table_rank)); });
-    return [...m.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k);
-  }, [td.rows, db]); // eslint-disable-line react-hooks/exhaustive-deps
+    const busy = [...m.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k);
+    const more = new Map<string, number>();
+    (tp.rows || []).forEach((r) => { const k = String(r.table_fqn); if (r.rank_basis === "clustering" && inDb(k) && !m.has(k) && !more.has(k)) more.set(k, numOrZero(r.table_rank)); });
+    return [...busy, ...[...more.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k)];
+  }, [td.rows, tp.rows, db]); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = React.useState<string | null>(null);
   const [rankBy, setRankBy] = React.useState("all");
   const cur = sel && dailyTables.includes(sel) ? sel : dailyTables[0] || null;
@@ -336,7 +341,7 @@ export function ApActivityTables(p: ApPageProps) {
         </Slot>
       </>
       <div id="act-table-day">
-        <Slot c={td} title="One table, day by day" subtitle="Reads, writes, DDL and rows changed per day, how its queries run, who uses it, its top queries and the columns they filter and join on">
+        <Slot c={td} title="One table, day by day" subtitle="What happened to it each day and how it ran: reads, writes, DDL, rows changed, query time, waiting, partitions skipped and clustering credits">
           {(rows) => {
             if (!cur) return okNote("No table had activity in the window.");
             const mine = rows.filter((r) => String(r.table_fqn) === cur).sort((a, b) => String(a.usage_date).localeCompare(String(b.usage_date)));
@@ -351,14 +356,19 @@ export function ApActivityTables(p: ApPageProps) {
                     {dailyTables.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </label>
-                <div className="cx-minis">
-                  {panels.filter(([k]) => !(dmlOnly && k !== "dml_rows")).map(([k, w, c]) => {
-                    const vals = mine.map((r) => numOrZero(r[k]));
-                    return <CxMiniCols key={k} title={w} color={c} days={days} values={vals}
-                      sub={`${fmtInt(vals.reduce((s, v) => s + v, 0))} in all`} dayLabel={(d) => fmtDayShort(d)} />;
-                  })}
-                </div>
-                <div className="cx-foot"><span>{dmlOnly ? "Reads, writes and DDL need ACCESS_HISTORY (Enterprise edition): only rows changed are shown." : "Reads, writes and DDL in distinct queries; rows changed from TABLE_DML_HISTORY."}</span></div>
+                {mine.length > 0 ? (
+                  <>
+                    <div className="cx-minis">
+                      {panels.filter(([k]) => !(dmlOnly && k !== "dml_rows")).map(([k, w, c]) => {
+                        const vals = mine.map((r) => numOrZero(r[k]));
+                        return <CxMiniCols key={k} title={w} color={c} days={days} values={vals}
+                          sub={`${fmtInt(vals.reduce((s, v) => s + v, 0))} in all`} dayLabel={(d) => fmtDayShort(d)} />;
+                      })}
+                    </div>
+                    <div className="cx-foot"><span>{dmlOnly ? "Reads, writes and DDL need ACCESS_HISTORY (Enterprise edition): only rows changed are shown." : "Reads, writes and DDL in distinct queries; rows changed from TABLE_DML_HISTORY."}</span></div>
+                  </>
+                ) : okNote("Reads, writes and rows changed: not among the busiest tables, which the export keeps. It is listed for its clustering credits.")}
+                <TablePerf c={tp} name={cur} tableId={mine[0]?.table_id} ddlDays={dmlOnly ? null : mine.filter((r) => numOrZero(r.ddl_queries) > 0).map((r) => String(day(r.usage_date)))} />
                 <QueryDetail prof={qp} shapes={qs} level="table" name={cur} />
                 <TableColumns rows={(tc.rows || []).filter((r) => String(r.table_fqn).toUpperCase() === String(cur).toUpperCase())} loading={tc.loading} why={tc.why} />
                 {users.length > 0 && !levelRows(qp.rows, "table_user").some((r) => String(r.table_fqn).toUpperCase() === String(cur).toUpperCase()) && (
@@ -392,6 +402,51 @@ export function ApActivityTables(p: ApPageProps) {
           ) : okNote("Every table was read in the window.");
         }}
       </Slot>
+    </div>
+  );
+}
+
+/** How one table ran each day: time per query, time waiting, partitions skipped and clustering credits.
+ *  Running against waiting tells a table problem from a warehouse one. Quiet days read "–", never 0. */
+function TablePerf({ c, name, tableId, ddlDays }: { c: ReturnType<typeof useCheck>; name: string; tableId?: any; ddlDays: string[] | null }) {
+  if (c.loading) return <div className="chart-note-oneline">…</div>;
+  if (c.why) return <div className="chart-note-oneline">{`How it ran: – ${c.why}`}</div>;
+  // By id when the day-by-day rows give one: a renamed table keeps its id.
+  const isIt = (r: Row) => (tableId != null ? String(r.table_id) === String(tableId) : String(r.table_fqn) === name);
+  const mine = (c.rows || []).filter(isIt).sort((a, b) => String(a.usage_date).localeCompare(String(b.usage_date)));
+  if (!mine.length) return <div className="chart-note-oneline">How it ran: not among the tables with the most queries or clustering credits, which the export keeps.</div>;
+  const days = mine.map((r) => String(day(r.usage_date)));
+  const dayWord = (d: string) => fmtDayShort(d);
+  const sum = (k: string) => mine.reduce((s, r) => s + numOrZero(r[k]), 0);
+  const queries = sum("queries");
+  const ps = sum("partitions_scanned"), pp = sum("partitions_pruned");
+  const credits = sum("clustering_credits");
+  const usd = mine.some((r) => r.est_clustering_usd_list != null) ? sum("est_clustering_usd_list") : null;
+  const wait = sum("elapsed_s") - sum("compile_s") - sum("exec_s");
+  // A figure per day, or "–" with the reason on a day that has nothing to measure.
+  const panel = (k: string, fmt: (v: number) => string, none: string) => ({
+    values: mine.map((r) => numOrZero(r[k])),
+    tip: (i: number) => (mine[i][k] == null ? `– ${none}` : fmt(numOrZero(mine[i][k]))),
+  });
+  const secs = (v: number) => fmtDuration(v);
+  const pct = (v: number) => fmtShare(v);
+  return (
+    <div className="cx-block">
+      <div className="cx-eyebrow">How it ran</div>
+      <div className="cx-minis">
+        <CxMiniCols title="Time per query" color="var(--c1)" days={days} dayLabel={dayWord} fine marks={ddlDays || undefined}
+          {...panel("avg_exec_s", secs, "no scans recorded")} sub={queries ? `${secs(sum("exec_s") / queries)} on average, ${plural(queries, "query", "queries")} that scanned it` : "No scans recorded in the window"} />
+        <CxMiniCols title="Waiting per query" color="var(--c4)" days={days} dayLabel={dayWord} fine marks={ddlDays || undefined}
+          {...panel("avg_wait_s", secs, "no scans recorded")} sub={queries ? `${secs(Math.max(wait, 0) / queries)} on average` : "No scans recorded in the window"} />
+        <CxMiniCols title="Partitions skipped" color="var(--c2)" days={days} dayLabel={dayWord} marks={ddlDays || undefined}
+          {...panel("prune_pct", pct, "no scans recorded")} sub={ps + pp ? `${pct(100 * pp / (ps + pp))} of ${fmtInt(ps + pp)} partitions` : "No scans recorded in the window"} />
+        {credits > 0 && (
+          <CxMiniCols title="Clustering credits" color="var(--c3)" days={days} dayLabel={dayWord} fine marks={ddlDays || undefined}
+            values={mine.map((r) => numOrZero(r.clustering_credits))} tip={(i) => numOrZero(mine[i].clustering_credits).toFixed(2)}
+            sub={`${credits.toFixed(1)} credits${usd != null ? ` · ${fmtMoney(usd)}` : ""}`} />
+        )}
+      </div>
+      <div className="cx-foot"><span>{`Only queries that scanned the table are recorded here. Time is the whole query's, so a join counts in full for each table it reads. Waiting is queues, locks and other time doing no work. ${credits > 0 ? "" : "No automatic clustering in the window. "}${ddlDays === null ? "DDL days need ACCESS_HISTORY (Enterprise edition)." : ddlDays.length ? "Dashed lines mark days with DDL." : "No DDL in the window."}`}</span></div>
     </div>
   );
 }

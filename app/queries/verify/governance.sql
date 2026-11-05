@@ -269,3 +269,28 @@ t AS (
   GROUP BY 1, 2
 )
 SELECT kind, name, queries FROM t ORDER BY kind, queries DESC;
+
+-- 15. One table, day by day: time per query, waiting per query and partitions skipped (Activity > Tables;
+--     check sf_use_table_perf_daily). Put the table in the p CTE, upper case. Time is the whole query's.
+WITH p AS (SELECT 'MY_DB' AS db, 'MY_SCHEMA' AS sch, 'MY_TABLE' AS tbl),
+q AS (
+  SELECT DATE(interval_start_time) AS usage_date, SUM(num_queries) AS queries,
+         SUM(aggregate_query_execution_time) / 1000 / NULLIF(SUM(num_queries), 0) AS avg_exec_s,
+         GREATEST(SUM(aggregate_query_elapsed_time) - SUM(aggregate_query_compilation_time)
+                  - SUM(aggregate_query_execution_time), 0) / 1000 / NULLIF(SUM(num_queries), 0) AS avg_wait_s
+  FROM SNOWFLAKE.ACCOUNT_USAGE.TABLE_QUERY_PRUNING_HISTORY, p
+  WHERE database_name = p.db AND schema_name = p.sch AND table_name = p.tbl
+    AND interval_start_time >= DATEADD(day, -30, CURRENT_DATE()) AND interval_start_time < CURRENT_DATE()
+  GROUP BY 1
+),
+s AS (
+  SELECT DATE(start_time) AS usage_date,
+         100 * SUM(partitions_pruned) / NULLIF(SUM(partitions_scanned) + SUM(partitions_pruned), 0) AS prune_pct
+  FROM SNOWFLAKE.ACCOUNT_USAGE.TABLE_PRUNING_HISTORY, p
+  WHERE database_name = p.db AND schema_name = p.sch AND table_name = p.tbl
+    AND start_time >= DATEADD(day, -30, CURRENT_DATE()) AND start_time < CURRENT_DATE()
+  GROUP BY 1
+)
+SELECT COALESCE(q.usage_date, s.usage_date) AS usage_date, q.queries, q.avg_exec_s, q.avg_wait_s, s.prune_pct
+FROM q FULL OUTER JOIN s ON s.usage_date = q.usage_date
+ORDER BY 1;

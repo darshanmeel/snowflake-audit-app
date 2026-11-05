@@ -11,7 +11,7 @@ from app.core import snowflake_docs
 
 ROOT = Path(__file__).resolve().parent.parent
 CHECKS_DIR = ROOT / "app" / "queries" / "checks"
-EXPECTED_CHECKS = 293
+EXPECTED_CHECKS = 294
 
 
 def test_registry_holds_unique_checks():
