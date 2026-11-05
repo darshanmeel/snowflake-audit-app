@@ -16,6 +16,7 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
 - **App:** FastAPI + DuckDB backend; React/TypeScript UI built by Vite from `web/` into `app/web/dist`.
 - **How it works (Guide):** same layout as the Databricks app (home, tab pages, check pages ending in "Run it yourself", troubleshooting, glossary), plus concept pages and "Traps to know".
 - **Test queries:** `app/queries/verify/<section>.sql` (ai, cost, governance, pipelines, queries, storage, warehouses) recompute the app's figures by hand. How it works links them under "Test it yourself", and they ship in the export kit.
+- **Streamlit in Snowflake test:** `tools/sis_probe` is a separate test that runs the real API and React build in a Streamlit component on container runtime, with `/api/...` calls passed to Python. It works locally on Python 3.11 and Streamlit 1.56, with no change to `app/` or `web/`. Not yet run in Snowflake, so install, DuckDB, the security policy and speed there are open.
 - **Export kit:** `tools/export_kit`, refreshed with `python tools/make_export_kit.py`. Refresh it after any SQL, check or README "Roles and privileges" change.
 - **Fake data:** `tests/fake_snowflake/`.
   - Base account used by the tests: `data.py`, `gap_*.py`, `new_checks_data.py`, `batch3_data.py`. Don't change these; the base fingerprint is pinned.
