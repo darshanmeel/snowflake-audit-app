@@ -9061,6 +9061,72 @@
       "sql_url": "app/queries/checks/sf_share_inbound_databases.sql"
     },
     {
+      "query_id": "sf_use_last_active",
+      "title": "When each table and object was last active",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "objects",
+        "columns": [
+          "object_key"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.TABLE_DML_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES",
+        "SNOWFLAKE.ACCOUNT_USAGE.VIEWS",
+        "SNOWFLAKE.ACCOUNT_USAGE.STAGES",
+        "SNOWFLAKE.ACCOUNT_USAGE.FUNCTIONS",
+        "SNOWFLAKE.ACCOUNT_USAGE.PROCEDURES",
+        "SNOWFLAKE.ACCOUNT_USAGE.PIPES",
+        "SNOWFLAKE.ACCOUNT_USAGE.TASKS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.PIPE_USAGE_HISTORY"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database (GOVERNANCE_VIEWER); Enterprise edition for everything except task runs and pipe loads",
+      "params": [
+        {
+          "name": "lookback_days",
+          "default": 365,
+          "meaning": "days of history it looks back, which is all ACCESS_HISTORY keeps"
+        },
+        {
+          "name": "top_n",
+          "default": 2000,
+          "meaning": "objects: the largest objects kept per kind and band"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a busy account.",
+      "read_this": "one row = one live table or object (row_level = 'object'), or one kind and band as a total row (row_level = 'band', exact, with objects and storage_gb). last_read_at, last_write_at and last_run_at look back up to 365 days; NULL means none in that history. last_active_at is the newest of read, write, run, DDL, last change and creation, so a new table reads as active. active_band is the time since: under_30, d30_90, d90_180, d180_360, over_360. beyond_history = nothing in the history the account has, and it is too short to say how long (history_days). use_pattern for tables: read_and_written, read_not_written, written_not_read, no_read_no_write; for other objects: used or not_used. dependents = live objects built on it, from OBJECT_DEPENDENCIES. Sizes are not priced here: what an unread table costs is on sf_storage_unused_tables.",
+      "healthy": "status = OK; this check only shows use and never flags. Priced unused tables are in sf_storage_unused_tables, and the 90-day figure there is the one that reaches Waste & savings.",
+      "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows (Standard edition or the role cannot see it); task and pipe rows still read, from their own history.",
+      "actions": [
+        "start from the oldest band and the largest tables (free)",
+        "check dependents and ask the owner: reads through shares, streams and intermediate views are not recorded (free)",
+        "rename or revoke access for a grace period, then drop (config)."
+      ],
+      "next": [
+        {
+          "query_id": "sf_storage_unused_tables",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_last_active.sql"
+    },
+    {
       "query_id": "sf_use_object_activity",
       "title": "Which stages, views, functions, procedures, pipes, tasks and streams are in use",
       "domain": "governance_access",

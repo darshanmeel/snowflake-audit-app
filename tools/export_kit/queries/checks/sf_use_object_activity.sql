@@ -98,6 +98,9 @@ sf_use_access_events AS (
 seen AS (
   SELECT access_rows FROM sf_use_access_seen
 ),
+-- Live views, stages, functions, procedures, pipes and tasks, one row per object, outside the SNOWFLAKE
+-- database. inv has object_key: the id, or the name for a procedure, whose overloads merge into one row.
+-- inv_fqn maps a name to its key, for events without an object id.
 inv0 AS (
   SELECT 'VIEW' AS object_domain, IFF(is_secure = 'YES', 'secure', CAST(NULL AS VARCHAR)) AS object_subtype,
          table_catalog AS database_name, table_schema AS schema_name, table_name AS object_name,

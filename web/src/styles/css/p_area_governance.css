@@ -92,3 +92,4 @@ button.ax-node:hover { border-color: var(--text-3); }
 .ax-bedge.own .ax-edge { stroke: var(--st-crit); } .ax-bedge.own text { fill: var(--st-crit); }
 .ax-bedge.use .ax-edge { stroke: var(--text-3); } .ax-bedge.use text { fill: var(--text-3); }
 .ax-bedge.on .ax-edge { stroke-width: 2.2; stroke-opacity: 1; }
+.act-la-head { margin: 16px 0 8px; font-size: 13px; font-weight: 600; }

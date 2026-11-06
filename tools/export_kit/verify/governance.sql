@@ -294,3 +294,25 @@ s AS (
 SELECT COALESCE(q.usage_date, s.usage_date) AS usage_date, q.queries, q.avg_exec_s, q.avg_wait_s, s.prune_pct
 FROM q FULL OUTER JOIN s ON s.usage_date = q.usage_date
 ORDER BY 1;
+
+-- 16. One table, when it was last active (Activity > Last active; check sf_use_last_active). Put the table's
+--     id in the p CTE. A NULL means none in the 365 days ACCESS_HISTORY keeps.
+WITH p AS (SELECT 0 AS table_id),
+h AS (
+  SELECT ah.query_start_time, ah.base_objects_accessed, ah.objects_modified
+  FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah
+  WHERE ah.query_start_time >= DATEADD(day, -365, CURRENT_DATE())
+),
+r AS (
+  SELECT MAX(h.query_start_time) AS last_read_at
+  FROM h, LATERAL FLATTEN(input => h.base_objects_accessed) f, p
+  WHERE f.value:"objectId"::NUMBER = p.table_id
+),
+w AS (
+  SELECT MAX(h.query_start_time) AS last_write_at
+  FROM h, LATERAL FLATTEN(input => h.objects_modified) f, p
+  WHERE f.value:"objectId"::NUMBER = p.table_id
+)
+SELECT r.last_read_at, w.last_write_at, t.last_altered, t.last_ddl, t.created
+FROM r CROSS JOIN w CROSS JOIN p
+LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.TABLES t ON t.table_id = p.table_id AND t.deleted IS NULL;

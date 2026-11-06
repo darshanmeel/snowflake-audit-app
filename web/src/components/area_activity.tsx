@@ -6,6 +6,7 @@
 import React from "react";
 import { fmtDayShort, fmtDuration, fmtInt, fmtMoney } from "../format";
 import { numOrZero } from "./hooks";
+import { CsvButton } from "./csv";
 import { DrawerBus } from "./drawer";
 import type { ApPageProps } from "./area_pages";
 import { StackedShareBar, fmtShare, pctOf } from "./blocks";
@@ -809,8 +810,160 @@ export function ApActivityObjects(p: ApPageProps) {
   );
 }
 
+// ═══════════════════════ Activity › Last active ═══════════════════════
+
+const LA_BANDS = ["under_30", "d30_90", "d90_180", "d180_360", "over_360", "beyond_history"];
+const LA_RECENT = "under_30";
+const OBJ_KINDS = ["VIEW", "STAGE", "FUNCTION", "PROCEDURE", "PIPE", "TASK"];
+const PATTERN_WORD: Record<string, string> = {
+  read_and_written: "Read and written", read_not_written: "Read, no write", written_not_read: "Written, no read",
+  no_read_no_write: "No read, no write", used: "Used", not_used: "Not used",
+};
+const fullDay = (v: any) => { const d = day(v); return d ? `${fmtDayShort(d)}, ${d.slice(0, 4)}` : "–"; };
+const laTime = (r: Row) => (r.last_active_at ? Date.parse(String(r.last_active_at)) : 0);
+
+function bandWord(b: string, history: number): string {
+  switch (b) {
+    case "under_30": return "Active in the last 30 days";
+    case "d30_90": return "Not active for 30–90 days";
+    case "d90_180": return "Not active for 90–180 days";
+    case "d180_360": return "Not active for 180–360 days";
+    case "over_360": return "Not active for over 360 days";
+    default: return `Nothing in the ${fmtInt(history)} days of history`;
+  }
+}
+
+/** One chart of bands and the list behind it: pick a band to see which ones, oldest first. */
+function LastActiveBlock({ c, kinds, noun, title, tables }: { c: ReturnType<typeof useCheck>; kinds: string[]; noun: string; title: string; tables: boolean }) {
+  const [band, setBand] = React.useState("");
+  const [kind, setKind] = React.useState("");
+  const [db, setDb] = React.useState("");
+  const [pattern, setPattern] = React.useState("");
+  const [sort, setSort] = React.useState("oldest");
+  const picked = kind ? [kind] : kinds;
+  const totals = levelRows(c.allRows, "band").filter((r) => picked.includes(String(r.object_kind)));
+  const rows = levelRows(c.rows, "object").filter((r) => picked.includes(String(r.object_kind)));
+  const history = numOrZero(totals.find((r) => r.object_kind !== "TASK" && r.object_kind !== "PIPE")?.history_days ?? totals[0]?.history_days);
+  const count = (b: string) => totals.filter((r) => r.active_band === b).reduce((s, r) => s + numOrZero(r.objects), 0);
+  const size = (b: string) => totals.filter((r) => r.active_band === b).reduce((s, r) => s + numOrZero(r.storage_gb), 0);
+  const whole = LA_BANDS.reduce((s, b) => s + count(b), 0);
+  const blocked = count("not_assessed");
+  const inBand = (r: Row) => (band ? r.active_band === band : r.active_band !== LA_RECENT && r.active_band !== "not_assessed");
+  const listed = rows.filter(inBand);
+  const dbs = Array.from(new Set(listed.map((r) => String(r.database_name || "")).filter(Boolean))).sort();
+  const shown = listed.filter((r) => (!db || r.database_name === db) && (!pattern || r.use_pattern === pattern));
+  const order = sort === "largest" ? (a: Row, b: Row) => numOrZero(b.storage_gb) - numOrZero(a.storage_gb)
+    : sort === "newest" ? (a: Row, b: Row) => laTime(b) - laTime(a) : (a: Row, b: Row) => laTime(a) - laTime(b);
+  const sorted = [...shown].sort(order);
+  const expected = band ? count(band) : LA_BANDS.filter((b) => b !== LA_RECENT).reduce((s, b) => s + count(b), 0);
+  const capped = listed.length < expected;
+  const lastUsed = (r: Row) => r.last_read_at || r.last_run_at;
+  const csv = [
+    { label: "Name", value: (r: Row) => r.object_fqn }, { label: "Id", value: (r: Row) => r.object_id }, { label: "Kind", value: (r: Row) => r.object_kind },
+    { label: "Owner", value: (r: Row) => r.object_owner }, { label: "Last active", value: (r: Row) => day(r.last_active_at) },
+    { label: "Days since", value: (r: Row) => r.days_since_active }, { label: "Last read", value: (r: Row) => day(r.last_read_at) },
+    { label: "Last write", value: (r: Row) => day(r.last_write_at) }, { label: "Last run", value: (r: Row) => day(r.last_run_at) },
+    { label: "Use", value: (r: Row) => PATTERN_WORD[String(r.use_pattern)] }, { label: "Depends on it", value: (r: Row) => r.dependents },
+    { label: "Storage GB", value: (r: Row) => r.storage_gb },
+  ];
+  const nameCell = (r: Row) => <CxObjName full={String(r.object_fqn || r.object_name)} id={r.object_id} />;
+  const since = (r: Row) => (r.active_band === "beyond_history" ? `over ${fmtInt(numOrZero(r.history_days))} days` : r.days_since_active == null ? "–" : plural(numOrZero(r.days_since_active), "day"));
+  return (
+    <Slot c={c} title={title} subtitle="Pick a bar to see which ones">
+      {() => {
+        if (!whole && blocked) return okNote(`– needs ACCESS_HISTORY (Enterprise edition): ${plural(blocked, noun)} can't be dated.`);
+        if (!whole) return okNote(`No ${noun} the role can see.`);
+        return (
+          <div>
+            {!tables && (
+              <div className="act-db-pick"><label className="cx-muted">{"Kind "}
+                <select value={kind} onChange={(e) => { setKind(e.target.value); setDb(""); }} aria-label="Kind">
+                  <option value="">{"All kinds"}</option>
+                  {kinds.map((k) => <option key={k} value={k}>{kindWord(k)}</option>)}
+                </select>
+              </label></div>
+            )}
+            <CxBarRows legend={false} ariaLabel={title} max={Math.max(1, ...LA_BANDS.map(count))} n={LA_BANDS.length}
+              rows={LA_BANDS.filter((b) => b !== "beyond_history" || count(b) > 0).map((b) => ({
+                key: b, name: bandWord(b, history), value: count(b),
+                strong: `${fmtInt(count(b))} of ${plural(whole, noun)}`,
+                rest: tables ? ` · ${fmtSize(size(b))}` : undefined,
+                onClick: () => { setBand(band === b ? "" : b); setDb(""); },
+              }))} />
+            {history < 360 && kinds.some((k) => k !== "TASK" && k !== "PIPE") && (
+              <div className="cx-foot"><span>{`This account has ${fmtInt(history)} days of access history, so longer gaps can't be told apart yet.`}</span></div>
+            )}
+            <h4 className="act-la-head">{band ? bandWord(band, history) : "Not active for 30 days or more"}{` · ${plural(expected, noun)}`}</h4>
+            <div className="act-db-pick">
+              <DbPick dbs={dbs} db={db} setDb={setDb} />
+              {tables && (
+                <label className="cx-muted">{"Use "}
+                  <select value={pattern} onChange={(e) => setPattern(e.target.value)} aria-label="Use">
+                    <option value="">{"Any"}</option>
+                    {["no_read_no_write", "written_not_read", "read_not_written", "read_and_written"].map((k) => <option key={k} value={k}>{PATTERN_WORD[k]}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="cx-muted">{" Sort "}
+                <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
+                  <option value="oldest">{"Oldest first"}</option>
+                  <option value="newest">{"Newest first"}</option>
+                  {tables && <option value="largest">{"Largest first"}</option>}
+                </select>
+              </label>
+              <CsvButton fileName={tables ? "tables_last_active" : "objects_last_active"} columns={csv} rows={sorted} />
+            </div>
+            {sorted.length ? (
+              <CxTable ariaLabel={`${title}: which ones`} n={10}
+                foot={`– = none in the history.${capped ? ` Lists the largest ${fmtInt(listed.length)} of ${fmtInt(expected)}; the bars count them all.` : ""}`}
+                cols={tables
+                  ? [{ label: "Table" }, { label: "Owner" }, { label: "Last active" }, { label: "Since", num: true }, { label: "Last read" }, { label: "Last write" }, { label: "Use" }, { label: "Depends on it", num: true }, { label: "Storage", num: true }]
+                  : [{ label: "Object" }, { label: "Kind" }, { label: "Owner" }, { label: "Last active" }, { label: "Since", num: true }, { label: "Last read or run" }, { label: "Depends on it", num: true }]}
+                rows={sorted.map((r) => ({
+                  key: String(r.object_key), onClick: drawerBy("sf_use_last_active", "object_key", r.object_key, String(r.object_fqn || r.object_name)),
+                  cells: tables
+                    ? [nameCell(r), String(r.object_owner || "–"), fullDay(r.last_active_at), since(r), fullDay(r.last_read_at), fullDay(r.last_write_at), PATTERN_WORD[String(r.use_pattern)] || "–", r.dependents == null ? "–" : fmtInt(numOrZero(r.dependents)), fmtSize(numOrZero(r.storage_gb))]
+                    : [nameCell(r), kindWord(String(r.object_kind)).replace(/s$/, ""), String(r.object_owner || "–"), fullDay(r.last_active_at), since(r), fullDay(lastUsed(r)), r.dependents == null ? "–" : fmtInt(numOrZero(r.dependents))],
+                }))} />
+            ) : okNote(`No ${noun} in this selection.`)}
+          </div>
+        );
+      }}
+    </Slot>
+  );
+}
+
+export function ApActivityLastActive(p: ApPageProps) {
+  const c = useCheck(p, "sf_use_last_active", true);
+  const totals = levelRows(c.allRows, "band");
+  const sum = (kinds: string[], bands: string[]) => totals.filter((r) => kinds.includes(String(r.object_kind)) && bands.includes(String(r.active_band))).reduce((s, r) => s + numOrZero(r.objects), 0);
+  const old = LA_BANDS.filter((b) => b !== LA_RECENT);
+  const tOld = sum(["TABLE"], old);
+  const tAll = sum(["TABLE"], LA_BANDS);
+  const oOld = sum(OBJ_KINDS, old);
+  const oAll = sum(OBJ_KINDS, LA_BANDS);
+  const history = numOrZero(totals.find((r) => r.object_kind === "TABLE")?.history_days);
+  const blocked = sum(["TABLE"], ["not_assessed"]) > 0;
+  useLede(p, c.loading, tAll ? `${fmtInt(tOld)} of ${plural(tAll, "table")} had no activity for 30 days or more. Check what depends on one and ask its owner before dropping it.` : null);
+  const noHistory = "needs ACCESS_HISTORY (Enterprise edition)";
+  return (
+    <div className="ais-page cx-e">
+      <SummaryTileRow compact>
+        <CheckTile c={c} label="Tables not active, 30+ days" build={() => (blocked ? { headline: null, missingReason: noHistory } : { headline: fmtInt(tOld), unit: ` of ${plural(tAll, "table")}`, cause: "No read, write, change or new table." })} />
+        <CheckTile c={c} label="Tables not active, 360+ days" build={() => (blocked ? { headline: null, missingReason: noHistory }
+          : history < 360 ? { headline: null, missingReason: `only ${fmtInt(history)} days of access history` }
+          : { headline: fmtInt(sum(["TABLE"], ["over_360"])), unit: ` of ${plural(tAll, "table")}`, cause: "The longest band." })} />
+        <CheckTile c={c} label="Other objects not active, 30+ days" build={() => ({ headline: fmtInt(oOld), unit: ` of ${plural(oAll, "object")}`, cause: "Views, stages, functions, procedures, pipes, tasks." })} />
+        <CheckTile c={c} label="Access history" build={() => (blocked ? { headline: null, missingReason: noHistory } : { headline: fmtInt(history), unit: " days", cause: "How far back reads and writes can be dated." })} />
+      </SummaryTileRow>
+      <LastActiveBlock c={c} kinds={["TABLE"]} noun="table" title="Tables, by time since last active" tables />
+      <LastActiveBlock c={c} kinds={OBJ_KINDS} noun="object" title="Other objects, by time since last active" tables={false} />
+    </div>
+  );
+}
+
 /** The Activity sub-tab pages, merged into AREA_CHART_PAGES by area_pages.tsx. */
 export const ACTIVITY_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) => React.JSX.Element>> = {
-  activity: { databases: ApActivityDatabases, schemas: ApActivitySchemas, tables: ApActivityTables, users: ApActivityUsers, objects: ApActivityObjects },
+  activity: { databases: ApActivityDatabases, schemas: ApActivitySchemas, tables: ApActivityTables, lastactive: ApActivityLastActive, users: ApActivityUsers, objects: ApActivityObjects },
 };
 Object.values(ACTIVITY_CHART_PAGES).forEach((m) => Object.values(m).forEach((fn) => { (fn as any).ownsTiles = true; (fn as any).ownsLede = true; }));

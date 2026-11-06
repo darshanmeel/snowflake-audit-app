@@ -4884,6 +4884,31 @@
    },
    "needs_enterprise": false
   },
+  "sf_use_last_active": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.TABLE_STORAGE_METRICS",
+    "ACCOUNT_USAGE.TABLES",
+    "ACCOUNT_USAGE.TABLE_DML_HISTORY",
+    "ACCOUNT_USAGE.OBJECT_DEPENDENCIES",
+    "ACCOUNT_USAGE.VIEWS",
+    "ACCOUNT_USAGE.STAGES",
+    "ACCOUNT_USAGE.FUNCTIONS",
+    "ACCOUNT_USAGE.PROCEDURES",
+    "ACCOUNT_USAGE.PIPES",
+    "ACCOUNT_USAGE.TASKS",
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.PIPE_USAGE_HISTORY"
+   ],
+   "params": {
+    "lookback_days": 365,
+    "top_n": 2000
+   },
+   "needs_enterprise": true
+  },
   "sf_use_object_activity": {
    "domain": "governance_access",
    "windowed": true,

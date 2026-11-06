@@ -399,13 +399,14 @@ export const LINEAGE_SUBTABS: SubtabDef[] = [
 export const LINEAGE_IDS = LINEAGE_SUBTABS.flatMap((s) => s.ids);
 export const LINEAGE_REF_IDS = LINEAGE_SUBTABS.flatMap((s) => s.refIds);
 
-// ─────────── Activity ─── what is used: databases, schemas, tables, users and roles, and the other
+// ─────────── Activity ─── what is used: databases, schemas, tables, when each was last active, users and roles, and the other
 // objects. Unused tables and clones stay on Storage, where they carry a $ figure.
 export const ACTIVITY_SUBTABS: SubtabDef[] = [
   { key: "databases", label: "Databases", ids: ["sf_use_database_activity"], refIds: [] },
   // Reads the schema rows of sf_use_database_activity, homed on Databases.
   { key: "schemas", label: "Schemas", ids: [], refIds: [] },
   { key: "tables", label: "Tables", ids: ["sf_use_table_activity", "sf_use_table_daily", "sf_use_table_perf_daily", "sf_use_table_columns", "sf_use_query_profile", "sf_use_top_query_shapes"], refIds: [] },
+  { key: "lastactive", label: "Last active", ids: ["sf_use_last_active"], refIds: [] },
   { key: "users", label: "Users & roles", ids: ["sf_use_user_activity", "sf_use_user_data_io", "sf_use_table_readers"], refIds: ["sf_use_query_profile", "sf_use_top_query_shapes"] },
   { key: "objects", label: "Stages & other objects", ids: ["sf_use_object_activity", "sf_lin_unused_views"], refIds: ["sf_acct_object_counts"] },
 ];
