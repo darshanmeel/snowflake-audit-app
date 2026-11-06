@@ -110,17 +110,24 @@ def setup_statements(database: str, schema: str, stage: str, runtime: str, pool:
 
 def upload_statements(bundle: Path, stage: str) -> list[str]:
     """Clears the app's folder first: files left by another runtime or an older build would ship too.
-    One PUT per folder, because PUT does not go into subfolders."""
+    The connector rejects a pattern that matches a folder and `*` skips dotfiles, so those folders
+    get one PUT per file."""
     lines = [f"REMOVE @{stage}/app_src/"]
     for folder in sorted({p.parent for p in bundle.rglob("*") if p.is_file()}):
         rel = folder.relative_to(bundle).as_posix()
         target = f"@{stage}/app_src" + ("" if rel == "." else f"/{rel}")
-        lines.append(f"PUT 'file://{folder.as_posix()}/*' {target} AUTO_COMPRESS=FALSE OVERWRITE=TRUE")
+        entries = list(folder.iterdir())
+        if any(e.is_dir() or e.name.startswith(".") for e in entries):
+            sources = [e.as_posix() for e in sorted(entries) if e.is_file()]
+        else:
+            sources = [f"{folder.as_posix()}/*"]
+        lines += [f"PUT 'file://{src}' {target} AUTO_COMPRESS=FALSE OVERWRITE=TRUE" for src in sources]
     return lines
 
 
 def create_statements(stage: str, warehouse: str, name: str, runtime: str, pool: str) -> list[str]:
-    extra = ""
+    # Named even for the warehouse: leaving it out now means container runtime on commercial accounts.
+    extra = "\n  RUNTIME_NAME = 'SYSTEM$WAREHOUSE_RUNTIME'"
     if runtime == "container":
         extra = (f"\n  RUNTIME_NAME = 'SYSTEM$ST_CONTAINER_RUNTIME_PY3_11'\n  COMPUTE_POOL = {pool}"
                  "\n  ARTIFACT_REPOSITORIES = (snowflake.snowpark.pypi_shared_repository)")
@@ -133,8 +140,11 @@ def create_statements(stage: str, warehouse: str, name: str, runtime: str, pool:
 
 def run(statements: list[str]) -> None:
     sys.path.insert(0, str(ROOT))
-    from tools.export_results import connect
-    con = connect()
+    from tools.export_results import connect, explain_connection_error
+    try:
+        con = connect()
+    except Exception as exc:  # noqa: BLE001 -- includes a missing connector
+        raise SystemExit(explain_connection_error(exc)) from exc
     try:
         cur = con.cursor()
         for sql in statements:

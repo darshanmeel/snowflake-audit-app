@@ -47,21 +47,18 @@ def _call(args: list[str]) -> None:
 
 
 def _last_prices(base: Path) -> list[str]:
-    """--credit-price / --storage-price from the newest results/<stamp>/manifest.json when that run
-    took them from the command line, or [] -- a price read from the org billing view is left for the
-    export to read again, so it never freezes at the first refresh's value."""
+    """The prices typed on the command line for the newest results/<stamp>/manifest.json. A price read
+    from the org billing view is left for the export to read again, so it never freezes."""
     for folder in datasource.results_folders(base):
         try:
             pricing = json.loads((folder / "manifest.json").read_text(encoding="utf-8")).get("pricing") or {}
         except (OSError, ValueError):
             continue
         args: list[str] = []
-        if pricing.get("source") != "cli":
-            return args
-        if pricing.get("credit_price_usd") is not None:
+        # Each price has its own source: one can be typed in while another comes from the invoice.
+        if pricing.get("credit_price_usd") is not None and pricing.get("source") == "cli":
             args += ["--credit-price", str(pricing["credit_price_usd"])]
-        # A storage price read from the invoice is read again; only a typed-in one is passed on.
-        if pricing.get("storage_price_usd_tb_month") is not None and pricing.get("storage_source", "cli") == "cli":
+        if pricing.get("storage_price_usd_tb_month") is not None and pricing.get("storage_source", pricing.get("source")) == "cli":
             args += ["--storage-price", str(pricing["storage_price_usd_tb_month"])]
         if pricing.get("ai_credit_price_usd") is not None and pricing.get("ai_source") == "cli":
             args += ["--ai-credit-price", str(pricing["ai_credit_price_usd"])]

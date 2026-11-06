@@ -4,22 +4,46 @@ This runs the same app inside Snowflake. You upload the code and your data to a 
 
 The app shows the DuckDB file you ship with it, by default the one your local app opens. The deploy refuses a file holding demo or test data, whatever it's called. It doesn't read your account while it runs, so it needs no privileges on `SNOWFLAKE.ACCOUNT_USAGE`.
 
-**Not yet run in Snowflake.** It has only been tested with Streamlit on a local machine. Warehouse runtime is the default and needs no compute pool, but Snowflake's docs don't say it supports the component type it uses. If it fails, use [container runtime](#container-runtime).
+**Not yet run in Snowflake.** It has only been tested with Streamlit on a local machine. Warehouse runtime is the default and needs no compute pool. A Snowflake release note says custom components work if they make no external calls, but the limitations page names only v1 `html` and `iframe`, so the component this app uses is untested there. If it fails, use [container runtime](#container-runtime).
 
 ## Quick deploy
 
-With your export loaded and a role that has the rights in step 1, run this from the repo folder:
+With your export loaded and the role and user from step 1, run this in PowerShell from the repo folder. The first line prints the file it will ship, so check that it's your real export before the second:
 
 ```
+.venv\Scripts\Activate.ps1
+python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH
+
+$env:SNOWFLAKE_USER = "MY_DEPLOY_USER"
 $env:SNOWFLAKE_ROLE = "MY_DEPLOY_ROLE"
+$env:SNOWFLAKE_PRIVATE_KEY_FILE = "path\to\deploy_key.p8"
 python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH --run
 ```
 
-Check that the `database: ...` line it prints is your real export, then open **Snowflake audit** in Snowsight under Projects > Streamlit. The first start can take a few minutes. The steps below give the details and the SnowSQL way.
+On macOS or Linux, use `source .venv/bin/activate` and `export SNOWFLAKE_ROLE=MY_DEPLOY_ROLE`, and the same for the other two.
+
+Then log in to Snowsight as a person who holds the deploy role and open **Snowflake audit** under Projects > Streamlit. The first start can take a few minutes. Export in a new window afterwards, because these settings beat `.env` and the export would sign in as the deploy user.
+
+The steps below give the details and the SnowSQL way.
 
 ## 1. Have what it needs
 
-The role needs USAGE on the database, schema and warehouse, READ and WRITE on the stage, and CREATE STREAMLIT on the schema.
+The audit's user and role are read-only and can't deploy, so make a separate role and a user with its own key pair ([Make the key pair](../../README.md#make-the-key-pair)). Don't give this role to the audit's user. As `ACCOUNTADMIN`, once, using these default names or your own:
+
+```sql
+CREATE ROLE IF NOT EXISTS MY_DEPLOY_ROLE;
+CREATE DATABASE IF NOT EXISTS AUDIT_APP;
+CREATE STAGE IF NOT EXISTS AUDIT_APP.PUBLIC.AUDIT_APP_STAGE
+  ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE') DIRECTORY = (ENABLE = TRUE);
+GRANT USAGE ON DATABASE AUDIT_APP TO ROLE MY_DEPLOY_ROLE;
+GRANT USAGE ON SCHEMA AUDIT_APP.PUBLIC TO ROLE MY_DEPLOY_ROLE;
+GRANT USAGE ON WAREHOUSE MY_WH TO ROLE MY_DEPLOY_ROLE;
+GRANT READ, WRITE ON STAGE AUDIT_APP.PUBLIC.AUDIT_APP_STAGE TO ROLE MY_DEPLOY_ROLE;
+GRANT CREATE STREAMLIT ON SCHEMA AUDIT_APP.PUBLIC TO ROLE MY_DEPLOY_ROLE;
+GRANT ROLE MY_DEPLOY_ROLE TO USER MY_DEPLOY_USER;
+```
+
+On a restricted network, an admin must also allow `*.snowflake.app` and `*.snowflake.com` (and `*.snowflakecomputing.app` for container runtime) and not block WebSockets. With private connectivity, follow Snowflake's page on it.
 
 Use your own objects, or these defaults:
 
@@ -65,14 +89,12 @@ SNOWFLAKE_USER=...
 SNOWFLAKE_ROLE=...
 SNOWFLAKE_WAREHOUSE=...
 SNOWFLAKE_PRIVATE_KEY_FILE=path/to/key.p8
-SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=...      # only if the key is encrypted
+SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=...
 ```
 
-That login needs the role above, not the audit's read-only role. To keep `.env` unchanged, set the role for this PowerShell window only:
+Set the passphrase only if the key is encrypted.
 
-```
-$env:SNOWFLAKE_ROLE = "MY_DEPLOY_ROLE"
-```
+That login needs the user and role from step 1, not the audit's. To keep `.env` unchanged, set them for one PowerShell window, as in Quick deploy.
 
 Without `--run`, `deploy.py` needs no login. Keys and `.env` are not uploaded, and the app in Snowflake needs no key or login, because it runs under its owner role.
 
@@ -97,14 +119,16 @@ Export and load as usual, then repeat steps 2 and 3. The upload clears `app_src/
 - **Refresh:** there's no Refresh button, because it needs a login and a local export.
 - **Settings:** they are read-only in the app, so a viewer can't turn masking off. Set them locally before you deploy.
 - **Copy link:** on warehouse runtime the app runs in its own frame, so a copied link may not open the same page.
-- **Cost:** the warehouse runs while the app is open, up to its sleep timer. Each viewer starts their own copy of the app, so opening it takes longer.
+- **Cost:** the warehouse stays on for about 15 minutes after the last activity in an open tab, whatever its auto-suspend, and moving the mouse over the app counts as activity. Close the tab when done, or set a sleep timer on the app in Snowsight. Each viewer starts their own copy of the app, so opening it takes longer.
 - **Large results:** warehouse runtime caps a message at 32 MB. The app splits a page's requests to fit, but one result too large to send, such as a very large CSV, fails with a message.
 
 ## Container runtime
 
-Use this if warehouse runtime fails. It needs a compute pool, because it runs the app in a container, and it uses Streamlit's newer component type, which Snowflake documents as supported there.
+Use this if warehouse runtime fails. It isn't available in every government region, and a trial account may not have it. It needs a compute pool, because it runs the app in a container, and it uses Streamlit's newer component type, which Snowflake documents as supported there.
 
-As ACCOUNTADMIN, once:
+The simplest way needs no new pool and usually no admin: add `--runtime container --pool SYSTEM_COMPUTE_POOL_CPU` to step 2, without `--setup`. Every account has this shared pool, open to all roles unless an admin revoked that.
+
+For a pool of your own, as ACCOUNTADMIN, once:
 
 ```sql
 CREATE COMPUTE POOL IF NOT EXISTS AUDIT_APP_POOL
@@ -113,11 +137,11 @@ GRANT USAGE, MONITOR ON COMPUTE POOL AUDIT_APP_POOL TO ROLE MY_ROLE;
 GRANT DATABASE ROLE SNOWFLAKE.PYPI_REPOSITORY_USER TO ROLE MY_ROLE;
 ```
 
-Then add `--runtime container --pool AUDIT_APP_POOL` to step 2. The pool bills while it runs; `ALTER COMPUTE POOL AUDIT_APP_POOL SUSPEND;` stops it.
+Then add `--runtime container --pool AUDIT_APP_POOL` to step 2. The app keeps its node running until three days after the last viewer, and only then do the 600 seconds apply, so the pool can bill for about three days after each visit. `ALTER COMPUTE POOL AUDIT_APP_POOL SUSPEND;` stops it sooner.
 
 ## If it doesn't work
 
 - **An SQL error during the deploy:** this is usually a missing privilege or a wrong name.
-- **A package doesn't install:** warehouse runtime only has Snowflake's Conda channel. Check `environment.yml` against the error.
+- **A package doesn't install:** warehouse runtime only has Snowflake's Conda channel. Check `environment.yml` against the error. If every package fails, ask an ORGADMIN to check the External Offerings Terms under Admin > Terms; Snowflake's docs disagree on whether this is needed.
 - **The page shows an error at the top:** the failed lines under it say which check failed. DuckDB is the most likely, because Snowflake's docs list `.so` files as unsupported, although the channel has `duckdb`.
-- **The page stays blank or on "Loading…":** open **Browser checks** in the app, or **Server checks** below it. They list what failed or what Snowflake's security policy blocked. A blank frame on warehouse runtime means it doesn't allow this component; use container runtime.
+- **The page stays blank or on "Loading…":** open **Browser checks** in the app, or **Server checks** below it. They list what failed or what Snowflake's security policy blocked. A blank frame on warehouse runtime can come from a blocked network, so check the allowlist in step 1 first. Otherwise warehouse runtime doesn't allow this component; use container runtime.

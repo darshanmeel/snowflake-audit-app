@@ -77,15 +77,21 @@ read-only: nothing lets the role change data, warehouses or settings.
 ### The grant script
 
 Run this once as `ACCOUNTADMIN` (or a role that can create roles and grant on the account). The
-export kit ships the same script as `grants.sql`.
+export kit ships the same script as `grants.sql`. The commented lines near the end need your own
+names: edit and uncomment the ones that apply.
 
 ```sql
 CREATE ROLE IF NOT EXISTS AUDIT_ROLE;
 
+-- The user the export signs in as, with its public key.
+CREATE USER IF NOT EXISTS AUDIT_USER DEFAULT_ROLE = AUDIT_ROLE DEFAULT_WAREHOUSE = AUDIT_WH
+  TYPE = SERVICE RSA_PUBLIC_KEY = '<public key, without the BEGIN/END lines>';
+GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
+
 -- The ACCOUNT_USAGE views: all of them.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AUDIT_ROLE;
 -- Or, when IMPORTED PRIVILEGES is hard to get approved, these four read-only database roles instead.
--- They open about 225 of the checks; the rest read "the role can't see it" (the task checks need
+-- They open 265 of the 294 checks; the rest read "the role can't see it" (the task checks need
 -- TASK_VERSIONS, which none of the four opens).
 --   GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER      TO ROLE AUDIT_ROLE;  -- cost and usage
 --   GRANT DATABASE ROLE SNOWFLAKE.OBJECT_VIEWER     TO ROLE AUDIT_ROLE;  -- tables and objects
@@ -105,10 +111,10 @@ GRANT USAGE ON WAREHOUSE AUDIT_WH TO ROLE AUDIT_ROLE;
 
 -- SHOW WAREHOUSES lists only the warehouses the role has a privilege on. Grant MONITOR on each one
 -- (repeat for every warehouse, and again whenever a new one is created).
-GRANT MONITOR ON WAREHOUSE MY_WAREHOUSE TO ROLE AUDIT_ROLE;
+--   GRANT MONITOR ON WAREHOUSE MY_WAREHOUSE TO ROLE AUDIT_ROLE;
 
 -- Same for resource monitors (SHOW RESOURCE MONITORS).
-GRANT MONITOR ON RESOURCE MONITOR MY_MONITOR TO ROLE AUDIT_ROLE;
+--   GRANT MONITOR ON RESOURCE MONITOR MY_MONITOR TO ROLE AUDIT_ROLE;
 
 -- Trust Center findings (the Trust Center check reads SNOWFLAKE.TRUST_CENTER.FINDINGS).
 GRANT APPLICATION ROLE SNOWFLAKE.TRUST_CENTER_VIEWER TO ROLE AUDIT_ROLE;
@@ -126,36 +132,32 @@ GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
 
 -- Optional: the organization billing views (invoice, rates, contract balance).
 -- In an ORGADMIN-enabled account they are database roles of the SNOWFLAKE database:
-GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_BILLING_VIEWER TO ROLE AUDIT_ROLE;
-GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_USAGE_VIEWER TO ROLE AUDIT_ROLE;
+--   GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_BILLING_VIEWER TO ROLE AUDIT_ROLE;
+--   GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_USAGE_VIEWER TO ROLE AUDIT_ROLE;
 -- In the organization account they are application roles instead (run as GLOBALORGADMIN):
 --   GRANT APPLICATION ROLE SNOWFLAKE.ORGANIZATION_BILLING_VIEWER TO ROLE AUDIT_ROLE;
-
--- The user the export signs in as, with its public key.
-CREATE USER IF NOT EXISTS AUDIT_USER DEFAULT_ROLE = AUDIT_ROLE DEFAULT_WAREHOUSE = AUDIT_WH
-  TYPE = SERVICE RSA_PUBLIC_KEY = '<public key, without the BEGIN/END lines>';
-GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 ```
 
 ### What each grant opens, and what you won't see without it
 
 A check reads one or more sources. If the role cannot read any one of them, the check is skipped.
 In the app it reads "–, the role can't see it", with the view or SHOW command it needed. It never
-shows $0 or "nothing found". Counts were made at 274 checks, so a few newer checks are not in them; a check can need more than one grant.
+shows $0 or "nothing found". The role counts come from the check headers and Snowflake's table of
+roles per view, at 294 checks. A check can need more than one grant, so they overlap.
 
 | Grant | What it opens | Without it you won't see |
 |---|---|---|
 | `USAGE` on a warehouse | Runs the export | Nothing: no statement can run. |
 | `IMPORTED PRIVILEGES` on the `SNOWFLAKE` database | Every `ACCOUNT_USAGE` view, plus the reader-account and listing views | Almost everything. Only 24 checks read nothing from the `SNOWFLAKE` database (they use SHOW, the organization views or the Trust Center). |
-| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 248 of the 274 checks | The 25 checks in the "None of the four" row, and the data quality expectations check. |
-| `SNOWFLAKE.USAGE_VIEWER` | 135 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
-| `SNOWFLAKE.GOVERNANCE_VIEWER` | 107 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Lineage & usage, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
-| `SNOWFLAKE.SECURITY_VIEWER` | 62 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |
-| `SNOWFLAKE.OBJECT_VIEWER` | 50 checks: tables, schemas, views, stages, pipes, tasks, object dependencies | Storage by table, unused objects, dependencies in Lineage, object inventories. |
-| None of the four: needs `IMPORTED PRIVILEGES` | 25 checks | Nine task checks (task cost, failures, runs per day, failed vs all runs, duration change, skipped overlaps, late starts, no-op runs, warehouse vs serverless, all through `TASK_VERSIONS`). Also alert history, query acceleration, lock waits, compute pools, backups, stale stage files, database replication, Cortex Code Desktop, data movement violations, reader accounts, listings and Marketplace. |
+| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 265 of the 294 checks (245 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
+| `SNOWFLAKE.USAGE_VIEWER` | 168 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
+| `SNOWFLAKE.GOVERNANCE_VIEWER` | 133 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Activity, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
+| `SNOWFLAKE.SECURITY_VIEWER` | 84 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |
+| `SNOWFLAKE.OBJECT_VIEWER` | 60 checks: tables, schemas, views, stages, pipes, tasks, object dependencies | Storage by table, unused objects, dependencies in Lineage, object inventories. |
+| None of the four: needs `IMPORTED PRIVILEGES` | 28 checks | Ten task checks (task cost, failures, runs per day, run times, failed vs all runs, duration change, skipped overlaps, late starts, no-op runs, warehouse vs serverless, all through `TASK_VERSIONS`). Also serverless features, streaming cost, allocation reconciliation, alert history, query acceleration, lock waits, compute pools, backups, stale stage files, database replication, Cortex Code Desktop, data movement violations, reader accounts, listings and Marketplace. |
 | `MONITOR USAGE` on the account | Account-level usage and history for databases and warehouses | No check is skipped for this alone; the checks read `ACCOUNT_USAGE` through the grants above. |
 | `MONITOR EXECUTION` on the account | `SHOW TASKS` and pipes, account-wide | `SHOW TASKS` lists only tasks the role owns, so the suspended, orphaned and stream-consumer checks (4) see fewer tasks; `SHOW PIPES` lists only pipes the role can monitor (1 check: broken or unalerted pipes). |
-| `MONITOR` on each warehouse | `SHOW WAREHOUSES` (22 checks: auto-suspend, size, scaling, warehouse settings) | Warehouses you did not grant are missing from the settings checks; their spend still shows from metering. `report.md` says how many billed warehouses `SHOW WAREHOUSES` left out. |
+| `MONITOR` on each warehouse | `SHOW WAREHOUSES` (23 checks: auto-suspend, size, scaling, warehouse settings) | Warehouses you did not grant are missing from the settings checks; their spend still shows from metering. `report.md` says how many billed warehouses `SHOW WAREHOUSES` left out. |
 | `MONITOR` on each resource monitor | `SHOW RESOURCE MONITORS` | Monitors you did not grant are missing from resource monitor coverage and projection (2 checks). |
 | `APPLY AUTHENTICATION POLICY`, `APPLY PASSWORD POLICY` | `SHOW AUTHENTICATION POLICIES`, `SHOW PASSWORD POLICIES` | The authentication and password policy checks (2) see only policies the role owns. `POLICY_REFERENCES` does not list these policies, so there is no other way. |
 | Application role `SNOWFLAKE.BUDGET_VIEWER` | Budgets | The budgets check (1) lists no budgets, or only the role's own. |
@@ -198,14 +200,14 @@ shows $0 or "nothing found". Counts were made at 274 checks, so a few newer chec
    folder (the one that holds `README.md`).
 2. **Create a virtual environment and install the packages.**
 
-   Use Python 3.11 or 3.12. If you have several versions, the Windows `py` launcher picks one:
+   Use Python 3.11 or newer (tested on 3.12). If you have several versions, the Windows `py` launcher picks one:
    `py -0` lists them, and `py -3.12 -m venv .venv` makes the environment with 3.12. Once it is
    active, `python` means that version.
 
    Windows (PowerShell):
 
    ```
-   py -3.12 -m venv .venv             # or: python -m venv .venv, if python is already 3.11 or 3.12
+   py -3.12 -m venv .venv             # or: python -m venv .venv, if python is already 3.11 or newer
    .venv\Scripts\Activate.ps1        # in cmd.exe: .venv\Scripts\activate.bat
    python -m pip install -r requirements.txt
    copy .env.example .env
@@ -267,7 +269,7 @@ Stop the app before you run `first_run.py` again: on Windows the load cannot rep
 anything over 90 pulls the same as 90, and a window longer than N shows only N days. Fewer days run
 faster on the big history views.
 
-The export prints one line per check (`[12/284] check_id: ok, 34 rows, 1.2s`), so a long run never
+The export prints one line per check (`[12/294] check_id: ok, 34 rows, 1.2s`), so a long run never
 looks hung. Every statement has a time limit (15 minutes; `--statement-timeout SECONDS` on
 `tools/export_results.py` changes it): a statement that hits it is recorded as timed out and the
 export goes on.
@@ -316,7 +318,8 @@ their own price. For each price the export takes the first of:
    (consumption only: rebates, support fees, overage and adjustments are left out of the rate);
 4. `credit_price_usd`, `ai_credit_price_usd` and `storage_price_usd_tb_month` in
    `config/settings.yml`: defaults of 3.00 (Enterprise list price) and 2.00 per AI credit, used
-   when the role cannot read the organization billing views or they have no rows yet.
+   when the role cannot read the organization billing views or they have no rows yet. Put your own
+   values in `config/settings.local.yml`, because an update replaces `settings.yml`.
 
 ```
 python tools/first_run.py --credit-price 3.0 --storage-price 23
@@ -375,7 +378,8 @@ The query checks share one read of the query history. Before the checks, the exp
 six-hour slices at once (the table function returns at most 10,000 queries a call), each its own
 statement under the 15-minute limit, and prints how many finished. The checks then read them with
 `RESULT_SCAN`, so each takes seconds. A slice that fails or times out leaves only its six hours out,
-and the page says how many hours are missing.
+and the page says how many hours are missing. A slice that reaches the 10,000 limit is not flagged,
+so on a busy account the query fallbacks can undercount without saying so.
 
 Table functions that need `MONITOR USAGE` (storage, and the metering ones) return no rows without
 it rather than an error. The export tests for the grant once; without it those checks read "the
@@ -416,8 +420,15 @@ has the same pages and numbers, and ships the file your local app opens, never d
 **Not yet run in Snowflake.** It has only been tested with Streamlit on a local machine. It uses
 warehouse runtime by default, with no compute pool; if that fails, container runtime is the fallback.
 
+The audit's read-only login can't deploy, so this needs a deploy role and a user who holds it, each
+made once; the SQL is in [`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md). Then,
+in PowerShell:
+
 ```
+.venv\Scripts\Activate.ps1
+$env:SNOWFLAKE_USER = "MY_DEPLOY_USER"
 $env:SNOWFLAKE_ROLE = "MY_DEPLOY_ROLE"
+$env:SNOWFLAKE_PRIVATE_KEY_FILE = "path\to\deploy_key.p8"
 python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH --run
 ```
 
@@ -425,8 +436,7 @@ Then open **Snowflake audit** in Snowsight under Projects > Streamlit. To use Sn
 `--run` and run the generated `data/streamlit_deploy/upload.sql` and `create_app.sql`.
 
 Without those options it uses default names. `--run` logs in with the export's settings, from
-environment variables or `.env` (the environment wins); SnowSQL uses its own. The role must be able to
-deploy, which the audit's read-only role probably can't. Add `--setup` to create a missing database,
+environment variables or `.env` (the environment wins); SnowSQL uses its own. Add `--setup` to create a missing database,
 schema and stage. Keys and `.env` are not uploaded. The steps, the role it needs and the fallback are in [`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md).
 
 - **Refresh:** there is none. For newer data, export and load as usual, deploy again, and repeat the
@@ -434,15 +444,19 @@ schema and stage. Keys and `.env` are not uploaded. The steps, the role it needs
 - **Access:** anyone granted the app sees all the data in the file, whatever their role can read. Use
   `--mask` on the export to hide names.
 - **Settings:** they are read-only in the app. Set them locally before you deploy.
-- **Cost:** the warehouse runs while the app is open.
+- **Cost:** the warehouse stays on for about 15 minutes after the last activity in an open tab,
+  whatever its auto-suspend. Close the tab when done.
+- **Network:** on a restricted network, an admin must allow `*.snowflake.app` and WebSockets first.
 
 ## Update to a new version
 
 1. Download the new zip, or `git pull`.
 2. Keep your own files. `.env` and `config/settings.local.yml` are not in the zip, so copy them into
-   the new folder if you unpack it somewhere new. `config/tag_aliases.yml`, `config/thresholds.yml`
-   and `config/materiality.yml` are in the zip and get replaced; keep a copy if you changed them.
-3. Run `python -m pip install -r requirements.txt` again.
+   the new folder if you unpack it somewhere new. `config/settings.yml`, `config/tag_aliases.yml`,
+   `config/thresholds.yml` and `config/materiality.yml` are in the zip and get replaced; keep a copy
+   if you changed them.
+3. Run `python -m pip install -r requirements.txt` again. In a new folder, create and activate the
+   virtual environment first ("Set up once", step 2).
 4. Run `python tools/first_run.py`. New or changed checks show only after a new export.
 
 The data folder is outside the repo, so an update never touches it. The UI comes built in the zip;
@@ -455,20 +469,21 @@ Node is only needed to change it.
 | Page | What it answers |
 |---|---|
 | Overview | Spend, change against the period before, possible waste and the top findings, charts first. |
-| Actions | What to fix first: priced savings in the window, storage savings per month, and CRITICAL findings with no dollar figure (an admin without MFA), as three separate lists. |
-| Cost | Trend, by service, who spent it, chargeback and tags, contract and rate, budgets and guardrails. |
+| Fix these first (What to do in the CFO lens) | What to fix first: priced savings in the window, storage savings per month, and CRITICAL findings with no dollar figure (an admin without MFA), as three separate lists. |
+| Cost | Trend, by service, who spent it, chargeback and tags, before & after, contract and rate, budgets and guardrails. |
 | Tags | Required-tag compliance per object type, and the spend no tag reaches. |
 | Waste & savings | Priced waste, flagged findings with no price yet, and how each figure is counted. |
 | Warehouses | Idle time and settings, sizing, load and scaling. |
 | Serverless features | By feature, clustering, materialized views and search optimization. |
-| Queries | Heavy, efficiency, failures, waiting, by source and team. |
+| Queries | Trend, heavy, efficiency, failures, waiting, by source and team. |
 | Tasks & pipelines | Failures, cost and timing, hygiene, dynamic tables and streams. |
 | Data loading | Snowpipe and streaming; COPY, external and Iceberg. |
 | AI & apps | Cortex (functions, Search, Analyst, agents, Code, CoWork), containers, apps and notebooks, model serving. |
-| Access | Roles and grants, users and sign-ins, the account perimeter (network policies, private link, failover). |
+| Access | Roles and grants, users and sign-ins, the account perimeter (network policies, private link, failover), and Explorer: pick a user, role or object and see each privilege and its paths through the roles. |
 | Audit | Admin sessions and sign-ins, changes to objects and grants. |
 | PII & policies | Sensitive data, masking and row policies, who reads it and where it goes, data quality coverage. |
-| Lineage & usage | Dependencies and lineage, what is used and what is not. |
+| Lineage | Dependencies and lineage. |
+| Activity | What is used and what is not: databases, schemas, tables (with one table day by day), users & roles, stages and other objects. |
 | Sharing & org | Shares and listings, accounts, spend across accounts, replication and transfer. |
 | Storage | Growth and stages, unused and sprawl, Time Travel and Fail-safe, backups. |
 | All findings | Every check in one table, with its status and dollars. |
@@ -480,7 +495,7 @@ Node is only needed to change it.
 - **Dollars** are credits times your effective price per credit. The export reads the price from the
   organization billing view when your role can see it (see "Prices" below); otherwise pass
   `--credit-price`. Spend, change and possible waste are shown apart and never added together.
-- **Filters:** last 7, 30 or 90 days; account; environment; warehouse; database and schema; owner;
+- **Filters:** last 7, 30 or 90 days; account; warehouse; database and schema; owner;
   tag. A check that has no warehouse (or database) column says "not filtered by warehouse".
 - **Links:** the address bar holds the page, sub-tab, open check, role and filters (for example
   `#tab=cost&subtab=chargeback&role=cfo&w=30`), so a bookmark or a pasted link opens the same view.
@@ -498,8 +513,8 @@ Node is only needed to change it.
 | Lens | Pages |
 |---|---|
 | FinOps (default) | Overview, Fix these first; Cost, Tags, Budgets, Contract; Waste & savings, Warehouses, Serverless features, AI & apps, Storage, Sharing & org |
-| Data engineer | Overview, Fix these first; Tasks & pipelines, Data loading; Queries, Warehouses, Serverless features; Cost, Waste & savings, Storage |
-| Governance | Overview, Fix these first; Roles & grants, Users & sign-ins, Account perimeter; PII & policies, Lineage & usage, Sharing & org, Storage; Audit |
+| Data engineer | Overview, Fix these first; Tasks & pipelines, Data loading, Activity, Who can access what; Queries, Warehouses, Serverless features; Cost, Waste & savings, Storage |
+| Governance | Overview, Fix these first; Roles & grants, Users & sign-ins, Account perimeter, Who can access what; PII & policies, Lineage, Activity, Sharing & org, Storage; Audit |
 | CTO | Every page, grouped as Cost, Reliability, Performance and Security |
 | CFO | Money, What to do; Cost, Chargeback & tags, Contract & rate, Budgets & guardrails, Waste & savings |
 
@@ -515,7 +530,7 @@ every page. Its left nav folds open and shut by group; the group holding the ope
 Every page links into it:
 
 - a **?** beside each check's name (in check lists, tables, chart cards, Waste, Coverage and
-  Actions) opens that check's own page; clicking the row still opens its details;
+  Fix these first) opens that check's own page; clicking the row still opens its details;
 - **Read:** under each page's lede links the concept pages that page leans on;
 - the page footer opens that tab's own How it works page.
 
@@ -541,9 +556,12 @@ can read the organization billing views.
 
 **Possible waste** (Waste & savings) is credits billed for nothing, priced: warehouses running with
 no query, failed statements, task runs that changed nothing, dynamic tables nobody reads, query
-retries, warehouses left at a bigger size, and provisioned AI throughput that was not used. Each
+retries, warehouses left at a bigger size, provisioned AI throughput that was not used, Iceberg
+compaction, catalog-linked databases, AI credits on failed queries and compute pools with no live
+service. Each
 check adds its money column over the rows it flagged Critical or Warn, and idle time is counted
-once, in the warehouse idle check. **Savings** (a resize, a shorter auto-suspend) and **storage per
+once, in the warehouse idle check. **Savings** (a smaller warehouse, consolidating warehouses, a standard warehouse instead of
+Snowpark-optimized, and a shorter auto-suspend as its own estimate) and **storage per
 month** are separate figures. Spend, change, waste and savings are shown side by side and never
 added; none is a forecast.
 
@@ -572,15 +590,15 @@ read.
 
 ## What it checks
 
-284 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
+294 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
 
 | Area | Checks |
 |---|---|
 | Cost, billing, contract and org | 62 |
-| Access, security, PII, audit, lineage and activity | 85 |
-| Queries and performance | 31 |
+| Access, security, PII, audit, lineage and activity | 91 |
+| Queries and performance | 34 |
 | Tasks, pipelines and loading | 35 |
-| Storage | 30 |
+| Storage | 31 |
 | AI, containers and apps | 19 |
 | Warehouses | 22 |
 
@@ -595,7 +613,8 @@ These live in `config/settings.yml`:
 
 | Setting | What it does |
 |---|---|
-| `default_window` | Days exported when `--windows` is not given (30). |
+| `default_window` | The window a page opens on: 7, 30 or 90 (30). The export's days are set by `--windows` (default 30). |
+| `include_snowflake_tasks` | Show Snowflake's own tasks in the task health checks at the next export (`false`). Their credits always count in the cost checks. |
 | `include_today` | Export today up to the run time, marked partial (`true`). `false` = complete days only. |
 | `credit_price_usd`, `ai_credit_price_usd`, `storage_price_usd_tb_month` | The export's prices when the organization billing views are not readable or empty and no flag is given (3.0, 2.0, empty). |
 | `cost_center_tag_keys` | Which tag names count as "Cost center" (default `[cost_center]`, up to 5). |
@@ -607,6 +626,8 @@ These live in `config/settings.yml`:
 | `env_patterns` | Word lists that classify an account name as prod, uat or dev. |
 | `export_tag_keys` | Keep only these tag names in the export. The cost center, required and `tag_aliases.yml` tags are always kept. |
 | `brand` | Name shown in the header and footer. |
+| `ui.max_rows`, `ui.max_chart_categories` | Rows a table shows before "Load more" (500), and bars a chart shows before folding the rest into Other (8). |
+| `tag_share_floor`, `tag_coverage_floor` | Below these, an account's tag value reads `mixed` (0.6) or `untagged` (0.5). |
 | `load.memory_limit`, `load.threads` | DuckDB memory (`1GB`, or e.g. `1500MB`) and threads (4, 1-64) for the load and the app. Above the memory cap the load spills to a `.tmp` folder next to the database file. Lower both on a busy laptop. |
 | `load.response_cache_mb` | Memory the app keeps for pages already read (64; 0 turns it off). |
 
@@ -615,7 +636,7 @@ panel writes there too.
 
 - It overrides only the top-level keys it contains; everything else still comes from
   `settings.yml`.
-- A nested block (`brand`, `privacy`, `ui`) is replaced as a whole, so repeat all of its lines.
+- A nested block (`brand`, `privacy`, `ui`, `load`, `env_patterns`) is replaced as a whole, so repeat all of its lines.
 
 ## Export only, or load only
 
@@ -737,20 +758,6 @@ the fix.
 | The load says `Out of Memory Error` | In `config/settings.local.yml`, lower `load.threads` (e.g. 1) and rerun the load. No new export needed. |
 | Port 8000 is busy | Set `AUDIT_API_PORT`, e.g. `$env:AUDIT_API_PORT=8010` in PowerShell. |
 
-## Open items
-
-- **A run on a busy live account.** So far the checks have run on the fake and demo accounts and
-  on one small trial account with a few days of use, where many found nothing to judge. Run the
-  test queries in `app/queries/verify/` next to the app on the first busy export and compare.
-- **Streamlit in Snowflake.** The deploy has not run in Snowflake yet. Package install, DuckDB's
-  native library, the security policy, speed and the size of the app are open there.
-- **`sf_ai_model_serving_spend`** failed on the trial account with Snowflake error 100038.
-- **Who can read the usage views** assumes database-role grants appear in `GRANTS_TO_ROLES` as
-  `granted_on = 'DATABASE_ROLE'` with the name `SNOWFLAKE.<ROLE>`. The docs do not show it; the
-  first live run confirms it.
-- **The database-role counts** in "Roles and privileges" were raised by one for each new check.
-  Recount them from the docs table once.
-
 ## Repository
 
 ```
@@ -776,14 +783,14 @@ python tools/gate.py     # header lint, manifest, SQL parse, UI type check and t
 ```
 
 The tests run against a fake Snowflake account (`tests/fake_snowflake`): every check runs on it
-through DuckDB, and each reaches OK plus WARN or CRITICAL. `python tools/sql_smoke.py` runs only
+through DuckDB, and at least 100 show a WARN or CRITICAL row. `python tools/sql_smoke.py` runs only
 that part. The full pytest suite takes about 20 minutes.
 
 ### Fake data: the app without a Snowflake account
 
 The fake account is code, not a file: `tests/fake_snowflake/` builds the `ACCOUNT_USAGE` views in
 DuckDB. `data.py` and the `gap_*` files are the small account the tests use; the `demo_*.py` files
-add a large one: 44 warehouses across 8 teams, about 100 users, tasks, pipes, AI use, policies and
+add a large one: 57 warehouses across 8 teams, about 120 users, tasks, pipes, AI use, policies and
 partially tagged objects, with 90 days of history. No real names are in it.
 
 To generate the demo database (needs only `requirements.txt`, about 3 minutes), then start the app

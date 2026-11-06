@@ -71,15 +71,21 @@ read-only: nothing lets the role change data, warehouses or settings.
 ### The grant script
 
 Run this once as `ACCOUNTADMIN` (or a role that can create roles and grant on the account). The
-same script is in `grants.sql`.
+same script is in `grants.sql`. The commented lines near the end need your own
+names: edit and uncomment the ones that apply.
 
 ```sql
 CREATE ROLE IF NOT EXISTS AUDIT_ROLE;
 
+-- The user the export signs in as, with its public key.
+CREATE USER IF NOT EXISTS AUDIT_USER DEFAULT_ROLE = AUDIT_ROLE DEFAULT_WAREHOUSE = AUDIT_WH
+  TYPE = SERVICE RSA_PUBLIC_KEY = '<public key, without the BEGIN/END lines>';
+GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
+
 -- The ACCOUNT_USAGE views: all of them.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AUDIT_ROLE;
 -- Or, when IMPORTED PRIVILEGES is hard to get approved, these four read-only database roles instead.
--- They open about 225 of the checks; the rest read "the role can't see it" (the task checks need
+-- They open 265 of the 294 checks; the rest read "the role can't see it" (the task checks need
 -- TASK_VERSIONS, which none of the four opens).
 --   GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER      TO ROLE AUDIT_ROLE;  -- cost and usage
 --   GRANT DATABASE ROLE SNOWFLAKE.OBJECT_VIEWER     TO ROLE AUDIT_ROLE;  -- tables and objects
@@ -99,10 +105,10 @@ GRANT USAGE ON WAREHOUSE AUDIT_WH TO ROLE AUDIT_ROLE;
 
 -- SHOW WAREHOUSES lists only the warehouses the role has a privilege on. Grant MONITOR on each one
 -- (repeat for every warehouse, and again whenever a new one is created).
-GRANT MONITOR ON WAREHOUSE MY_WAREHOUSE TO ROLE AUDIT_ROLE;
+--   GRANT MONITOR ON WAREHOUSE MY_WAREHOUSE TO ROLE AUDIT_ROLE;
 
 -- Same for resource monitors (SHOW RESOURCE MONITORS).
-GRANT MONITOR ON RESOURCE MONITOR MY_MONITOR TO ROLE AUDIT_ROLE;
+--   GRANT MONITOR ON RESOURCE MONITOR MY_MONITOR TO ROLE AUDIT_ROLE;
 
 -- Trust Center findings (the Trust Center check reads SNOWFLAKE.TRUST_CENTER.FINDINGS).
 GRANT APPLICATION ROLE SNOWFLAKE.TRUST_CENTER_VIEWER TO ROLE AUDIT_ROLE;
@@ -120,36 +126,32 @@ GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
 
 -- Optional: the organization billing views (invoice, rates, contract balance).
 -- In an ORGADMIN-enabled account they are database roles of the SNOWFLAKE database:
-GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_BILLING_VIEWER TO ROLE AUDIT_ROLE;
-GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_USAGE_VIEWER TO ROLE AUDIT_ROLE;
+--   GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_BILLING_VIEWER TO ROLE AUDIT_ROLE;
+--   GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_USAGE_VIEWER TO ROLE AUDIT_ROLE;
 -- In the organization account they are application roles instead (run as GLOBALORGADMIN):
 --   GRANT APPLICATION ROLE SNOWFLAKE.ORGANIZATION_BILLING_VIEWER TO ROLE AUDIT_ROLE;
-
--- The user the export signs in as, with its public key.
-CREATE USER IF NOT EXISTS AUDIT_USER DEFAULT_ROLE = AUDIT_ROLE DEFAULT_WAREHOUSE = AUDIT_WH
-  TYPE = SERVICE RSA_PUBLIC_KEY = '<public key, without the BEGIN/END lines>';
-GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 ```
 
 ### What each grant opens, and what you won't see without it
 
 A check reads one or more sources. If the role cannot read any one of them, the check is skipped.
 In the app it reads "–, the role can't see it", with the view or SHOW command it needed. It never
-shows $0 or "nothing found". Counts were made at 274 checks, so a few newer checks are not in them; a check can need more than one grant.
+shows $0 or "nothing found". The role counts come from the check headers and Snowflake's table of
+roles per view, at 294 checks. A check can need more than one grant, so they overlap.
 
 | Grant | What it opens | Without it you won't see |
 |---|---|---|
 | `USAGE` on a warehouse | Runs the export | Nothing: no statement can run. |
 | `IMPORTED PRIVILEGES` on the `SNOWFLAKE` database | Every `ACCOUNT_USAGE` view, plus the reader-account and listing views | Almost everything. Only 24 checks read nothing from the `SNOWFLAKE` database (they use SHOW, the organization views or the Trust Center). |
-| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 248 of the 274 checks | The 25 checks in the "None of the four" row, and the data quality expectations check. |
-| `SNOWFLAKE.USAGE_VIEWER` | 135 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
-| `SNOWFLAKE.GOVERNANCE_VIEWER` | 107 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Lineage & usage, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
-| `SNOWFLAKE.SECURITY_VIEWER` | 62 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |
-| `SNOWFLAKE.OBJECT_VIEWER` | 50 checks: tables, schemas, views, stages, pipes, tasks, object dependencies | Storage by table, unused objects, dependencies in Lineage, object inventories. |
-| None of the four: needs `IMPORTED PRIVILEGES` | 25 checks | Nine task checks (task cost, failures, runs per day, failed vs all runs, duration change, skipped overlaps, late starts, no-op runs, warehouse vs serverless, all through `TASK_VERSIONS`). Also alert history, query acceleration, lock waits, compute pools, backups, stale stage files, database replication, Cortex Code Desktop, data movement violations, reader accounts, listings and Marketplace. |
+| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 265 of the 294 checks (245 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
+| `SNOWFLAKE.USAGE_VIEWER` | 168 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
+| `SNOWFLAKE.GOVERNANCE_VIEWER` | 133 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Activity, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
+| `SNOWFLAKE.SECURITY_VIEWER` | 84 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |
+| `SNOWFLAKE.OBJECT_VIEWER` | 60 checks: tables, schemas, views, stages, pipes, tasks, object dependencies | Storage by table, unused objects, dependencies in Lineage, object inventories. |
+| None of the four: needs `IMPORTED PRIVILEGES` | 28 checks | Ten task checks (task cost, failures, runs per day, run times, failed vs all runs, duration change, skipped overlaps, late starts, no-op runs, warehouse vs serverless, all through `TASK_VERSIONS`). Also serverless features, streaming cost, allocation reconciliation, alert history, query acceleration, lock waits, compute pools, backups, stale stage files, database replication, Cortex Code Desktop, data movement violations, reader accounts, listings and Marketplace. |
 | `MONITOR USAGE` on the account | Account-level usage and history for databases and warehouses | No check is skipped for this alone; the checks read `ACCOUNT_USAGE` through the grants above. |
 | `MONITOR EXECUTION` on the account | `SHOW TASKS` and pipes, account-wide | `SHOW TASKS` lists only tasks the role owns, so the suspended, orphaned and stream-consumer checks (4) see fewer tasks; `SHOW PIPES` lists only pipes the role can monitor (1 check: broken or unalerted pipes). |
-| `MONITOR` on each warehouse | `SHOW WAREHOUSES` (22 checks: auto-suspend, size, scaling, warehouse settings) | Warehouses you did not grant are missing from the settings checks; their spend still shows from metering. `report.md` says how many billed warehouses `SHOW WAREHOUSES` left out. |
+| `MONITOR` on each warehouse | `SHOW WAREHOUSES` (23 checks: auto-suspend, size, scaling, warehouse settings) | Warehouses you did not grant are missing from the settings checks; their spend still shows from metering. `report.md` says how many billed warehouses `SHOW WAREHOUSES` left out. |
 | `MONITOR` on each resource monitor | `SHOW RESOURCE MONITORS` | Monitors you did not grant are missing from resource monitor coverage and projection (2 checks). |
 | `APPLY AUTHENTICATION POLICY`, `APPLY PASSWORD POLICY` | `SHOW AUTHENTICATION POLICIES`, `SHOW PASSWORD POLICIES` | The authentication and password policy checks (2) see only policies the role owns. `POLICY_REFERENCES` does not list these policies, so there is no other way. |
 | Application role `SNOWFLAKE.BUDGET_VIEWER` | Budgets | The budgets check (1) lists no budgets, or only the role's own. |
