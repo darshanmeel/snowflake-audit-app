@@ -9,7 +9,7 @@
 // picked accounts sends this rather than [] (this app's own "no filter = every account" convention).
 import React from "react";
 import { setAuditRange } from "./range_store";
-import { Api, acctId, BRAND_NAME } from "./api";
+import { Api, acctId, BRAND_NAME, HOSTED } from "./api";
 import { LOCALE, fmtInt, fmtMoneyShort } from "./format";
 import { HashState } from "./components/hash_state";
 import { setCanDrill } from "./components/names";
@@ -279,6 +279,10 @@ export function agoText(asOf: string | null | undefined) {
 }
 
 export function RefreshControl({ meta }: { meta: Meta | null }) {
+  return HOSTED ? null : <RefreshButton meta={meta} />;
+}
+
+function RefreshButton({ meta }: { meta: Meta | null }) {
   const [open, setOpen] = React.useState(false);
   const [days, setDays] = React.useState(30);
   const [st, setSt] = React.useState<RefreshStatus | null>(null);

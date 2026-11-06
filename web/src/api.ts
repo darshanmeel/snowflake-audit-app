@@ -6,6 +6,9 @@ import type { Row, TagFilter } from "./types";
 // The settings brand, put into index.html by the server (app/api/app.py) so the first paint reads it.
 export const BRAND_NAME: string = (window as unknown as { APP_BRAND?: string }).APP_BRAND || "Crosshire";
 
+// Set by the Streamlit deploy (tools/streamlit_deploy), which has no login or export to refresh from.
+export const HOSTED: boolean = !!(window as unknown as { APP_HOSTED?: boolean }).APP_HOSTED;
+
 type Params = Record<string, any>;
 type AccountIds = string[] | null | undefined;
 type DimKey = "warehouse" | "database" | "schema";

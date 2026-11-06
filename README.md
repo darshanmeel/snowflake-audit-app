@@ -405,6 +405,10 @@ To use another folder, set `AUDIT_DATA_DIR`.
 
 These files hold your account's data. Keep them out of the repo and do not share them.
 
+## Run inside Snowflake
+
+The local app above is the default. To run the same app in Streamlit in Snowflake, see `tools/streamlit_deploy/README.md`.
+
 ## Update to a new version
 
 1. Download the new zip, or `git pull`.

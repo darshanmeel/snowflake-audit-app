@@ -25,4 +25,6 @@ import "./styles/css/cx_d.css";
 import "./styles/css/cx_e.css";
 import { App } from "./App";
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(<App />);
+// Inside Streamlit, "root" is Streamlit's own page, so the deploy gives the app its own element.
+const mount = document.getElementById("audit-root") || document.getElementById("root");
+ReactDOM.createRoot(mount as HTMLElement).render(<App />);
