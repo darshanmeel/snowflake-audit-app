@@ -3,11 +3,12 @@
 A read-only audit of a Snowflake account. It shows where the credits and dollars go, what looks
 wasted, and how warehouses, queries, tasks, loading, storage, AI and access are set up.
 
-It runs 284 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
+It runs 294 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
 it) through one small warehouse. The results are saved in a local DuckDB file, and a web app on
-your own machine shows them. Nothing is ever written to Snowflake: the checks are `SELECT`, `WITH`
+your own machine shows them. The audit writes nothing to Snowflake: the checks are `SELECT`, `WITH`
 and `SHOW` only. Only the export (and Refresh in the app) queries Snowflake; browsing the app does
-not.
+not. You can also [run the app inside Snowflake](#run-inside-snowflake), which is optional and is the
+only step that creates objects there.
 
 The checks have run on one small live trial account, and every check on the demo account, with
 its figures recomputed from the source views. Each still says "needs confirmation" in its
@@ -16,6 +17,7 @@ yourself") let you check the figures on your own account.
 
 **Contents:** [What you need](#what-you-need) · [Make the key pair](#make-the-key-pair) ·
 [Roles and privileges](#roles-and-privileges) · [Set up once](#set-up-once) · [Run](#run) ·
+[Run inside Snowflake](#run-inside-snowflake) ·
 [Update to a new version](#update-to-a-new-version) · [What the app shows](#what-the-app-shows) ·
 [What the numbers mean](#what-the-numbers-mean) · [What it checks](#what-it-checks) ·
 [Settings](#settings) · [Export only, or load only](#export-only-or-load-only) ·
@@ -407,7 +409,29 @@ These files hold your account's data. Keep them out of the repo and do not share
 
 ## Run inside Snowflake
 
-The local app above is the default. To run the same app in Streamlit in Snowflake, see `tools/streamlit_deploy/README.md`.
+The local app above is the default. To let people open the same app in Snowsight, deploy it to
+Streamlit in Snowflake. It has the same pages and numbers, and shows the DuckDB file you ship with it.
+
+**Not yet run in Snowflake.** It has only been tested with Streamlit on a local machine and the demo
+data, so try `--demo` first.
+
+It needs container runtime, a compute pool and Snowflake's PyPI mirror. After the setup in
+[`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md), run:
+
+```
+python tools/streamlit_deploy/deploy.py --db audit.duckdb --stage MY_DB.MY_SCHEMA.AUDIT_APP --warehouse MY_WH --pool MY_POOL --name MY_DB.MY_SCHEMA.AUDIT_APP --run
+```
+
+This uploads the app and creates it with the login in `.env`. That login needs more than the audit's
+read-only role, because it creates a stage and an app. Without `--run` it only writes
+`data/streamlit_deploy/upload.sql` and `create_app.sql` for you to run.
+
+- **Refresh:** there is none. For newer data, export and load as usual, deploy again, and repeat the
+  GRANT on the app.
+- **Access:** anyone granted the app sees all the data in the file, whatever their role can read. Use
+  `--mask` on the export to hide names.
+- **Settings:** a setting saved in the app applies to every viewer and is lost on the next deploy.
+- **Cost:** the compute pool bills while it runs.
 
 ## Update to a new version
 
@@ -715,6 +739,8 @@ the fix.
 - **A run on a busy live account.** So far the checks have run on the fake and demo accounts and
   on one small trial account with a few days of use, where many found nothing to judge. Run the
   test queries in `app/queries/verify/` next to the app on the first busy export and compare.
+- **Streamlit in Snowflake.** The deploy has not run in Snowflake yet. Package install, DuckDB's
+  native library, the security policy, speed and the size of the app are open there.
 - **`sf_ai_model_serving_spend`** failed on the trial account with Snowflake error 100038.
 - **Who can read the usage views** assumes database-role grants appear in `GRANTS_TO_ROLES` as
   `granted_on = 'DATABASE_ROLE'` with the name `SNOWFLAKE.<ROLE>`. The docs do not show it; the
@@ -734,6 +760,7 @@ app/web/dist     the built UI, committed; the server serves it
 config/          settings, thresholds, materiality floors, docs links
 tools/           export, load, lint and build scripts
 tools/export_kit the standalone export to send to someone else (refresh: tools/make_export_kit.py)
+tools/streamlit_deploy  optional deploy to Streamlit in Snowflake
 tests/           pytest suite
 ```
 
