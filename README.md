@@ -422,9 +422,11 @@ snowsql -f data/streamlit_deploy/upload.sql
 snowsql -f data/streamlit_deploy/create_app.sql
 ```
 
-Without those options it uses default names. Add `--run` to upload and create with the login in
-`.env`, and `--setup` to create a missing database, schema and stage. The steps, the role it needs and
-the fallback are in [`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md).
+Without those options it uses default names. SnowSQL uses its own login settings. Add `--run` to
+upload and create with the export's login instead, from environment variables or `.env` (the
+environment wins), and `--setup` to create a missing database, schema and stage. That login needs a
+role that can deploy, so set `SNOWFLAKE_ROLE` if the audit's role is read-only. Keys and `.env` are not
+uploaded. The steps, the role it needs and the fallback are in [`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md).
 
 - **Refresh:** there is none. For newer data, export and load as usual, deploy again, and repeat the
   GRANT on the app.

@@ -40,7 +40,30 @@ snowsql -f data/streamlit_deploy/upload.sql
 snowsql -f data/streamlit_deploy/create_app.sql
 ```
 
-Or add `--run` to step 2, which does both with the login in `.env`. That login needs the role above, not the audit's read-only role; set `SNOWFLAKE_ROLE` in the environment to override it for this command.
+SnowSQL uses its own config file or command-line options, not this repo's `.env`:
+
+```
+snowsql -a MY_ACCOUNT -u MY_USER -r MY_DEPLOY_ROLE --private-key-path path/to/key.p8 -f data/streamlit_deploy/upload.sql
+```
+
+Or add `--run` to step 2, which does both. It logs in with the same settings as the export, and an environment variable wins over `.env`:
+
+```
+SNOWFLAKE_ACCOUNT=...
+SNOWFLAKE_USER=...
+SNOWFLAKE_ROLE=...
+SNOWFLAKE_WAREHOUSE=...
+SNOWFLAKE_PRIVATE_KEY_FILE=path/to/key.p8
+SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=...      # only if the key is encrypted
+```
+
+That login needs the role above, not the audit's read-only role. To keep `.env` unchanged, set the role for this PowerShell window only:
+
+```
+$env:SNOWFLAKE_ROLE = "MY_DEPLOY_ROLE"
+```
+
+Without `--run`, `deploy.py` needs no login. Keys and `.env` are not uploaded, and the app in Snowflake needs no key or login, because it runs under its owner role.
 
 Open the app in Snowsight under Projects > Streamlit. The first start installs the packages.
 
