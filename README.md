@@ -77,8 +77,9 @@ read-only: nothing lets the role change data, warehouses or settings.
 ### The grant script
 
 Run this once as `ACCOUNTADMIN` (or a role that can create roles and grant on the account). The
-export kit ships the same script as `grants.sql`. The commented lines near the end need your own
-names: edit and uncomment the ones that apply.
+export kit ships the same script as `grants.sql`. Near the end, uncomment what applies: the MONITOR
+lines need your warehouse and monitor names, and the organization lines need access to org billing
+(without them, dollars use the list price in settings).
 
 ```sql
 CREATE ROLE IF NOT EXISTS AUDIT_ROLE;
@@ -91,7 +92,7 @@ GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 -- The ACCOUNT_USAGE views: all of them.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AUDIT_ROLE;
 -- Or, when IMPORTED PRIVILEGES is hard to get approved, these four read-only database roles instead.
--- They open 266 of the 295 checks; the rest read "the role can't see it" (the task checks need
+-- They open 246 of the 295 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
 -- TASK_VERSIONS, which none of the four opens).
 --   GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER      TO ROLE AUDIT_ROLE;  -- cost and usage
 --   GRANT DATABASE ROLE SNOWFLAKE.OBJECT_VIEWER     TO ROLE AUDIT_ROLE;  -- tables and objects
@@ -267,7 +268,9 @@ Stop the app before you run `first_run.py` again: on Windows the load cannot rep
 
 `--windows N` sets the days of history to pull (default 30). The app shows 7, 30 and 90 days, so
 anything over 90 pulls the same as 90, and a window longer than N shows only N days. Fewer days run
-faster on the big history views.
+faster on the big history views. A few checks always read their own period, such as Activity > Last
+active, which scans up to a year of `ACCESS_HISTORY`; on a busy account it can time out, and then reads
+as timed out.
 
 The export prints one line per check (`[12/295] check_id: ok, 34 rows, 1.2s`), so a long run never
 looks hung. Every statement has a time limit (15 minutes; `--statement-timeout SECONDS` on
@@ -429,11 +432,13 @@ in PowerShell:
 $env:SNOWFLAKE_USER = "MY_DEPLOY_USER"
 $env:SNOWFLAKE_ROLE = "MY_DEPLOY_ROLE"
 $env:SNOWFLAKE_PRIVATE_KEY_FILE = "path\to\deploy_key.p8"
-python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH --run
+python tools/streamlit_deploy/deploy.py --warehouse MY_WH --run
 ```
 
 Then open **Snowflake audit** in Snowsight under Projects > Streamlit. To use SnowSQL instead, leave off
-`--run` and run the generated `data/streamlit_deploy/upload.sql` and `create_app.sql`.
+`--run` and run the generated `data/streamlit_deploy/upload.sql` and `create_app.sql`. Run it without
+`--run` first to see which file ships, and export from a new window afterwards, because these settings
+would otherwise sign the export in as the deploy user.
 
 Without those options it uses default names. `--run` logs in with the export's settings, from
 environment variables or `.env` (the environment wins); SnowSQL uses its own. Add `--setup` to create a missing database,
@@ -493,7 +498,7 @@ Node is only needed to change it.
 **On every page**
 
 - **Dollars** are credits times your effective price per credit. The export reads the price from the
-  organization billing view when your role can see it (see "Prices" below); otherwise pass
+  organization billing view when your role can see it (see [Prices](#prices)); otherwise pass
   `--credit-price`. Spend, change and possible waste are shown apart and never added together.
 - **Filters:** last 7, 30 or 90 days; account; warehouse; database and schema; owner;
   tag. A check that has no warehouse (or database) column says "not filtered by warehouse".

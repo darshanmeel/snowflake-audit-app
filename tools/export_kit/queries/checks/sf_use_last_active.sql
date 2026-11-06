@@ -9,25 +9,27 @@
 --   SNOWFLAKE.ACCOUNT_USAGE.STAGES, SNOWFLAKE.ACCOUNT_USAGE.FUNCTIONS, SNOWFLAKE.ACCOUNT_USAGE.PROCEDURES,
 --   SNOWFLAKE.ACCOUNT_USAGE.PIPES, SNOWFLAKE.ACCOUNT_USAGE.TASKS, SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY,
 --   SNOWFLAKE.ACCOUNT_USAGE.PIPE_USAGE_HISTORY
--- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database (GOVERNANCE_VIEWER); Enterprise edition for
---   everything except task runs and pipe loads
+-- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database (or GOVERNANCE_VIEWER, OBJECT_VIEWER and
+--   USAGE_VIEWER); Enterprise edition
 -- params: :lookback_days (default 365) days of history it looks back, which is all ACCESS_HISTORY keeps;
---   :top_n (default 2000) objects: the largest objects kept per kind and band; the band totals are exact
+--   :top_n (default 2000) objects: kept per kind and band, largest tables and oldest other objects; the band totals are exact
 -- confidence: needs_confirmation
 -- confidence_note: Not yet run on a busy account.
--- read_this: one row = one live table or object (row_level = 'object'), or one kind and band as a total
---   row (row_level = 'band', exact, with objects and storage_gb). last_read_at, last_write_at and
+-- read_this: one row = one live table or object (row_level = 'object'), or one kind, band, database and
+--   schema as a total row (row_level = 'band', exact, with objects and storage_gb). last_read_at, last_write_at and
 --   last_run_at look back up to 365 days; NULL means none in that history. last_active_at is the newest of
 --   read, write, run, DDL, last change and creation, so a new table reads as active. active_band is the
 --   time since: under_30, d30_90, d90_180, d180_360, over_360. beyond_history = nothing in the history
 --   the account has, and it is too short to say how long (history_days). use_pattern for tables:
 --   read_and_written, read_not_written, written_not_read, no_read_no_write; for other objects: used or
---   not_used. dependents = live objects built on it, from OBJECT_DEPENDENCIES. Sizes are not priced here:
+--   not_used. last_write_at comes from ACCESS_HISTORY and TABLE_DML_HISTORY only. dependents = live objects
+--   built on it, from OBJECT_DEPENDENCIES; NULL for procedures, tasks and pipes, which it can't tell. Sizes are not priced here:
 --   what an unread table costs is on sf_storage_unused_tables.
 -- healthy: status = OK; this check only shows use and never flags. Priced unused tables are in
 --   sf_storage_unused_tables, and the 90-day figure there is the one that reaches Waste & savings.
--- investigate_if: NOT_ASSESSED when ACCESS_HISTORY has no rows (Standard edition or the role cannot see it);
---   task and pipe rows still read, from their own history.
+-- investigate_if: NOT_ASSESSED when ACCESS_HISTORY has no rows (the role cannot see it, or an undetected
+--   Standard edition); task and pipe rows still read then, from their own history. On a detected Standard
+--   account the export skips the whole check.
 -- actions: 1) start from the oldest band and the largest tables (free); 2) check dependents and ask the
 --   owner: reads through shares, streams and intermediate views are not recorded (free); 3) rename or
 --   revoke access for a grace period, then drop (config).
@@ -38,7 +40,8 @@
 -- caveats: No activity does not prove nothing uses an object. ACCESS_HISTORY leaves out reads by data sharing
 --   consumers and replication, stream updates, failed queries, intermediate views (only the top view and the
 --   base table are recorded) and nested functions. It lags up to 3 hours and keeps 365 days. last_altered also
---   moves on background maintenance, so an unused table can read as more recent than it is, never older.
+--   moves on DDL and background maintenance, so an unused table can read as more recent than it is, never
+--   older, while still reading as no write. A load neither write source records also reads as no write.
 --   External and hybrid tables are not in TABLE_STORAGE_METRICS, so they have no row. Streams, sequences and
 --   file formats have no inventory view, so an unused one cannot be listed. STAGES, PIPES, FUNCTIONS and
 --   PROCEDURES show only what the role can see. Procedure overloads are merged and have no id, so no
@@ -156,7 +159,7 @@ reads AS (
   -- a MERGE or INSERT ... SELECT from itself is a write, not a read of its target
   SELECT r.query_id, r.query_start_time, r.kind, r.object_domain, r.object_id, r.object_name
   FROM reads_raw r
-  LEFT JOIN writes_raw w ON w.query_id = r.query_id AND w.object_id = r.object_id
+  LEFT JOIN writes_raw w ON w.query_id = r.query_id AND w.object_id = r.object_id AND w.object_domain = r.object_domain
   WHERE w.query_id IS NULL
 ),
 ev AS (
@@ -235,10 +238,9 @@ u AS (
          lt.table_name AS object_name, TO_VARCHAR(lt.table_id) AS object_id, TO_VARCHAR(lt.table_id) AS raw_key,
          lt.table_fqn AS object_fqn, lt.table_owner AS object_owner, lt.created, lt.last_altered,
          e.last_read_at,
-         -- last_altered covers loads ACCESS_HISTORY leaves out (e.g. Snowpipe)
-         COALESCE(NULLIF(GREATEST(COALESCE(e.last_write_at, '1970-01-01'::TIMESTAMP_LTZ),
-                                  COALESCE(d.last_dml_at, '1970-01-01'::TIMESTAMP_LTZ)), '1970-01-01'::TIMESTAMP_LTZ),
-                  IFF(lt.last_altered >= DATEADD(day, -:lookback_days, __AS_OF_DATE__), lt.last_altered, NULL)) AS last_write_at,
+         -- never last_altered, which also moves on DDL and maintenance; DML history includes Snowpipe
+         NULLIF(GREATEST(COALESCE(e.last_write_at, '1970-01-01'::TIMESTAMP_LTZ),
+                         COALESCE(d.last_dml_at, '1970-01-01'::TIMESTAMP_LTZ)), '1970-01-01'::TIMESTAMP_LTZ) AS last_write_at,
          CAST(NULL AS TIMESTAMP_LTZ) AS last_run_at,
          NULLIF(GREATEST(COALESCE(e.last_ddl_at, '1970-01-01'::TIMESTAMP_LTZ),
                          COALESCE(x.last_ddl, '1970-01-01'::TIMESTAMP_LTZ)), '1970-01-01'::TIMESTAMP_LTZ) AS last_ddl_at,
@@ -253,8 +255,8 @@ u AS (
   SELECT i.object_domain, i.object_subtype, i.database_name, i.schema_name, i.object_name, i.object_id, i.object_key,
          i.object_fqn, i.object_owner, i.created, i.last_altered, e.last_read_at, e.last_write_at, r.last_run_at,
          e.last_ddl_at,
-         -- a procedure has no id to join on, so its dependents are unknown rather than zero
-         IFF(i.object_id IS NULL, CAST(NULL AS NUMBER), COALESCE(dp.dependents, 0)),
+         -- a procedure has no id to join on, and the view doesn't cover tasks or pipes: unknown, not zero
+         IFF(i.object_id IS NULL OR i.object_domain IN ('TASK', 'PIPE'), CAST(NULL AS NUMBER), COALESCE(dp.dependents, 0)),
          CAST(NULL AS DOUBLE)
   FROM inv i
   LEFT JOIN object_ev e ON e.object_domain = i.object_domain AND e.object_key = i.object_key
@@ -275,7 +277,10 @@ d1 AS (
   FROM u CROSS JOIN seen s
 ),
 d2 AS (
-  SELECT d1.*, DATEDIFF(day, last_active_at, __AS_OF_DATE__) AS days_since_active FROM d1
+  -- from the last day the export covers (as-of is the first one left out); object views have no cut-off, so never below 0
+  SELECT d1.*, IFF(last_active_at IS NULL, CAST(NULL AS NUMBER),
+                   GREATEST(0, DATEDIFF(day, last_active_at, DATEADD(day, -1, __AS_OF_DATE__)))) AS days_since_active
+  FROM d1
 ),
 b AS (
   SELECT d2.*,
@@ -304,15 +309,12 @@ r AS (
                                  ORDER BY storage_gb DESC NULLS LAST, last_active_at NULLS FIRST, raw_key) AS band_rank
   FROM b
 ),
-bands AS (
-  SELECT k.object_kind, n.active_band
-  FROM (VALUES ('TABLE'), ('VIEW'), ('STAGE'), ('FUNCTION'), ('PROCEDURE'), ('PIPE'), ('TASK')) k(object_kind)
-  CROSS JOIN (VALUES ('under_30'), ('d30_90'), ('d90_180'), ('d180_360'), ('over_360'), ('beyond_history'), ('not_assessed')) n(active_band)
-),
 totals AS (
-  SELECT object_kind, active_band, COUNT(*) AS objects, SUM(storage_gb) AS storage_gb
+  -- by database and schema, so the page's filters narrow the bars with the lists
+  SELECT object_kind, active_band, database_name, schema_name, history_days, assessed,
+         COUNT(*) AS objects, SUM(storage_gb) AS storage_gb
   FROM b
-  GROUP BY 1, 2
+  GROUP BY 1, 2, 3, 4, 5, 6
 )
 SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, 'object' AS row_level, FALSE AS is_total_row,
        r.object_kind, r.object_subtype, r.database_name, r.schema_name, r.object_name, r.object_id,
@@ -325,17 +327,15 @@ SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, 'object' AS row_level, FA
 FROM r
 WHERE r.band_rank <= :top_n
 UNION ALL
-SELECT 0, __ACCOUNT_ID__, 'band', TRUE, bn.object_kind, CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
-       CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
-       bn.object_kind || ':' || bn.active_band, CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
+SELECT 0, __ACCOUNT_ID__, 'band', TRUE, t.object_kind, CAST(NULL AS VARCHAR), t.database_name,
+       t.schema_name, CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
+       t.object_kind || ':' || t.active_band || ':' || COALESCE(t.database_name, '') || '.' || COALESCE(t.schema_name, ''),
+       CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
        CAST(NULL AS TIMESTAMP_LTZ), CAST(NULL AS TIMESTAMP_LTZ), CAST(NULL AS TIMESTAMP_LTZ),
        CAST(NULL AS TIMESTAMP_LTZ), CAST(NULL AS TIMESTAMP_LTZ), CAST(NULL AS TIMESTAMP_LTZ),
-       CAST(NULL AS TIMESTAMP_LTZ), CAST(NULL AS NUMBER), bn.active_band, CAST(NULL AS VARCHAR),
-       CAST(NULL AS NUMBER), t.storage_gb, COALESCE(t.objects, 0),
-       IFF(bn.object_kind IN ('TASK', 'PIPE'), :lookback_days, s.history_days),
-       IFF(bn.active_band = 'not_assessed' AND COALESCE(t.objects, 0) > 0, 'no_access_history', CAST(NULL AS VARCHAR)),
-       IFF(bn.active_band = 'not_assessed' AND COALESCE(t.objects, 0) > 0, 'NOT_ASSESSED', 'OK')
-FROM bands bn
-CROSS JOIN seen s
-LEFT JOIN totals t ON t.object_kind = bn.object_kind AND t.active_band = bn.active_band
+       CAST(NULL AS TIMESTAMP_LTZ), CAST(NULL AS NUMBER), t.active_band, CAST(NULL AS VARCHAR),
+       CAST(NULL AS NUMBER), t.storage_gb, t.objects, t.history_days,
+       IFF(t.assessed, CAST(NULL AS VARCHAR), 'no_access_history'),
+       IFF(t.assessed, 'OK', 'NOT_ASSESSED')
+FROM totals t
 ORDER BY is_total_row DESC, object_kind, last_active_at NULLS FIRST

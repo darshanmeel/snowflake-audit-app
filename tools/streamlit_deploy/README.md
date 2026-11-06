@@ -12,15 +12,15 @@ With your export loaded and the role and user from step 1, run this in PowerShel
 
 ```
 .venv\Scripts\Activate.ps1
-python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH
+python tools/streamlit_deploy/deploy.py --warehouse MY_WH
 
 $env:SNOWFLAKE_USER = "MY_DEPLOY_USER"
 $env:SNOWFLAKE_ROLE = "MY_DEPLOY_ROLE"
 $env:SNOWFLAKE_PRIVATE_KEY_FILE = "path\to\deploy_key.p8"
-python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH --run
+python tools/streamlit_deploy/deploy.py --warehouse MY_WH --run
 ```
 
-On macOS or Linux, use `source .venv/bin/activate` and `export SNOWFLAKE_ROLE=MY_DEPLOY_ROLE`, and the same for the other two.
+On macOS or Linux, use `source .venv/bin/activate` and `export SNOWFLAKE_ROLE=MY_DEPLOY_ROLE`, and the same for the other two. If the deploy key is encrypted, set `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` the same way; `.env`'s passphrase isn't used for it.
 
 Then log in to Snowsight as a person who holds the deploy role and open **Snowflake audit** under Projects > Streamlit. The first start can take a few minutes. Export in a new window afterwards, because these settings beat `.env` and the export would sign in as the deploy user.
 
@@ -28,7 +28,7 @@ The steps below give the details and the SnowSQL way.
 
 ## 1. Have what it needs
 
-The audit's user and role are read-only and can't deploy, so make a separate role and a user with its own key pair ([Make the key pair](../../README.md#make-the-key-pair)). Don't give this role to the audit's user. As `ACCOUNTADMIN`, once, using these default names or your own:
+The audit's user and role are read-only and can't deploy, so make a separate role and a user with its own key pair ([Make the key pair](../../README.md#make-the-key-pair)). Don't give this role to the audit's user. As `ACCOUNTADMIN`, once. These are the default names, so Quick deploy needs only your warehouse; change `MY_WH`, and if you change the others, pass them with the options below:
 
 ```sql
 CREATE ROLE IF NOT EXISTS MY_DEPLOY_ROLE;
@@ -40,7 +40,11 @@ GRANT USAGE ON SCHEMA AUDIT_APP.PUBLIC TO ROLE MY_DEPLOY_ROLE;
 GRANT USAGE ON WAREHOUSE MY_WH TO ROLE MY_DEPLOY_ROLE;
 GRANT READ, WRITE ON STAGE AUDIT_APP.PUBLIC.AUDIT_APP_STAGE TO ROLE MY_DEPLOY_ROLE;
 GRANT CREATE STREAMLIT ON SCHEMA AUDIT_APP.PUBLIC TO ROLE MY_DEPLOY_ROLE;
+CREATE USER IF NOT EXISTS MY_DEPLOY_USER DEFAULT_ROLE = MY_DEPLOY_ROLE TYPE = SERVICE
+  RSA_PUBLIC_KEY = '<public key, without the BEGIN and END lines>';
 GRANT ROLE MY_DEPLOY_ROLE TO USER MY_DEPLOY_USER;
+-- The deploy user can't log in to Snowsight, so give the role to the person who will open the app.
+GRANT ROLE MY_DEPLOY_ROLE TO USER MY_OWN_USER;
 ```
 
 On a restricted network, an admin must also allow `*.snowflake.app` and `*.snowflake.com` (and `*.snowflakecomputing.app` for container runtime) and not block WebSockets. With private connectivity, follow Snowflake's page on it.
@@ -133,8 +137,8 @@ For a pool of your own, as ACCOUNTADMIN, once:
 ```sql
 CREATE COMPUTE POOL IF NOT EXISTS AUDIT_APP_POOL
   MIN_NODES = 1 MAX_NODES = 1 INSTANCE_FAMILY = CPU_X64_S AUTO_SUSPEND_SECS = 600;
-GRANT USAGE, MONITOR ON COMPUTE POOL AUDIT_APP_POOL TO ROLE MY_ROLE;
-GRANT DATABASE ROLE SNOWFLAKE.PYPI_REPOSITORY_USER TO ROLE MY_ROLE;
+GRANT USAGE, MONITOR ON COMPUTE POOL AUDIT_APP_POOL TO ROLE MY_DEPLOY_ROLE;
+GRANT DATABASE ROLE SNOWFLAKE.PYPI_REPOSITORY_USER TO ROLE MY_DEPLOY_ROLE;
 ```
 
 Then add `--runtime container --pool AUDIT_APP_POOL` to step 2. The app keeps its node running until three days after the last viewer, and only then do the 600 seconds apply, so the pool can bill for about three days after each visit. `ALTER COMPUTE POOL AUDIT_APP_POOL SUSPEND;` stops it sooner.

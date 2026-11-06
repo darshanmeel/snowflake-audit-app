@@ -815,6 +815,10 @@ export function ApActivityObjects(p: ApPageProps) {
 const LA_BANDS = ["under_30", "d30_90", "d90_180", "d180_360", "over_360", "beyond_history"];
 const LA_RECENT = "under_30";
 const OBJ_KINDS = ["VIEW", "STAGE", "FUNCTION", "PROCEDURE", "PIPE", "TASK"];
+// Tasks and pipes date from their own history; everything else needs ACCESS_HISTORY.
+const ownHistory = (k: unknown) => k === "TASK" || k === "PIPE";
+// The shortest gap each band holds: under that much history it can't fill, which isn't a measured 0.
+const LA_FROM: Record<string, number> = { d30_90: 30, d90_180: 90, d180_360: 180, over_360: 360 };
 const PATTERN_WORD: Record<string, string> = {
   read_and_written: "Read and written", read_not_written: "Read, no write", written_not_read: "Written, no read",
   no_read_no_write: "No read, no write", used: "Used", not_used: "Not used",
@@ -843,7 +847,9 @@ function LastActiveBlock({ c, kinds, noun, title, tables }: { c: ReturnType<type
   const picked = kind ? [kind] : kinds;
   const totals = levelRows(c.allRows, "band").filter((r) => picked.includes(String(r.object_kind)));
   const rows = levelRows(c.rows, "object").filter((r) => picked.includes(String(r.object_kind)));
-  const history = numOrZero(totals.find((r) => r.object_kind !== "TASK" && r.object_kind !== "PIPE")?.history_days ?? totals[0]?.history_days);
+  const dated = totals.filter((r) => !ownHistory(r.object_kind) && r.active_band !== "not_assessed");
+  const history = numOrZero(dated[0]?.history_days);
+  const tooShort = (b: string) => dated.length > 0 && history < (LA_FROM[b] ?? 0);
   const count = (b: string) => totals.filter((r) => r.active_band === b).reduce((s, r) => s + numOrZero(r.objects), 0);
   const size = (b: string) => totals.filter((r) => r.active_band === b).reduce((s, r) => s + numOrZero(r.storage_gb), 0);
   const whole = LA_BANDS.reduce((s, b) => s + count(b), 0);
@@ -851,7 +857,10 @@ function LastActiveBlock({ c, kinds, noun, title, tables }: { c: ReturnType<type
   const inBand = (r: Row) => (band ? r.active_band === band : r.active_band !== LA_RECENT && r.active_band !== "not_assessed");
   const listed = rows.filter(inBand);
   const dbs = Array.from(new Set(listed.map((r) => String(r.database_name || "")).filter(Boolean))).sort();
-  const shown = listed.filter((r) => (!db || r.database_name === db) && (!pattern || r.use_pattern === pattern));
+  // A database picked earlier can leave the list when the page filters change.
+  const dbOn = dbs.includes(db) ? db : "";
+  const filtered = !!dbOn || !!pattern;
+  const shown = listed.filter((r) => (!dbOn || r.database_name === dbOn) && (!pattern || r.use_pattern === pattern));
   const order = sort === "largest" ? (a: Row, b: Row) => numOrZero(b.storage_gb) - numOrZero(a.storage_gb)
     : sort === "newest" ? (a: Row, b: Row) => laTime(b) - laTime(a) : (a: Row, b: Row) => laTime(a) - laTime(b);
   const sorted = [...shown].sort(order);
@@ -870,32 +879,39 @@ function LastActiveBlock({ c, kinds, noun, title, tables }: { c: ReturnType<type
   const since = (r: Row) => (r.active_band === "beyond_history" ? `over ${fmtInt(numOrZero(r.history_days))} days` : r.days_since_active == null ? "–" : plural(numOrZero(r.days_since_active), "day"));
   return (
     <Slot c={c} title={title} subtitle="Pick a bar to see which ones">
-      {() => {
-        if (!whole && blocked) return okNote(`– needs ACCESS_HISTORY (Enterprise edition): ${plural(blocked, noun)} can't be dated.`);
-        if (!whole) return okNote(`No ${noun} the role can see.`);
-        return (
-          <div>
-            {!tables && (
-              <div className="act-db-pick"><label className="cx-muted">{"Kind "}
-                <select value={kind} onChange={(e) => { setKind(e.target.value); setDb(""); }} aria-label="Kind">
-                  <option value="">{"All kinds"}</option>
-                  {kinds.map((k) => <option key={k} value={k}>{kindWord(k)}</option>)}
-                </select>
-              </label></div>
-            )}
+      {() => (
+        <div>
+          {!tables && (
+            <div className="act-db-pick"><label className="cx-muted">{"Kind "}
+              <select value={kind} onChange={(e) => { setKind(e.target.value); setDb(""); }} aria-label="Kind">
+                <option value="">{"All kinds"}</option>
+                {kinds.map((k) => <option key={k} value={k}>{kindWord(k)}</option>)}
+              </select>
+            </label></div>
+          )}
+          {!whole && blocked > 0 && okNote(`– needs ACCESS_HISTORY (Enterprise edition): ${plural(blocked, noun)} can't be dated.`)}
+          {!whole && !blocked && okNote(`No ${kind ? kindWord(kind).toLowerCase() : `${noun}s`} the role can see in this selection.`)}
+          {whole > 0 && (<>
             <CxBarRows legend={false} ariaLabel={title} max={Math.max(1, ...LA_BANDS.map(count))} n={LA_BANDS.length}
-              rows={LA_BANDS.filter((b) => b !== "beyond_history" || count(b) > 0).map((b) => ({
-                key: b, name: bandWord(b, history), value: count(b),
-                strong: `${fmtInt(count(b))} of ${plural(whole, noun)}`,
-                rest: tables ? ` · ${fmtSize(size(b))}` : undefined,
-                onClick: () => { setBand(band === b ? "" : b); setDb(""); },
-              }))} />
-            {history < 360 && kinds.some((k) => k !== "TASK" && k !== "PIPE") && (
+              rows={LA_BANDS.filter((b) => b !== "beyond_history" || count(b) > 0).map((b) => {
+                const pick = () => { setBand(band === b ? "" : b); setDb(""); };
+                if (tooShort(b) && !picked.some(ownHistory)) return { key: b, name: bandWord(b, history), value: 0, strong: "–", rest: ` · needs ${fmtInt(LA_FROM[b])}+ days of history` };
+                return {
+                  key: b, name: bandWord(b, history), value: count(b),
+                  strong: `${fmtInt(count(b))} of ${plural(whole, noun)}`,
+                  rest: tooShort(b) ? " · tasks and pipes only" : tables ? ` · ${fmtSize(size(b))}` : undefined,
+                  onClick: pick,
+                };
+              })} />
+            {dated.length > 0 && history < 360 && (
               <div className="cx-foot"><span>{`This account has ${fmtInt(history)} days of access history, so longer gaps can't be told apart yet.`}</span></div>
             )}
-            <h4 className="act-la-head">{band ? bandWord(band, history) : "Not active for 30 days or more"}{` · ${plural(expected, noun)}`}</h4>
+            {blocked > 0 && (
+              <div className="cx-foot"><span>{`${plural(blocked, noun)} can't be dated without ACCESS_HISTORY (Enterprise edition). The bars count only the rest.`}</span></div>
+            )}
+            <h4 className="act-la-head">{band ? bandWord(band, history) : "Not active for 30 days or more"}{` · ${filtered ? `${fmtInt(sorted.length)} of ` : ""}${plural(expected, noun)}`}</h4>
             <div className="act-db-pick">
-              <DbPick dbs={dbs} db={db} setDb={setDb} />
+              <DbPick dbs={dbs} db={dbOn} setDb={setDb} />
               {tables && (
                 <label className="cx-muted">{"Use "}
                   <select value={pattern} onChange={(e) => setPattern(e.target.value)} aria-label="Use">
@@ -915,7 +931,7 @@ function LastActiveBlock({ c, kinds, noun, title, tables }: { c: ReturnType<type
             </div>
             {sorted.length ? (
               <CxTable ariaLabel={`${title}: which ones`} n={10}
-                foot={`– = none in the history.${capped ? ` Lists the largest ${fmtInt(listed.length)} of ${fmtInt(expected)}; the bars count them all.` : ""}`}
+                foot={`– = none in the history, or not known.${capped ? ` Lists the ${tables ? "largest" : "oldest"} ${fmtInt(listed.length)} of ${fmtInt(expected)}; the bars count them all${filtered ? ", and a filter only sees those listed" : ""}.` : ""}`}
                 cols={tables
                   ? [{ label: "Table" }, { label: "Owner" }, { label: "Last active" }, { label: "Since", num: true }, { label: "Last read" }, { label: "Last write" }, { label: "Use" }, { label: "Depends on it", num: true }, { label: "Storage", num: true }]
                   : [{ label: "Object" }, { label: "Kind" }, { label: "Owner" }, { label: "Last active" }, { label: "Since", num: true }, { label: "Last read or run" }, { label: "Depends on it", num: true }]}
@@ -925,10 +941,10 @@ function LastActiveBlock({ c, kinds, noun, title, tables }: { c: ReturnType<type
                     ? [nameCell(r), String(r.object_owner || "–"), fullDay(r.last_active_at), since(r), fullDay(r.last_read_at), fullDay(r.last_write_at), PATTERN_WORD[String(r.use_pattern)] || "–", r.dependents == null ? "–" : fmtInt(numOrZero(r.dependents)), fmtSize(numOrZero(r.storage_gb))]
                     : [nameCell(r), kindWord(String(r.object_kind)).replace(/s$/, ""), String(r.object_owner || "–"), fullDay(r.last_active_at), since(r), fullDay(lastUsed(r)), r.dependents == null ? "–" : fmtInt(numOrZero(r.dependents))],
                 }))} />
-            ) : okNote(`No ${noun} in this selection.`)}
-          </div>
-        );
-      }}
+            ) : okNote(!listed.length && expected > 0 ? "The export's row limit left these out; the bars count them all." : `No ${noun} in this selection.`)}
+          </>)}
+        </div>
+      )}
     </Slot>
   );
 }
@@ -942,19 +958,23 @@ export function ApActivityLastActive(p: ApPageProps) {
   const tAll = sum(["TABLE"], LA_BANDS);
   const oOld = sum(OBJ_KINDS, old);
   const oAll = sum(OBJ_KINDS, LA_BANDS);
-  const history = numOrZero(totals.find((r) => r.object_kind === "TABLE")?.history_days);
+  const dated = totals.find((r) => !ownHistory(r.object_kind) && r.active_band !== "not_assessed");
+  const history = numOrZero(dated?.history_days);
   const blocked = sum(["TABLE"], ["not_assessed"]) > 0;
+  const oBlocked = sum(OBJ_KINDS, ["not_assessed"]);
   useLede(p, c.loading, tAll ? `${fmtInt(tOld)} of ${plural(tAll, "table")} had no activity for 30 days or more. Check what depends on one and ask its owner before dropping it.` : null);
   const noHistory = "needs ACCESS_HISTORY (Enterprise edition)";
   return (
     <div className="ais-page cx-e">
       <SummaryTileRow compact>
-        <CheckTile c={c} label="Tables not active, 30+ days" build={() => (blocked ? { headline: null, missingReason: noHistory } : { headline: fmtInt(tOld), unit: ` of ${plural(tAll, "table")}`, cause: "No read, write, change or new table." })} />
+        <CheckTile c={c} label="Tables not active, 30+ days" build={() => (blocked ? { headline: null, missingReason: noHistory } : !tAll ? { headline: null, missingReason: "no table in this selection" } : { headline: fmtInt(tOld), unit: ` of ${plural(tAll, "table")}`, cause: "No read, write, change or new table." })} />
         <CheckTile c={c} label="Tables not active, 360+ days" build={() => (blocked ? { headline: null, missingReason: noHistory }
+          : !tAll ? { headline: null, missingReason: "no table in this selection" }
           : history < 360 ? { headline: null, missingReason: `only ${fmtInt(history)} days of access history` }
           : { headline: fmtInt(sum(["TABLE"], ["over_360"])), unit: ` of ${plural(tAll, "table")}`, cause: "The longest band." })} />
-        <CheckTile c={c} label="Other objects not active, 30+ days" build={() => ({ headline: fmtInt(oOld), unit: ` of ${plural(oAll, "object")}`, cause: "Views, stages, functions, procedures, pipes, tasks." })} />
-        <CheckTile c={c} label="Access history" build={() => (blocked ? { headline: null, missingReason: noHistory } : { headline: fmtInt(history), unit: " days", cause: "How far back reads and writes can be dated." })} />
+        <CheckTile c={c} label="Other objects not active, 30+ days" build={() => (!oAll ? { headline: null, missingReason: oBlocked ? noHistory : "no object in this selection" }
+          : { headline: fmtInt(oOld), unit: ` of ${plural(oAll, "object")}`, cause: oBlocked ? `Tasks and pipes only; ${plural(oBlocked, "other")} need ACCESS_HISTORY.` : "Views, stages, functions, procedures, pipes, tasks." })} />
+        <CheckTile c={c} label="Access history" build={() => (blocked || oBlocked ? { headline: null, missingReason: noHistory } : !dated ? { headline: null, missingReason: "no table or object in this selection" } : { headline: fmtInt(history), unit: " days", cause: "How far back reads and writes can be dated." })} />
       </SummaryTileRow>
       <LastActiveBlock c={c} kinds={["TABLE"]} noun="table" title="Tables, by time since last active" tables />
       <LastActiveBlock c={c} kinds={OBJ_KINDS} noun="object" title="Other objects, by time since last active" tables={false} />

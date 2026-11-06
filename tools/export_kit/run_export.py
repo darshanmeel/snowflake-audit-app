@@ -94,6 +94,13 @@ _LIST_COLUMNS = {
     "object": {"stale_stage_names"},
 }
 
+# Fixed words the checks write, never names: free-text masking would turn a value into a token when
+# a customer's table happens to be called TASK or VIEW, and the page could no longer read the row.
+_FIXED_WORDS = {"row_level", "object_kind", "object_domain", "object_subtype", "active_band", "use_pattern", "status"}
+# Name columns shared by every kind of object: these say which kind each row is, so a task gets a task token.
+_ROW_KIND_COLUMNS = ("object_kind", "object_domain")
+_NAMES_BY_ROW_KIND = {"object_name", "object_fqn"}
+
 # Full names, masked part by part: (database, schema, last part's kind).
 _FQN_LAST_KIND = {"task_full_name": "task", "root_task_full_name": "task", "job_id": "task",
                   "last_first_error_task_name": "task"}
@@ -107,10 +114,10 @@ _DOTTED_RE = re.compile(r'(?<![A-Za-z0-9_$."])((?:"[^"]+"|[A-Za-z_][A-Za-z0-9_$]
 # Person columns (the same rule as app/core/identity.py) and the lists of them.
 _PERSON_RE = re.compile(
     r"^(?:(?:[a-z0-9]+_)*user_name|login_name|executed_by|actor|email|top_user|requester|identity_run_as"
-    r"|principal|resized_by|created_by|users|sample_users|blocked_users)$",
+    r"|principal|resized_by|created_by|users|sample_users|blocked_users|idle_users|writing_users)$",
     re.IGNORECASE,
 )
-_PERSON_LIST = {"users", "sample_users", "blocked_users"}
+_PERSON_LIST = {"users", "sample_users", "blocked_users", "idle_users", "writing_users"}
 # A grantee column names a user or a role, as its type column says.
 _GRANTEE_COLUMNS = {"grantee", "grantee_name"}
 _GRANTEE_TYPE_COLUMNS = ("grantee_type", "granted_to")
@@ -207,6 +214,8 @@ class Masker:
     def column_rule(self, name: str, columns: list[str]):
         """(handler, kind) for a column: 'one', 'list', 'fqn', 'grantee' or 'text'."""
         col = name.lower()
+        if col in _FIXED_WORDS:
+            return "keep", None
         if col in _GRANTEE_COLUMNS and any(t in columns for t in _GRANTEE_TYPE_COLUMNS):
             return "grantee", None
         if _PERSON_RE.match(col):
@@ -230,6 +239,8 @@ class Masker:
     def cell(self, handler: str, kind, value, row_type=None):
         """One cell masked by its column's rule ('text' cells need the full map: see text())."""
         if value is None or not isinstance(value, str):
+            return value
+        if handler == "keep":
             return value
         if handler == "one":
             return self.token(kind, value)
@@ -295,6 +306,8 @@ class Masker:
         lower = [c.lower() for c in names]
         type_col = next((names[lower.index(t)] for t in _GRANTEE_TYPE_COLUMNS if t in lower), None)
         row_types = table.column(type_col).to_pylist() if type_col else None
+        kind_col = next((names[lower.index(c)] for c in _ROW_KIND_COLUMNS if c in lower), None)
+        row_kinds = table.column(kind_col).to_pylist() if kind_col else None
         out = []
         for field in table.schema:
             col = table.column(field.name)
@@ -307,6 +320,8 @@ class Masker:
             values = col.to_pylist()
             if handler == "grantee":
                 masked = [self.cell(handler, kind, v, t) for v, t in zip(values, row_types or [None] * len(values))]
+            elif row_kinds and field.name.lower() in _NAMES_BY_ROW_KIND:
+                masked = [self.cell(handler, "task" if str(k).upper() == "TASK" else kind, v) for v, k in zip(values, row_kinds)]
             else:
                 cache: dict = {}
                 masked = []

@@ -9,6 +9,7 @@ It ships the database the local app opens, or --db. The output goes to data/stre
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import sys
@@ -140,9 +141,13 @@ def create_statements(stage: str, warehouse: str, name: str, runtime: str, pool:
 
 def run(statements: list[str]) -> None:
     sys.path.insert(0, str(ROOT))
-    from tools.export_results import connect, explain_connection_error
+    from tools.export_results import _load_env, connect, explain_connection_error
     try:
-        con = connect()
+        env = _load_env()
+        # A key set for this window isn't the one .env's passphrase belongs to.
+        if os.environ.get("SNOWFLAKE_PRIVATE_KEY_FILE") and not os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"):
+            env.pop("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", None)
+        con = connect(env)
     except Exception as exc:  # noqa: BLE001 -- includes a missing connector
         raise SystemExit(explain_connection_error(exc)) from exc
     try:
@@ -170,6 +175,9 @@ def main() -> None:
 
     db = args.db or default_db()
     check_db(db)
+    # PUT takes the path as a quoted glob and has no documented escape, so stop before REMOVE empties the stage.
+    if any(ch in OUT.as_posix() for ch in "'[]"):
+        raise SystemExit(f"Move the repo to a folder with no ' [ or ] in its path: {OUT}")
     stage = f"{args.database}.{args.schema}.{args.stage}"
     name = f"{args.database}.{args.schema}.{args.app}"
     bundle = build(db, args.runtime)

@@ -296,23 +296,34 @@ FROM q FULL OUTER JOIN s ON s.usage_date = q.usage_date
 ORDER BY 1;
 
 -- 16. One table, when it was last active (Activity > Last active; check sf_use_last_active). Put the table's
---     id in the p CTE. A NULL means none in the 365 days ACCESS_HISTORY keeps.
-WITH p AS (SELECT 0 AS table_id),
+--     id and the day after the export in the p CTE. A NULL means none in the 365 days looked at. The app's
+--     last write is the newer of the two write columns; its last active is the newest of all the dates.
+--     A query that reads and writes this table counts as a write only.
+WITH p AS (SELECT 0 AS table_id, DATEADD(day, 1, CURRENT_DATE()) AS end_date),
 h AS (
-  SELECT ah.query_start_time, ah.base_objects_accessed, ah.objects_modified
-  FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah
-  WHERE ah.query_start_time >= DATEADD(day, -365, CURRENT_DATE())
+  SELECT ah.query_id, ah.query_start_time, ah.base_objects_accessed, ah.objects_modified
+  FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah, p
+  WHERE ah.query_start_time >= DATEADD(day, -365, p.end_date) AND ah.query_start_time < p.end_date
+),
+wr AS (
+  SELECT h.query_id, h.query_start_time
+  FROM h, LATERAL FLATTEN(input => h.objects_modified) f, p
+  WHERE f.value:"objectId"::NUMBER = p.table_id
+    AND UPPER(f.value:"objectDomain"::STRING) IN ('TABLE', 'DYNAMIC TABLE', 'ICEBERG TABLE', 'EXTERNAL TABLE', 'MATERIALIZED VIEW')
 ),
 r AS (
   SELECT MAX(h.query_start_time) AS last_read_at
   FROM h, LATERAL FLATTEN(input => h.base_objects_accessed) f, p
   WHERE f.value:"objectId"::NUMBER = p.table_id
+    AND UPPER(f.value:"objectDomain"::STRING) IN ('TABLE', 'DYNAMIC TABLE', 'ICEBERG TABLE', 'EXTERNAL TABLE', 'MATERIALIZED VIEW')
+    AND h.query_id NOT IN (SELECT query_id FROM wr)
 ),
-w AS (
-  SELECT MAX(h.query_start_time) AS last_write_at
-  FROM h, LATERAL FLATTEN(input => h.objects_modified) f, p
-  WHERE f.value:"objectId"::NUMBER = p.table_id
+w AS (SELECT MAX(query_start_time) AS last_write_at FROM wr),
+d AS (
+  SELECT MAX(dh.start_time) AS last_dml_at
+  FROM SNOWFLAKE.ACCOUNT_USAGE.TABLE_DML_HISTORY dh, p
+  WHERE dh.table_id = p.table_id AND dh.start_time >= DATEADD(day, -365, p.end_date) AND dh.start_time < p.end_date
 )
-SELECT r.last_read_at, w.last_write_at, t.last_altered, t.last_ddl, t.created
-FROM r CROSS JOIN w CROSS JOIN p
+SELECT r.last_read_at, w.last_write_at, d.last_dml_at, t.last_altered, t.last_ddl, t.created
+FROM r CROSS JOIN w CROSS JOIN d CROSS JOIN p
 LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.TABLES t ON t.table_id = p.table_id AND t.deleted IS NULL;

@@ -85,7 +85,8 @@ export interface CheckDrawerProps {
 
 export function CheckDrawer({ target, finding, filters, goTo, areaLabel, onClose, findingsIndex, meta, children }: CheckDrawerProps) {
   useNames();
-  const state = useFindingData(target.id, filters.window, filters.accountIds, 5000) as FetchState<FindingData>;
+  // A narrowed drawer filters here, so it must see every row or the one clicked can be past the page.
+  const state = useFindingData(target.id, filters.window, filters.accountIds, 5000, undefined, !!(target.col && target.val != null)) as FetchState<FindingData>;
   const [allRows, setAllRows] = React.useState(false);
   const closeRef = React.useRef<HTMLButtonElement | null>(null);
   const key = `${target.id}|${target.col || ""}|${target.val || ""}`;
