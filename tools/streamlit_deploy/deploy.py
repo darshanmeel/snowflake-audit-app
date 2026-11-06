@@ -1,31 +1,79 @@
 """Deploys the audit app to Streamlit in Snowflake. The local app needs none of this.
 
-    python tools/streamlit_deploy/deploy.py --db PATH --stage DB.SCHEMA.STAGE --warehouse WH --pool POOL --name DB.SCHEMA.APP
-    add --run to upload and create it now, with the login in .env; without it, only the files and SQL are written
+    python tools/streamlit_deploy/deploy.py             write the files and SQL, with the default names
+    python tools/streamlit_deploy/deploy.py --run       also upload and create the app, with the login in .env
+    python tools/streamlit_deploy/deploy.py --run --setup   also create the database, schema and stage first
 
-The output goes to data/streamlit_deploy (git-ignored).
+It ships the database the local app opens, or --db. The output goes to data/streamlit_deploy (git-ignored).
 """
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 HERE = Path(__file__).resolve().parent
-DEMO_DB = ROOT / "data" / "demo" / "db_audit_demo.duckdb"
 OUT = ROOT / "data" / "streamlit_deploy"
+DIST = ROOT / "app" / "web" / "dist" / "assets"
 STREAMLIT_CONFIG = '[client]\ntoolbarMode = "minimal"\n\n[browser]\ngatherUsageStats = false\n'
+FRAME_HTML = """<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Snowflake audit</title><link rel="stylesheet" href="assets/{css}"></head>
+<body data-bundle="assets/{js}">
+<div id="root"><div class="loading-note">Loading…</div></div>
+<details style="font:12px monospace;padding:8px 24px"><summary>Browser checks</summary><pre id="audit-browser-checks" style="white-space:pre-wrap">The bridge script has not run.</pre></details>
+<script src="bridge_core.js"></script>
+<script src="bridge_frame.js"></script>
+</body>
+</html>
+"""
 
 
-def build(db: Path) -> Path:
+def default_db() -> Path:
+    """The file the local app opens: AUDIT_DB, the last load or Refresh, else the data folder's own."""
+    sys.path.insert(0, str(ROOT))
+    from app.core import data
+    return data._db_path()
+
+
+def check_db(db: Path) -> None:
+    if not db.exists():
+        raise SystemExit(f"No database at {db}. Export and load first (python tools/first_run.py), or pass --db.")
+    if "demo" in db.name.lower():
+        raise SystemExit(f"{db} is demo data, and Streamlit in Snowflake only ships a real export. Pass --db.")
+
+
+def build_frame(frame: Path) -> None:
+    """The page warehouse runtime serves as a component; its fonts and script are files beside it."""
+    (frame / "assets").mkdir(parents=True)
+    for src in DIST.iterdir():
+        shutil.copy2(src, frame / "assets" / src.name)
+    css = next(DIST.glob("index-*.css"))
+    js = next(DIST.glob("index-*.js"))
+    # The stylesheet sits beside the fonts, and a page in a frame has no /assets at its root.
+    (frame / "assets" / css.name).write_text(
+        re.sub(r"url\(/assets/", "url(", css.read_text(encoding="utf-8")), encoding="utf-8")
+    (frame / "index.html").write_text(FRAME_HTML.format(css=css.name, js=js.name), encoding="utf-8")
+    for name in ("bridge_core.js", "bridge_frame.js"):
+        shutil.copy2(HERE / name, frame / name)
+
+
+def build(db: Path, runtime: str) -> Path:
     bundle = OUT / "bundle"
     if bundle.exists():
         shutil.rmtree(bundle)
     bundle.mkdir(parents=True)
-    for name in ("streamlit_app.py", "bridge.js", "requirements.txt"):
-        shutil.copy2(HERE / name, bundle / name)
+    shutil.copy2(HERE / "streamlit_app.py", bundle / "streamlit_app.py")
+    if runtime == "warehouse":
+        shutil.copy2(HERE / "environment.yml", bundle / "environment.yml")
+        build_frame(bundle / "frame")
+    else:
+        shutil.copy2(HERE / "requirements_container.txt", bundle / "requirements.txt")
+        for name in ("bridge_core.js", "bridge_container.js"):
+            shutil.copy2(HERE / name, bundle / name)
     skip = shutil.ignore_patterns("__pycache__", "*.pyc")
     shutil.copytree(ROOT / "app", bundle / "app", ignore=skip)
     # With settings.local.yml, so a setting such as masking user names holds there too.
@@ -38,9 +86,18 @@ def build(db: Path) -> Path:
     return bundle
 
 
+def setup_statements(database: str, schema: str, stage: str, runtime: str, pool: str) -> list[str]:
+    lines = [f"CREATE DATABASE IF NOT EXISTS {database}", f"CREATE SCHEMA IF NOT EXISTS {database}.{schema}",
+             f"CREATE STAGE IF NOT EXISTS {stage} ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE') DIRECTORY = (ENABLE = TRUE)"]
+    if runtime == "container":
+        lines.append(f"CREATE COMPUTE POOL IF NOT EXISTS {pool} "
+                     "MIN_NODES = 1 MAX_NODES = 1 INSTANCE_FAMILY = CPU_X64_S AUTO_SUSPEND_SECS = 600")
+    return lines
+
+
 def upload_statements(bundle: Path, stage: str) -> list[str]:
     """One PUT per folder, because PUT does not go into subfolders."""
-    lines = [f"CREATE STAGE IF NOT EXISTS {stage} ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE') DIRECTORY = (ENABLE = TRUE)"]
+    lines = []
     for folder in sorted({p.parent for p in bundle.rglob("*") if p.is_file()}):
         rel = folder.relative_to(bundle).as_posix()
         target = f"@{stage}/app_src" + ("" if rel == "." else f"/{rel}")
@@ -48,28 +105,16 @@ def upload_statements(bundle: Path, stage: str) -> list[str]:
     return lines
 
 
-def create_statements(stage: str, warehouse: str, pool: str, name: str) -> list[str]:
-    return [
-        f"""CREATE OR REPLACE STREAMLIT {name}
+def create_statements(stage: str, warehouse: str, name: str, runtime: str, pool: str) -> list[str]:
+    extra = ""
+    if runtime == "container":
+        extra = (f"\n  RUNTIME_NAME = 'SYSTEM$ST_CONTAINER_RUNTIME_PY3_11'\n  COMPUTE_POOL = {pool}"
+                 "\n  ARTIFACT_REPOSITORIES = (snowflake.snowpark.pypi_shared_repository)")
+    return [f"""CREATE OR REPLACE STREAMLIT {name}
   FROM @{stage}/app_src
   MAIN_FILE = 'streamlit_app.py'
-  QUERY_WAREHOUSE = {warehouse}
-  RUNTIME_NAME = 'SYSTEM$ST_CONTAINER_RUNTIME_PY3_11'
-  COMPUTE_POOL = {pool}
-  ARTIFACT_REPOSITORIES = (snowflake.snowpark.pypi_shared_repository)
-  TITLE = 'Snowflake audit'""",
-        f"ALTER STREAMLIT {name} ADD LIVE VERSION FROM LAST",
-    ]
-
-
-def setup_sql(pool: str) -> str:
-    return f"""-- Once per account, as ACCOUNTADMIN, if the deploying role cannot use these yet:
---   CREATE COMPUTE POOL IF NOT EXISTS {pool}
---     MIN_NODES = 1 MAX_NODES = 1 INSTANCE_FAMILY = CPU_X64_S AUTO_SUSPEND_SECS = 600;
---   GRANT USAGE, MONITOR ON COMPUTE POOL {pool} TO ROLE <deploying_role>;
---   GRANT DATABASE ROLE SNOWFLAKE.PYPI_REPOSITORY_USER TO ROLE <deploying_role>;
--- The deploying role also needs CREATE STREAMLIT and CREATE STAGE on the schema, and USAGE on the warehouse.
-"""
+  QUERY_WAREHOUSE = {warehouse}{extra}
+  TITLE = 'Snowflake audit'""", f"ALTER STREAMLIT {name} ADD LIVE VERSION FROM LAST"]
 
 
 def run(statements: list[str]) -> None:
@@ -87,29 +132,35 @@ def run(statements: list[str]) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    source = p.add_mutually_exclusive_group(required=True)
-    source.add_argument("--db", type=Path, help="the DuckDB file with your export, as AUDIT_DB would name it")
-    source.add_argument("--demo", action="store_true", help="ship the demo data instead")
-    p.add_argument("--stage", required=True, help="database.schema.stage, internal; created if missing")
-    p.add_argument("--warehouse", required=True)
-    p.add_argument("--pool", required=True, help="the compute pool")
-    p.add_argument("--name", required=True, help="database.schema.name of the app")
-    p.add_argument("--run", action="store_true", help="upload and create it now, with the login in .env")
+    p.add_argument("--db", type=Path, help="the DuckDB file to ship; default: the one the local app opens")
+    p.add_argument("--database", default="AUDIT_APP")
+    p.add_argument("--schema", default="PUBLIC")
+    p.add_argument("--stage", default="AUDIT_APP_STAGE", help="an internal stage in that schema")
+    p.add_argument("--warehouse", default="COMPUTE_WH")
+    p.add_argument("--app", default="AUDIT_APP", help="the app's name in that schema")
+    p.add_argument("--runtime", choices=("warehouse", "container"), default="warehouse")
+    p.add_argument("--pool", default="AUDIT_APP_POOL", help="the compute pool; container runtime only")
+    p.add_argument("--run", action="store_true", help="upload and create the app, with the login in .env")
+    p.add_argument("--setup", action="store_true", help="with --run: first create what setup.sql lists")
     args = p.parse_args()
 
-    db = DEMO_DB if args.demo else args.db
-    if not db.exists():
-        raise SystemExit(f"No database at {db}.")
-    bundle = build(db)
-    upload = upload_statements(bundle, args.stage)
-    create = create_statements(args.stage, args.warehouse, args.pool, args.name)
+    db = args.db or default_db()
+    check_db(db)
+    stage = f"{args.database}.{args.schema}.{args.stage}"
+    name = f"{args.database}.{args.schema}.{args.app}"
+    bundle = build(db, args.runtime)
+    setup = setup_statements(args.database, args.schema, stage, args.runtime, args.pool)
+    upload = upload_statements(bundle, stage)
+    create = create_statements(stage, args.warehouse, name, args.runtime, args.pool)
+    (OUT / "setup.sql").write_text(";\n".join(setup) + ";\n", encoding="utf-8")
     (OUT / "upload.sql").write_text(";\n".join(upload) + ";\n", encoding="utf-8")
-    (OUT / "create_app.sql").write_text(setup_sql(args.pool) + "\n" + ";\n\n".join(create) + ";\n", encoding="utf-8")
+    (OUT / "create_app.sql").write_text(";\n\n".join(create) + ";\n", encoding="utf-8")
     size = sum(f.stat().st_size for f in bundle.rglob("*") if f.is_file()) / 1048576
-    print(f"{bundle} ({size:.0f} MB)\n{OUT / 'upload.sql'}\n{OUT / 'create_app.sql'}")
+    print(f"database: {db}\n{bundle} ({size:.0f} MB)")
+    print(f"{OUT / 'setup.sql'} (optional)\n{OUT / 'upload.sql'}\n{OUT / 'create_app.sql'}")
     if args.run:
-        run(upload + create)
-        print(f"Created {args.name}. Open it in Snowsight under Projects > Streamlit.")
+        run((setup if args.setup else []) + upload + create)
+        print(f"Created {name}. Open it in Snowsight under Projects > Streamlit.")
 
 
 if __name__ == "__main__":

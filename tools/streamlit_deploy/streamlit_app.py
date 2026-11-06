@@ -1,7 +1,8 @@
 """The audit app in Streamlit in Snowflake: the same API and React build as the local app.
 
 The browser cannot reach a port on Snowflake's side, so the page's /api/... calls come here through
-a Streamlit component, and the API answers them in this process. Container runtime only.
+a Streamlit component, and the API answers them in this process. Warehouse runtime uses a v1 component
+in its own frame (frame/, built by deploy.py). Container runtime uses a v2 component.
 """
 from __future__ import annotations
 
@@ -17,10 +18,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1  # noqa: F401 -- st.components.v1 is used below
 
 HERE = Path(__file__).resolve().parent
 DB_FILE = HERE / "audit.duckdb"
 DIST = HERE / "app" / "web" / "dist" / "assets"
+FRAME = HERE / "frame"
 os.environ["AUDIT_DB"] = str(DB_FILE)
 
 # Requests a batch runs at once, about what a browser sends the local server at a time.
@@ -104,8 +107,9 @@ def server_checks() -> tuple[bool, str]:
              f"streamlit {st.__version__}, {os.cpu_count()} cpus"]
     results = [_check(lines, f"install {dist}", lambda m=module, d=dist: _installed(m, d))
                for module, dist in (("duckdb", "duckdb"), ("pandas", "pandas"), ("fastapi", "fastapi"),
-                                    ("httpx", "httpx"), ("sqlglot", "sqlglot"), ("yaml", "pyyaml"))]
-    results.append(_check(lines, "components v2", lambda: str(callable(st.components.v2.component))))
+                                    ("httpx", "httpx"), ("yaml", "pyyaml"))]
+    if not FRAME.exists():
+        results.append(_check(lines, "components v2", lambda: str(callable(st.components.v2.component))))
     results.append(_check(lines, "temp folder", _temp_write))
     results.append(_check(lines, "open the database", _duckdb_file))
     results.append(_check(lines, "GET /api/status", lambda: _api_get("/api/status")))
@@ -133,7 +137,8 @@ def _answer(req: dict) -> dict:
 
 def _on_batch() -> None:
     """Runs before the fragment reruns: answer the page's requests and keep them for the next mount."""
-    batch = st.session_state["bridge"].batch
+    state = st.session_state["bridge"]
+    batch = state if FRAME.exists() else state.batch
     if not batch:
         return
     with ThreadPoolExecutor(BATCH_WORKERS) as pool:
@@ -153,7 +158,7 @@ def _inline_fonts(css: str) -> str:
 def component_parts() -> tuple[str, str]:
     """The React build plus the bridge as one script; the build runs only when the bridge starts it."""
     bundle = next(DIST.glob("index-*.js")).read_text(encoding="utf-8")
-    bridge = (HERE / "bridge.js").read_text(encoding="utf-8")
+    bridge = "\n".join((HERE / f).read_text(encoding="utf-8") for f in ("bridge_core.js", "bridge_container.js"))
     css = _inline_fonts(next(DIST.glob("index-*.css")).read_text(encoding="utf-8"))
     # Streamlit reads a one-line string as a file path; a newline inside marks it as inline content.
     return f"function __startReact() {{\n{bundle}\n}}\n{bridge}", f"{PAGE_CSS}\n{css}"
@@ -170,8 +175,11 @@ def _brand() -> str:
 @st.fragment
 def app_view(component) -> None:
     # A fragment, so answering a request reruns this and not the whole page.
-    component(key="bridge", data={"out": st.session_state.get("bridge_out"), "brand": _brand()},
-              on_batch_change=_on_batch)
+    out, brand = st.session_state.get("bridge_out"), _brand()
+    if FRAME.exists():
+        component(out=out, brand=brand, key="bridge", default=None, on_change=_on_batch)
+    else:
+        component(key="bridge", data={"out": out, "brand": brand}, on_batch_change=_on_batch)
 
 
 st.set_page_config(page_title="Snowflake audit", layout="wide")
@@ -180,9 +188,13 @@ if not checks_ok:
     st.error("The app cannot start here. The failed lines below say why.")
     st.code(checks, language=None)
 try:
-    js, css = component_parts()
-    # Not isolated: the build looks up its root in the document, as it does on the local page.
-    app_view(st.components.v2.component("audit_app", html=PAGE_HTML, css=css, js=js, isolate_styles=False))
+    if FRAME.exists():
+        st.markdown(f"<style>{PAGE_CSS}</style>", unsafe_allow_html=True)
+        app_view(st.components.v1.declare_component("audit_app", path=str(FRAME)))
+    else:
+        js, css = component_parts()
+        # Not isolated: the build looks up its root in the document, as it does on the local page.
+        app_view(st.components.v2.component("audit_app", html=PAGE_HTML, css=css, js=js, isolate_styles=False))
 except Exception as exc:  # noqa: BLE001 -- the checks stay on screen
     st.error(f"The page could not load: {type(exc).__name__}: {exc}")
 if checks_ok:

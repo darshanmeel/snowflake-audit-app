@@ -410,28 +410,28 @@ These files hold your account's data. Keep them out of the repo and do not share
 ## Run inside Snowflake
 
 The local app above is the default. To let people open the same app in Snowsight, deploy it to
-Streamlit in Snowflake. It has the same pages and numbers, and shows the DuckDB file you ship with it.
+Streamlit in Snowflake. You upload the code and your data to a stage and create the app with SQL. It
+has the same pages and numbers, and ships the file your local app opens, never demo data.
 
-**Not yet run in Snowflake.** It has only been tested with Streamlit on a local machine and the demo
-data, so try `--demo` first.
-
-It needs container runtime, a compute pool and Snowflake's PyPI mirror. After the setup in
-[`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md), run:
+**Not yet run in Snowflake.** It has only been tested with Streamlit on a local machine. It uses
+warehouse runtime by default, with no compute pool; if that fails, container runtime is the fallback.
 
 ```
-python tools/streamlit_deploy/deploy.py --db audit.duckdb --stage MY_DB.MY_SCHEMA.AUDIT_APP --warehouse MY_WH --pool MY_POOL --name MY_DB.MY_SCHEMA.AUDIT_APP --run
+python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH
+snowsql -f data/streamlit_deploy/upload.sql
+snowsql -f data/streamlit_deploy/create_app.sql
 ```
 
-This uploads the app and creates it with the login in `.env`. That login needs more than the audit's
-read-only role, because it creates a stage and an app. Without `--run` it only writes
-`data/streamlit_deploy/upload.sql` and `create_app.sql` for you to run.
+Without those options it uses default names. Add `--run` to upload and create with the login in
+`.env`, and `--setup` to create a missing database, schema and stage. The steps, the role it needs and
+the fallback are in [`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md).
 
 - **Refresh:** there is none. For newer data, export and load as usual, deploy again, and repeat the
   GRANT on the app.
 - **Access:** anyone granted the app sees all the data in the file, whatever their role can read. Use
   `--mask` on the export to hide names.
-- **Settings:** a setting saved in the app applies to every viewer and is lost on the next deploy.
-- **Cost:** the compute pool bills while it runs.
+- **Settings:** a setting saved in the app is lost on a restart or the next deploy.
+- **Cost:** the warehouse runs while the app is open.
 
 ## Update to a new version
 

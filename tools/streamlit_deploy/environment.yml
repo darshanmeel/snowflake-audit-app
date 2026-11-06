@@ -1,0 +1,12 @@
+name: audit-app
+channels:
+  - snowflake
+dependencies:
+  - python=3.11
+  - streamlit=1.52.2
+  - duckdb=1.5.*
+  - pandas=2.*
+  - pyarrow
+  - pyyaml
+  - fastapi
+  - httpx

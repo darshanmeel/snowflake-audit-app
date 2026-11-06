@@ -1,9 +1,10 @@
-// Runs the React build inside a Streamlit component. Its /api/... calls go to Python through the
-// component, because the browser cannot reach a port on Snowflake's side. __startReact, defined just
-// above this file, holds the build.
+// The React build's /api/... calls go to Python through a Streamlit component, because the browser
+// cannot reach a port on Snowflake's side. bridge_frame.js and bridge_container.js connect this to Streamlit.
 const BATCH_DELAY_MS = 15;
 const NO_ANSWER_MS = 300000;
 const NO_BODY = new Set([101, 204, 205, 304]);
+// Warehouse runtime caps a Streamlit message at 32 MB, so a batch stays small.
+const MAX_BATCH = 8;
 
 function makeBridge() {
   const b = {
@@ -25,7 +26,7 @@ function makeBridge() {
     b.timer = null;
     if (b.inflight !== null || !b.queue.length || !b.send) return;
     const id = b.nextBatch++;
-    const requests = b.queue.splice(0);
+    const requests = b.queue.splice(0, MAX_BATCH);
     b.inflight = id;
     b.batches += 1;
     b.sentAt = performance.now();
@@ -91,24 +92,4 @@ function setTheme() {
     const dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (dark) document.documentElement.setAttribute("data-theme", "dark");
   } catch (e) { /* storage or matchMedia unavailable: light */ }
-}
-
-export default function (component) {
-  const { data, setTriggerValue } = component;
-  const b = window.__auditBridge || (window.__auditBridge = makeBridge());
-  b.send = setTriggerValue;
-  b.receive(data.out);
-  b.schedule();
-  if (!b.started) {
-    b.started = true;
-    window.APP_BRAND = data.brand;
-    window.APP_HOSTED = true;
-    setTheme();
-    try {
-      __startReact();
-    } catch (e) {
-      b.problems.push(`the page did not start: ${e.message}`);
-    }
-  }
-  b.show();
 }
