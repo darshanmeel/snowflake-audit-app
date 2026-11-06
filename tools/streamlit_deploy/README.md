@@ -2,7 +2,7 @@
 
 This runs the same app inside Snowflake. You upload the code and your data to a stage, then create the app with SQL. `python -m app.api` on your machine stays the default and doesn't use anything here.
 
-The app shows the DuckDB file you ship with it, by default the one your local app opens. It never ships demo data. It doesn't read your account while it runs, so it needs no privileges on `SNOWFLAKE.ACCOUNT_USAGE`.
+The app shows the DuckDB file you ship with it, by default the one your local app opens. The deploy refuses a file holding demo or test data, whatever it's called. It doesn't read your account while it runs, so it needs no privileges on `SNOWFLAKE.ACCOUNT_USAGE`.
 
 **Not yet run in Snowflake.** It has only been tested with Streamlit on a local machine. Warehouse runtime is the default and needs no compute pool, but Snowflake's docs don't say it supports the component type it uses. If it fails, use [container runtime](#container-runtime).
 
@@ -90,15 +90,15 @@ Viewers also need USAGE on the database and schema. To hide names, export with `
 
 ## New data
 
-Export and load as usual, then repeat steps 2 and 3. This replaces the app, so run the GRANT again.
+Export and load as usual, then repeat steps 2 and 3. The upload clears `app_src/` in the stage first, so keep nothing of your own in that folder. This replaces the app, so run the GRANT again.
 
 ## What differs from the local app
 
 - **Refresh:** there's no Refresh button, because it needs a login and a local export.
-- **Settings:** a setting saved in the app is lost when the app restarts or is deployed again, so set it locally before you deploy.
+- **Settings:** they are read-only in the app, so a viewer can't turn masking off. Set them locally before you deploy.
 - **Copy link:** on warehouse runtime the app runs in its own frame, so a copied link may not open the same page.
 - **Cost:** the warehouse runs while the app is open, up to its sleep timer. Each viewer starts their own copy of the app, so opening it takes longer.
-- **Large downloads:** warehouse runtime caps a message at 32 MB, so a very large CSV can fail.
+- **Large results:** warehouse runtime caps a message at 32 MB. The app splits a page's requests to fit, but one result too large to send, such as a very large CSV, fails with a message.
 
 ## Container runtime
 

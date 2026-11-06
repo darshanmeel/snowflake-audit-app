@@ -47,9 +47,9 @@ export interface Chk {
 // A check homed on another sub-tab (churn on Unused) is read from the full index.
 const findingAnywhere = (p: ApPageProps, id: string) => findingForId(p.findings, id) || (p.allFindingsIndex ? p.allFindingsIndex[id] || null : null);
 
-export function useCheck(p: ApPageProps, id: string): Chk {
+export function useCheck(p: ApPageProps, id: string, allPages?: boolean): Chk {
   const f = findingAnywhere(p, id);
-  const state = useFindingData(f ? id : null, p.filters.window, p.filters.accountIds, 5000) as FetchState;
+  const state = useFindingData(f ? id : null, p.filters.window, p.filters.accountIds, 5000, undefined, allPages) as FetchState;
   return chkOf(p, id, f, state, (d) => d.rows);
 }
 

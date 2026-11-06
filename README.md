@@ -433,7 +433,7 @@ schema and stage. Keys and `.env` are not uploaded. The steps, the role it needs
   GRANT on the app.
 - **Access:** anyone granted the app sees all the data in the file, whatever their role can read. Use
   `--mask` on the export to hide names.
-- **Settings:** a setting saved in the app is lost on a restart or the next deploy.
+- **Settings:** they are read-only in the app. Set them locally before you deploy.
 - **Cost:** the warehouse runs while the app is open.
 
 ## Update to a new version

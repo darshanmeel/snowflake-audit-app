@@ -487,7 +487,7 @@ export function FiltersControl({
           </div>
           <div className="filters-pop-foot">
             <RefreshControl meta={meta} />
-            <SettingsGearButton />
+            {!HOSTED && <SettingsGearButton />}
           </div>
         </div>
       )}
@@ -643,7 +643,7 @@ export function SideNavDrawer(props: FilterControlProps & NavProps & { onClose: 
         </div>
         <div className="mobile-nav-row">
           <LensSelect role={role} onChange={onRoleChange} />
-          <SettingsGearButton />
+          {!HOSTED && <SettingsGearButton />}
           <ThemeToggle />
           <PageCopyLink className="topbar-btn" />
         </div>

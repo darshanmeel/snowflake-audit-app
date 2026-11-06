@@ -19,6 +19,8 @@
 --   avg_partitions_total and avg_scan_pct are that table's; tables_fully_scanned counts the tables that
 --   qualify. credits = attributed credits of all the shape's runs on that warehouse.
 -- healthy: status = OK when full scans are rare or cheap
+-- not_assessed_reasons: no_attribution: Snowflake attributed no credits to this shape (adaptive warehouses,
+--   queries under about 100 ms, or attribution still lagging), so it cannot be judged by cost
 -- investigate_if: WARN when runs >= min_runs and credits >= warn_credits; CRITICAL when credits >=
 --   crit_credits
 -- actions: 1) add or tighten a filter on a column the table is naturally ordered by (load date, event
@@ -83,8 +85,9 @@ SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id, g.warehouse_id
        w.avg_scan_pct, g.scanned_tb, g.exec_hours, g.distinct_users, g.biggest_query_id,
        g.credits, g.credits * __CREDIT_PRICE__ AS est_usd_list,
        IFF(__CREDIT_PRICE__ IS NULL, 'unpriced', 'priced') AS price_basis,
-       CAST(NULL AS VARCHAR) AS not_assessed_reason,
+       IFF(g.credits IS NULL, 'no_attribution', NULL) AS not_assessed_reason,
        CASE
+         WHEN g.credits IS NULL THEN 'NOT_ASSESSED'
          WHEN g.credits >= :crit_credits THEN 'CRITICAL'
          WHEN g.runs >= :min_runs AND g.credits >= :warn_credits THEN 'WARN'
          ELSE 'OK'

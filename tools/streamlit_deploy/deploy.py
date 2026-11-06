@@ -40,10 +40,20 @@ def default_db() -> Path:
 
 
 def check_db(db: Path) -> None:
+    """Demo and test data carry the fake account, whatever the file is called."""
+    import duckdb
     if not db.exists():
         raise SystemExit(f"No database at {db}. Export and load first (python tools/first_run.py), or pass --db.")
-    if "demo" in db.name.lower():
-        raise SystemExit(f"{db} is demo data, and Streamlit in Snowflake only ships a real export. Pass --db.")
+    con = duckdb.connect(str(db), read_only=True)
+    try:
+        fake = con.execute("SELECT count(*) FROM dims.dim_account "
+                           "WHERE account_id LIKE 'FAKE%' OR name LIKE 'FAKE%'").fetchone()[0]
+    except duckdb.Error as exc:
+        raise SystemExit(f"{db} is not an audit database: it has no dims.dim_account.") from exc
+    finally:
+        con.close()
+    if fake:
+        raise SystemExit(f"{db} holds demo or test data. Only a real export ships. Pass --db with your own file.")
 
 
 def build_frame(frame: Path) -> None:
@@ -74,10 +84,13 @@ def build(db: Path, runtime: str) -> Path:
         shutil.copy2(HERE / "requirements_container.txt", bundle / "requirements.txt")
         for name in ("bridge_core.js", "bridge_container.js"):
             shutil.copy2(HERE / name, bundle / name)
-    skip = shutil.ignore_patterns("__pycache__", "*.pyc")
+    # A key or database left in these folders must not reach the stage.
+    skip = shutil.ignore_patterns("__pycache__", "*.pyc", "*.p8", "*.pem", ".env*", "*.duckdb*")
     shutil.copytree(ROOT / "app", bundle / "app", ignore=skip)
+    (bundle / "config").mkdir()
     # With settings.local.yml, so a setting such as masking user names holds there too.
-    shutil.copytree(ROOT / "config", bundle / "config", ignore=skip)
+    for settings in (ROOT / "config").glob("*.yml"):
+        shutil.copy2(settings, bundle / "config" / settings.name)
     (bundle / ".streamlit").mkdir()
     (bundle / ".streamlit" / "config.toml").write_text(STREAMLIT_CONFIG, encoding="utf-8")
     shutil.copy2(db, bundle / "audit.duckdb")
@@ -96,8 +109,9 @@ def setup_statements(database: str, schema: str, stage: str, runtime: str, pool:
 
 
 def upload_statements(bundle: Path, stage: str) -> list[str]:
-    """One PUT per folder, because PUT does not go into subfolders."""
-    lines = []
+    """Clears the app's folder first: files left by another runtime or an older build would ship too.
+    One PUT per folder, because PUT does not go into subfolders."""
+    lines = [f"REMOVE @{stage}/app_src/"]
     for folder in sorted({p.parent for p in bundle.rglob("*") if p.is_file()}):
         rel = folder.relative_to(bundle).as_posix()
         target = f"@{stage}/app_src" + ("" if rel == "." else f"/{rel}")

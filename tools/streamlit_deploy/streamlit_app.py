@@ -7,6 +7,7 @@ in its own frame (frame/, built by deploy.py). Container runtime uses a v2 compo
 from __future__ import annotations
 
 import base64
+import json
 import os
 import platform
 import re
@@ -30,6 +31,8 @@ os.environ["AUDIT_DB"] = str(DB_FILE)
 BATCH_WORKERS = 4
 # The client has already decoded the body, and the browser works out its length.
 DROP_HEADERS = {"content-length", "content-encoding", "transfer-encoding"}
+# Warehouse runtime caps a Streamlit message at 32 MB; this leaves room for the rest of the message.
+MAX_MESSAGE_BYTES = 24 * 1048576
 # Streamlit's own header and margins, so the app fills the page as it does locally.
 PAGE_CSS = """
 [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
@@ -124,6 +127,10 @@ def _answer(req: dict) -> dict:
     if req["method"] == "POST" and base["path"] == "/api/refresh":
         return {**base, "status": 409, "body": '{"detail": "Refresh is off in Streamlit in Snowflake."}',
                 "headers": {"content-type": "application/json"}, "server_ms": 0}
+    # Saved settings would reach every viewer and could switch off masking; they are set before deploying.
+    if req["method"] == "PUT":
+        return {**base, "status": 409, "body": '{"detail": "Settings are read-only here. Set them locally before you deploy."}',
+                "headers": {"content-type": "application/json"}, "server_ms": 0}
     try:
         res = api_client().request(req["method"], req["path"], content=req.get("body"), headers=req.get("headers"))
         return {**base, "status": res.status_code, "body": res.text,
@@ -143,7 +150,19 @@ def _on_batch() -> None:
         return
     with ThreadPoolExecutor(BATCH_WORKERS) as pool:
         responses = list(pool.map(_answer, batch["requests"]))
-    st.session_state["bridge_out"] = {"batch_id": batch["id"], "responses": responses}
+    kept, retry, used = [], [], 0
+    for res in responses:
+        size = len(json.dumps(res))
+        if size > MAX_MESSAGE_BYTES:
+            res = {**res, "status": 413, "body": '{"detail": "This result is too large to send here."}',
+                   "headers": {"content-type": "application/json"}}
+            size = len(res["body"])
+        if kept and used + size > MAX_MESSAGE_BYTES:
+            retry.append(res["id"])  # the page asks again in the next batch
+        else:
+            kept.append(res)
+            used += size
+    st.session_state["bridge_out"] = {"batch_id": batch["id"], "responses": kept, "retry": retry}
 
 
 def _inline_fonts(css: str) -> str:

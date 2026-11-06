@@ -3,7 +3,7 @@
 const BATCH_DELAY_MS = 15;
 const NO_ANSWER_MS = 300000;
 const NO_BODY = new Set([101, 204, 205, 304]);
-// Warehouse runtime caps a Streamlit message at 32 MB, so a batch stays small.
+// Python also limits a batch by bytes, and sends back what did not fit for the next batch.
 const MAX_BATCH = 8;
 
 function makeBridge() {
@@ -28,6 +28,7 @@ function makeBridge() {
     const id = b.nextBatch++;
     const requests = b.queue.splice(0, MAX_BATCH);
     b.inflight = id;
+    b.sent = requests;
     b.batches += 1;
     b.sentAt = performance.now();
     b.send("batch", { id, requests });
@@ -55,11 +56,13 @@ function makeBridge() {
     for (const r of out.responses) {
       b.bytes += (r.body || "").length;
       b.serverMs += r.server_ms || 0;
-      if (r.status >= 500) b.problems.push(`HTTP ${r.status} on ${r.path}`);
+      if (r.status >= 500 || r.status === 413) b.problems.push(`HTTP ${r.status} on ${r.path}`);
       const p = b.pending.get(r.id);
       b.pending.delete(r.id);
       if (p) p.resolve(new Response(NO_BODY.has(r.status) ? null : r.body, { status: r.status, headers: r.headers }));
     }
+    const retry = new Set(out.retry || []);
+    b.queue.unshift(...b.sent.filter((r) => retry.has(r.id)));
     b.schedule();
     b.show();
   };

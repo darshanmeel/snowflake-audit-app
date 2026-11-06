@@ -87,12 +87,12 @@ export function useIgnoredFilterSummary() {
 // the cap applies to the flagged subset rather than to the whole unfiltered table. A caller that
 // wants every row regardless of status still passes nothing (the existing default).
 // ---------------------------------------------------------------------------------------------
-export function useFindingData(queryId: string | null | undefined, windowDays: number, accountIds: AccountIds, limit?: number, statuses?: string[] | null) {
+export function useFindingData(queryId: string | null | undefined, windowDays: number, accountIds: AccountIds, limit?: number, statuses?: string[] | null, allPages?: boolean) {
   const lim = limit || 5000;
   const [state, setState] = React.useState<FetchState>({ phase: "loading", outcome: null, data: null, error: null });
   // The tag and owner filters are not arguments (Api.finding reads them itself), so they join the
   // memo key or the fetch would not re-run when only they changed.
-  const key = queryId + "|" + windowDays + "|" + JSON.stringify(accountIds) + "|" + lim + "|" + JSON.stringify(statuses || null) + "|" + Api.tagFilterKey() + "|" + Api.ownerFilterKey() + "|" + Api.dimFilterKey();
+  const key = queryId + "|" + !!allPages + "|" + windowDays + "|" + JSON.stringify(accountIds) + "|" + lim + "|" + JSON.stringify(statuses || null) + "|" + Api.tagFilterKey() + "|" + Api.ownerFilterKey() + "|" + Api.dimFilterKey();
   React.useEffect(() => {
     let cancelled = false;
     setState({ phase: "loading", outcome: null, data: null, error: null });
@@ -100,7 +100,13 @@ export function useFindingData(queryId: string | null | undefined, windowDays: n
     const accountActive = !!(accountIds && accountIds.length > 0);
     const tagActive = Api.tagFilterKey() !== "";
     Api.finding(queryId, windowDays, accountIds, lim, 0, undefined, statuses)
-      .then((d) => {
+      .then(async (d) => {
+        // Past one page only when asked: most panels read a capped list and say so.
+        while (allPages && !cancelled && d.rows && d.rows_total > d.rows.length) {
+          const next = await Api.finding(queryId, windowDays, accountIds, lim, d.rows.length, undefined, statuses);
+          if (!next.rows || !next.rows.length) break;
+          d = { ...d, rows: d.rows.concat(next.rows) };
+        }
         if (cancelled) return;
         setState({ phase: "ready", outcome: d.outcome, data: d, error: null });
         reportIgnoredFilters(queryId, accountActive, tagActive, d.scope);

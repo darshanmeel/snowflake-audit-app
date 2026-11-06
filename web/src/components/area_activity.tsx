@@ -252,7 +252,8 @@ export function ApActivityTables(p: ApPageProps) {
   const tc = useCheck(p, "sf_use_table_columns");
   const qp = useCheck(p, "sf_use_query_profile");
   const qs = useCheck(p, "sf_use_top_query_shapes");
-  const tp = useCheck(p, "sf_use_table_perf_daily");
+  // 70 tables over 90 days pass one page, and the rows past it would drop from the $ and the picker.
+  const tp = useCheck(p, "sf_use_table_perf_daily", true);
   const allTables = levelRows(ta.rows, "table");
   const dbOf = (fqn: any) => String(fqn || "").split(".")[0];
   const dbs = React.useMemo(() => [...new Set(allTables.map((r) => String(r.database_name || dbOf(r.table_fqn))))].filter(Boolean).sort(), [ta.rows]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -344,7 +345,7 @@ export function ApActivityTables(p: ApPageProps) {
         <Slot c={td} title="One table, day by day" subtitle="What happened to it each day and how it ran: reads, writes, DDL, rows changed, query time, waiting, partitions skipped and clustering credits">
           {(rows) => {
             if (!cur) return okNote("No table had activity in the window.");
-            const mine = rows.filter((r) => String(r.table_fqn) === cur).sort((a, b) => String(a.usage_date).localeCompare(String(b.usage_date)));
+            const mine = sumByDay(rows.filter((r) => String(r.table_fqn) === cur), ["read_queries", "write_queries", "ddl_queries", "dml_rows"]);
             const days = mine.map((r) => String(day(r.usage_date)));
             const dmlOnly = mine.some((r) => r.access_basis === "dml_only");
             const panels: [string, string, string][] = [["read_queries", "Reads", "var(--c1)"], ["write_queries", "Writes", "var(--c2)"], ["ddl_queries", "DDL", "var(--c4)"], ["dml_rows", "Rows changed", "var(--c3)"]];
@@ -368,7 +369,7 @@ export function ApActivityTables(p: ApPageProps) {
                     <div className="cx-foot"><span>{dmlOnly ? "Reads, writes and DDL need ACCESS_HISTORY (Enterprise edition): only rows changed are shown." : "Reads, writes and DDL in distinct queries; rows changed from TABLE_DML_HISTORY."}</span></div>
                   </>
                 ) : okNote("Reads, writes and rows changed: not among the busiest tables, which the export keeps. It is listed for its clustering credits.")}
-                <TablePerf c={tp} name={cur} tableId={mine[0]?.table_id} ddlDays={dmlOnly ? null : mine.filter((r) => numOrZero(r.ddl_queries) > 0).map((r) => String(day(r.usage_date)))} />
+                <TablePerf c={tp} name={cur} ddlDays={!mine.length ? undefined : dmlOnly ? null : mine.filter((r) => numOrZero(r.ddl_queries) > 0).map((r) => String(day(r.usage_date)))} />
                 <QueryDetail prof={qp} shapes={qs} level="table" name={cur} />
                 <TableColumns rows={(tc.rows || []).filter((r) => String(r.table_fqn).toUpperCase() === String(cur).toUpperCase())} loading={tc.loading} why={tc.why} />
                 {users.length > 0 && !levelRows(qp.rows, "table_user").some((r) => String(r.table_fqn).toUpperCase() === String(cur).toUpperCase()) && (
@@ -406,14 +407,32 @@ export function ApActivityTables(p: ApPageProps) {
   );
 }
 
+/** One row per day. A table rebuilt with CREATE OR REPLACE has a new id each time, under the same name. */
+function sumByDay(rows: Row[], keys: string[]): Row[] {
+  const byDay = new Map<string, Row>();
+  rows.forEach((r) => {
+    const d = String(r.usage_date);
+    const seen = byDay.get(d);
+    if (!seen) { byDay.set(d, { ...r }); return; }
+    keys.forEach((k) => { if (r[k] != null) seen[k] = numOrZero(seen[k]) + numOrZero(r[k]); });
+  });
+  return [...byDay.values()].sort((a, b) => String(a.usage_date).localeCompare(String(b.usage_date)));
+}
+
+const PERF_SUMS = ["queries", "elapsed_s", "compile_s", "exec_s", "num_scans", "partitions_scanned", "partitions_pruned", "clustering_credits", "bytes_reclustered", "est_clustering_usd_list"];
+
 /** How one table ran each day: time per query, time waiting, partitions skipped and clustering credits.
  *  Running against waiting tells a table problem from a warehouse one. Quiet days read "–", never 0. */
-function TablePerf({ c, name, tableId, ddlDays }: { c: ReturnType<typeof useCheck>; name: string; tableId?: any; ddlDays: string[] | null }) {
+function TablePerf({ c, name, ddlDays }: { c: ReturnType<typeof useCheck>; name: string; ddlDays?: string[] | null }) {
   if (c.loading) return <div className="chart-note-oneline">…</div>;
   if (c.why) return <div className="chart-note-oneline">{`How it ran: – ${c.why}`}</div>;
-  // By id when the day-by-day rows give one: a renamed table keeps its id.
-  const isIt = (r: Row) => (tableId != null ? String(r.table_id) === String(tableId) : String(r.table_fqn) === name);
-  const mine = (c.rows || []).filter(isIt).sort((a, b) => String(a.usage_date).localeCompare(String(b.usage_date)));
+  // The per-query and per-partition figures are worked out again from the day's sums.
+  const mine = sumByDay((c.rows || []).filter((r) => String(r.table_fqn) === name), PERF_SUMS).map((r): Row => {
+    const queries = numOrZero(r.queries), scans = numOrZero(r.partitions_scanned) + numOrZero(r.partitions_pruned);
+    const waited = Math.max(numOrZero(r.elapsed_s) - numOrZero(r.compile_s) - numOrZero(r.exec_s), 0);
+    return { ...r, avg_exec_s: queries ? numOrZero(r.exec_s) / queries : null, avg_wait_s: queries ? waited / queries : null,
+             prune_pct: scans ? 100 * numOrZero(r.partitions_pruned) / scans : null };
+  });
   if (!mine.length) return <div className="chart-note-oneline">How it ran: not among the tables with the most queries or clustering credits, which the export keeps.</div>;
   const days = mine.map((r) => String(day(r.usage_date)));
   const dayWord = (d: string) => fmtDayShort(d);
@@ -446,7 +465,7 @@ function TablePerf({ c, name, tableId, ddlDays }: { c: ReturnType<typeof useChec
             sub={`${credits.toFixed(1)} credits${usd != null ? ` · ${fmtMoney(usd)}` : ""}`} />
         )}
       </div>
-      <div className="cx-foot"><span>{`Only queries that scanned the table are recorded here. Time is the whole query's, so a join counts in full for each table it reads. Waiting is queues, locks and other time doing no work. ${credits > 0 ? "" : "No automatic clustering in the window. "}${ddlDays === null ? "DDL days need ACCESS_HISTORY (Enterprise edition)." : ddlDays.length ? "Dashed lines mark days with DDL." : "No DDL in the window."}`}</span></div>
+      <div className="cx-foot"><span>{`Only queries that scanned the table are recorded here. Time is the whole query's, so a join counts in full for each table it reads. Waiting is queues, locks and other time doing no work. ${credits > 0 ? "" : "No automatic clustering in the window. "}${ddlDays === undefined ? "DDL is only recorded for the busiest tables." : ddlDays === null ? "DDL days need ACCESS_HISTORY (Enterprise edition)." : ddlDays.length ? "Dashed lines mark days with DDL." : "No DDL in the window."}`}</span></div>
     </div>
   );
 }
