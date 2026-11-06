@@ -6,6 +6,17 @@ The app shows the DuckDB file you ship with it, by default the one your local ap
 
 **Not yet run in Snowflake.** It has only been tested with Streamlit on a local machine. Warehouse runtime is the default and needs no compute pool, but Snowflake's docs don't say it supports the component type it uses. If it fails, use [container runtime](#container-runtime).
 
+## Quick deploy
+
+With your export loaded and a role that has the rights in step 1, run this from the repo folder:
+
+```
+$env:SNOWFLAKE_ROLE = "MY_DEPLOY_ROLE"
+python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH --run
+```
+
+Check that the `database: ...` line it prints is your real export, then open **Snowflake audit** in Snowsight under Projects > Streamlit. The first start can take a few minutes. The steps below give the details and the SnowSQL way.
+
 ## 1. Have what it needs
 
 The role needs USAGE on the database, schema and warehouse, READ and WRITE on the stage, and CREATE STREAMLIT on the schema.
@@ -106,6 +117,7 @@ Then add `--runtime container --pool AUDIT_APP_POOL` to step 2. The pool bills w
 
 ## If it doesn't work
 
+- **An SQL error during the deploy:** this is usually a missing privilege or a wrong name.
 - **A package doesn't install:** warehouse runtime only has Snowflake's Conda channel. Check `environment.yml` against the error.
 - **The page shows an error at the top:** the failed lines under it say which check failed. DuckDB is the most likely, because Snowflake's docs list `.so` files as unsupported, although the channel has `duckdb`.
 - **The page stays blank or on "Loading…":** open **Browser checks** in the app, or **Server checks** below it. They list what failed or what Snowflake's security policy blocked. A blank frame on warehouse runtime means it doesn't allow this component; use container runtime.

@@ -417,16 +417,17 @@ has the same pages and numbers, and ships the file your local app opens, never d
 warehouse runtime by default, with no compute pool; if that fails, container runtime is the fallback.
 
 ```
-python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH
-snowsql -f data/streamlit_deploy/upload.sql
-snowsql -f data/streamlit_deploy/create_app.sql
+$env:SNOWFLAKE_ROLE = "MY_DEPLOY_ROLE"
+python tools/streamlit_deploy/deploy.py --database MY_DB --schema MY_SCHEMA --stage MY_STAGE --warehouse MY_WH --run
 ```
 
-Without those options it uses default names. SnowSQL uses its own login settings. Add `--run` to
-upload and create with the export's login instead, from environment variables or `.env` (the
-environment wins), and `--setup` to create a missing database, schema and stage. That login needs a
-role that can deploy, so set `SNOWFLAKE_ROLE` if the audit's role is read-only. Keys and `.env` are not
-uploaded. The steps, the role it needs and the fallback are in [`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md).
+Then open **Snowflake audit** in Snowsight under Projects > Streamlit. To use SnowSQL instead, leave off
+`--run` and run the generated `data/streamlit_deploy/upload.sql` and `create_app.sql`.
+
+Without those options it uses default names. `--run` logs in with the export's settings, from
+environment variables or `.env` (the environment wins); SnowSQL uses its own. The role must be able to
+deploy, which the audit's read-only role probably can't. Add `--setup` to create a missing database,
+schema and stage. Keys and `.env` are not uploaded. The steps, the role it needs and the fallback are in [`tools/streamlit_deploy/README.md`](tools/streamlit_deploy/README.md).
 
 - **Refresh:** there is none. For newer data, export and load as usual, deploy again, and repeat the
   GRANT on the app.

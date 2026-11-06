@@ -1,6 +1,6 @@
 # Status
 
-Last updated 5 Nov 2026.
+Last updated 6 Nov 2026.
 
 ## Where it stands
 The POC is feature-complete and on `main`. It has run on one small live trial account (3 days of use) and on the fake and demo accounts.
