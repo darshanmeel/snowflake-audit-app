@@ -4,7 +4,8 @@
 -- entity: schemas = schema_fqn
 -- windowed: no
 -- reads: SNOWFLAKE.ACCOUNT_USAGE.SCHEMATA, SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES,
---   SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES
+--   SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES,
+--   SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :warn_owners (default 3) owners: at or above this the row reads WARN; :warn_grantors (default
 --   3) grantors: at or above this the row reads WARN

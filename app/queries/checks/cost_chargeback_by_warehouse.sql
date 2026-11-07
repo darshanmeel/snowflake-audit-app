@@ -3,7 +3,8 @@
 -- domain: cost   tier: standard
 -- money: usd_list
 -- windowed: yes
--- reads: SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+-- reads: SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY,
+--   SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :period_days (default 30) days of history the check looks at, counted back from the export
 --   date; :warn_increase_pct (default 25) percent increase in list-priced spend, current period over

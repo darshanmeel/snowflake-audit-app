@@ -1270,7 +1270,7 @@ export function RelatedChecks({ next, findingsIndex, onJumpTo }: { next: { query
   );
 }
 
-// P4-T-IDX (section 5.7): one line from scope.tag, only while a tag filter is actually set
+// One line from scope.tag, only while a tag filter is actually set
 // (data.tag is non-null -- app/api/app.py's own "tag": {...} | null echo).
 export function TagScopeLine({ data }: { data: FindingData }) {
   const tag = data && data.tag;

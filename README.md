@@ -3,7 +3,7 @@
 A read-only audit of a Snowflake account. It shows where the credits and dollars go, what looks
 wasted, and how warehouses, queries, tasks, loading, storage, AI and access are set up.
 
-It runs 295 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
+It runs 297 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
 it) through one small warehouse. The results are saved in a local DuckDB file, and a web app on
 your own machine shows them. The audit writes nothing to Snowflake: the checks are `SELECT`, `WITH`
 and `SHOW` only. Only the export (and Refresh in the app) queries Snowflake; browsing the app does
@@ -92,7 +92,7 @@ GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 -- The ACCOUNT_USAGE views: all of them.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AUDIT_ROLE;
 -- Or, when IMPORTED PRIVILEGES is hard to get approved, these four read-only database roles instead.
--- They open 246 of the 295 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
+-- They open 248 of the 297 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
 -- TASK_VERSIONS, which none of the four opens).
 --   GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER      TO ROLE AUDIT_ROLE;  -- cost and usage
 --   GRANT DATABASE ROLE SNOWFLAKE.OBJECT_VIEWER     TO ROLE AUDIT_ROLE;  -- tables and objects
@@ -144,17 +144,17 @@ GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
 A check reads one or more sources. If the role cannot read any one of them, the check is skipped.
 In the app it reads "–, the role can't see it", with the view or SHOW command it needed. It never
 shows $0 or "nothing found". The role counts come from the check headers and Snowflake's table of
-roles per view, at 295 checks. A check can need more than one grant, so they overlap.
+roles per view, at 297 checks. A check can need more than one grant, so they overlap.
 
 | Grant | What it opens | Without it you won't see |
 |---|---|---|
 | `USAGE` on a warehouse | Runs the export | Nothing: no statement can run. |
 | `IMPORTED PRIVILEGES` on the `SNOWFLAKE` database | Every `ACCOUNT_USAGE` view, plus the reader-account and listing views | Almost everything. Only 24 checks read nothing from the `SNOWFLAKE` database (they use SHOW, the organization views or the Trust Center). |
-| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 266 of the 295 checks (246 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
-| `SNOWFLAKE.USAGE_VIEWER` | 169 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
-| `SNOWFLAKE.GOVERNANCE_VIEWER` | 134 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Activity, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
-| `SNOWFLAKE.SECURITY_VIEWER` | 84 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |
-| `SNOWFLAKE.OBJECT_VIEWER` | 61 checks: tables, schemas, views, stages, pipes, tasks, object dependencies | Storage by table, unused objects, dependencies in Lineage, object inventories. |
+| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 268 of the 297 checks (248 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
+| `SNOWFLAKE.USAGE_VIEWER` | 172 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
+| `SNOWFLAKE.GOVERNANCE_VIEWER` | 135 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Activity, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
+| `SNOWFLAKE.SECURITY_VIEWER` | 85 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |
+| `SNOWFLAKE.OBJECT_VIEWER` | 62 checks: tables, schemas, views, stages, pipes, tasks, object dependencies | Storage by table, unused objects, dependencies in Lineage, object inventories. |
 | None of the four: needs `IMPORTED PRIVILEGES` | 28 checks | Ten task checks (task cost, failures, runs per day, run times, failed vs all runs, duration change, skipped overlaps, late starts, no-op runs, warehouse vs serverless, all through `TASK_VERSIONS`). Also serverless features, streaming cost, allocation reconciliation, alert history, query acceleration, lock waits, compute pools, backups, stale stage files, database replication, Cortex Code Desktop, data movement violations, reader accounts, listings and Marketplace. |
 | `MONITOR USAGE` on the account | Account-level usage and history for databases and warehouses | No check is skipped for this alone; the checks read `ACCOUNT_USAGE` through the grants above. |
 | `MONITOR EXECUTION` on the account | `SHOW TASKS` and pipes, account-wide | `SHOW TASKS` lists only tasks the role owns, so the suspended, orphaned and stream-consumer checks (4) see fewer tasks; `SHOW PIPES` lists only pipes the role can monitor (1 check: broken or unalerted pipes). |
@@ -272,7 +272,7 @@ faster on the big history views. A few checks always read their own period, such
 active, which scans up to a year of `ACCESS_HISTORY`; on a busy account it can time out, and then reads
 as timed out.
 
-The export prints one line per check (`[12/295] check_id: ok, 34 rows, 1.2s`), so a long run never
+The export prints one line per check (`[12/297] check_id: ok, 34 rows, 1.2s`), so a long run never
 looks hung. Every statement has a time limit (15 minutes; `--statement-timeout SECONDS` on
 `tools/export_results.py` changes it): a statement that hits it is recorded as timed out and the
 export goes on.
@@ -487,7 +487,7 @@ Node is only needed to change it.
 | Access | Roles and grants, users and sign-ins, the account perimeter (network policies, private link, failover), and Explorer: pick a user, role or object and see each privilege and its paths through the roles. |
 | Audit | Admin sessions and sign-ins, changes to objects and grants. |
 | PII & policies | Sensitive data, masking and row policies, who reads it and where it goes, data quality coverage. |
-| Lineage | Dependencies and lineage. |
+| Lineage | Dependencies and lineage, and Explorer: pick a table or view to see everything upstream and downstream. |
 | Activity | What is used and what is not: databases, schemas, tables (with one table day by day), last active (tables and other objects by time since last used, down to which ones), users & roles, stages and other objects. |
 | Sharing & org | Shares and listings, accounts, spend across accounts, replication and transfer. |
 | Storage | Growth and stages, unused and sprawl, Time Travel and Fail-safe, backups. |
@@ -595,12 +595,12 @@ read.
 
 ## What it checks
 
-295 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
+297 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
 
 | Area | Checks |
 |---|---|
 | Cost, billing, contract and org | 62 |
-| Access, security, PII, audit, lineage and activity | 92 |
+| Access, security, PII, audit, lineage and activity | 94 |
 | Queries and performance | 34 |
 | Tasks, pipelines and loading | 35 |
 | Storage | 31 |
@@ -798,13 +798,23 @@ DuckDB. `data.py` and the `gap_*` files are the small account the tests use; the
 add a large one: 57 warehouses across 8 teams, about 120 users, tasks, pipes, AI use, policies and
 partially tagged objects, with 90 days of history. No real names are in it.
 
-To generate the demo database (needs only `requirements.txt`, about 3 minutes), then start the app
-on it:
+To generate the demo database (needs only `requirements.txt`, a few minutes and several GB of free
+memory), then start the app on it:
 
 ```
 python tools/build_demo_db.py      # writes data/demo/db_audit_demo.duckdb, its export and a .coverage.json
 AUDIT_DB=data/demo/db_audit_demo.duckdb python -m app.api
 ```
+
+The same account can also be built as other kinds of account, to see every blocked and empty state:
+
+```
+python tools/build_demo_db.py --list                    # what the scenarios are
+python tools/build_demo_db.py --scenario limited_role   # one of them, in data/demo/limited_role/
+python tools/build_demo_db.py --scenario all            # all of them, one at a time, and data/demo/coverage_report.md
+```
+
+The report lists each scenario's counts, and any status a check's SQL can give that no scenario reaches.
 
 In PowerShell, set the variable first: `$env:AUDIT_DB="data/demo/db_audit_demo.duckdb"`. Run the
 build again after changing anything in `tests/fake_snowflake/`. `data/` is git-ignored.

@@ -2,7 +2,9 @@
 -- title: Cost of running this audit itself, by warehouse
 -- domain: cost   tier: lite
 -- windowed: yes
--- reads: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY
+-- reads: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY,
+--   SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY,
+--   SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :period_days (default 30) days of history the check looks at, counted back from the export
 --   date

@@ -100,7 +100,10 @@ svc AS (
          m.compute_credits AS metered_credits,
          LEAST(COALESCE(d.credits, 0), m.compute_credits) AS allocated_credits,
          -- compute is billed as metered; the cloud services adjustment is shown on its own row.
-         m.compute_credits AS billed_credits
+         m.compute_credits AS billed_credits,
+         -- AI credits (Cortex, Copilot) have their own price
+         IFF(REGEXP_LIKE(m.service_type, '(^|.*_)(AI|CORTEX|COCO|COWORK)(_.*|$)'),
+             __AI_CREDIT_PRICE__, __CREDIT_PRICE__) AS rate
   FROM m
   LEFT JOIN det d ON d.service_type = m.service_type
   WHERE m.compute_credits > 0
@@ -109,18 +112,27 @@ cs AS (
   SELECT 'CLOUD_SERVICES' AS service_type, 'query / user (before adjustment)' AS allocated_to,
          SUM(m.cs_credits) AS metered_credits,
          LEAST((SELECT credits FROM qcs), SUM(m.cs_credits)) AS allocated_credits,
-         GREATEST(SUM(m.cs_credits + m.cs_adjustment), 0) AS billed_credits
+         GREATEST(SUM(m.cs_credits + m.cs_adjustment), 0) AS billed_credits,
+         __CREDIT_PRICE__ AS rate
   FROM m
 ),
 rows_ AS (
-  SELECT service_type, allocated_to, metered_credits, billed_credits, allocated_credits FROM svc
+  SELECT service_type, allocated_to, metered_credits, billed_credits, allocated_credits,
+         billed_credits * rate AS billed_usd, GREATEST(metered_credits - allocated_credits, 0) * rate AS unallocated_usd
+  FROM svc
   UNION ALL
-  SELECT service_type, allocated_to, metered_credits, billed_credits, allocated_credits FROM cs
+  SELECT service_type, allocated_to, metered_credits, billed_credits, allocated_credits,
+         billed_credits * rate, GREATEST(metered_credits - allocated_credits, 0) * rate
+  FROM cs
 ),
 t AS (
   SELECT * FROM rows_
   UNION ALL
-  SELECT 'TOTAL', 'all', SUM(metered_credits), SUM(billed_credits), SUM(allocated_credits) FROM rows_
+  -- a line nothing priced leaves the total unpriced, never short
+  SELECT 'TOTAL', 'all', SUM(metered_credits), SUM(billed_credits), SUM(allocated_credits),
+         IFF(COUNT(*) = COUNT(billed_usd), SUM(billed_usd), NULL),
+         IFF(COUNT(*) = COUNT(unallocated_usd), SUM(unallocated_usd), NULL)
+  FROM rows_
 ),
 s AS (
   SELECT t.*, GREATEST(metered_credits - allocated_credits, 0) AS unallocated_credits,
@@ -129,14 +141,14 @@ s AS (
 )
 SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id, service_type, service_type = 'TOTAL' AS is_total_row, allocated_to,
        metered_credits, billed_credits, allocated_credits, unallocated_credits, unallocated_pct,
-       billed_credits * __CREDIT_PRICE__ AS est_billed_usd_list,
-       unallocated_credits * __CREDIT_PRICE__ AS est_unallocated_usd_list,
-       IFF(__CREDIT_PRICE__ IS NULL, 'unpriced', 'priced') AS price_basis,
-       CASE WHEN __CREDIT_PRICE__ IS NULL THEN 'unpriced'
+       billed_usd AS est_billed_usd_list,
+       unallocated_usd AS est_unallocated_usd_list,
+       IFF(billed_usd IS NULL, 'unpriced', 'priced') AS price_basis,
+       CASE WHEN billed_usd IS NULL THEN 'unpriced'
             WHEN COALESCE(metered_credits, 0) = 0 THEN 'no_metered_credits' END AS not_assessed_reason,
        CASE
-         WHEN __CREDIT_PRICE__ IS NULL OR COALESCE(metered_credits, 0) = 0 THEN 'NOT_ASSESSED'
-         WHEN unallocated_credits * __CREDIT_PRICE__ < :min_unallocated_usd THEN 'OK'
+         WHEN billed_usd IS NULL OR COALESCE(metered_credits, 0) = 0 THEN 'NOT_ASSESSED'
+         WHEN unallocated_usd < :min_unallocated_usd THEN 'OK'
          WHEN unallocated_pct >= :crit_unallocated_pct THEN 'CRITICAL'
          WHEN unallocated_pct >= :warn_unallocated_pct THEN 'WARN'
          ELSE 'OK'

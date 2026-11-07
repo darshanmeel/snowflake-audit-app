@@ -121,7 +121,7 @@ def test_every_money_figure_in_the_findings_list_matches_the_detail_aggregate():
             assert not money["mixed_currency"], qid
             factor = 1.0
         else:
-            factor = 1 - body["discount_pct"]
+            factor = 1 - body["discount_pct"] if body["outcome"] == "ok_rows" else 0.0  # only ok_rows is priced
         expected = round((body["total_value"] or 0.0) * factor, 2) if body["outcome"] == "ok_rows" else 0.0
         flagged_basis += flagged
         all_basis += not flagged

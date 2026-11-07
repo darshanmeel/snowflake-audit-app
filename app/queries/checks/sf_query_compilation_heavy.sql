@@ -2,7 +2,8 @@
 -- title: Statements dominated by compilation time
 -- domain: performance   tier: standard
 -- windowed: yes
--- reads: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+-- reads: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY,
+--   SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :period_days (default 30) days of history the check looks at, counted back from the export
 --   date; :min_runs (default 20) runs: least a row needs before it can flag; :warn_compile_pct (default

@@ -7,6 +7,7 @@ Checks, over every app/queries/checks/*.sql (a flat folder; the domain comes fro
   - money: and entity: (optional) are well formed and name columns the body mentions
   - windowed is yes|no; a windowed check declares :period_days, and a body that uses
     :period_days is windowed
+  - reads lists every view the SQL reads, through its includes too
   - every `next:` target resolves to a real query_id ("none" = no next step)
   - no internal-pipeline vocabulary leaks (collector, verifier, --share, findings/, feeds:)
   - manifest.json is in sync (delegates to build_manifest --check)
@@ -65,6 +66,25 @@ WINDOW_BAD = [
 ]
 
 
+_SOURCE = re.compile(r"SNOWFLAKE\.(?:ACCOUNT_USAGE|READER_ACCOUNT_USAGE|ORGANIZATION_USAGE|DATA_SHARING_USAGE|TRUST_CENTER|LOCAL)\.\w+", re.I)
+_INCLUDE = re.compile(r"__INCLUDE_([a-z0-9_]+)__")
+
+
+def _sql_only(text: str) -> str:
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("--"))
+
+
+def _sources(text: str, seen: tuple[str, ...] = ()) -> set[str]:
+    """The views some SQL reads, through its includes too."""
+    found = {s.upper() for s in _SOURCE.findall(_sql_only(text))}
+    for name in set(_INCLUDE.findall(text)) - set(seen):
+        for folder in ("common", "dims"):
+            part = QUERIES.parent / folder / f"{name}.sql"
+            if part.exists():
+                found |= _sources(part.read_text(encoding="utf-8"), (*seen, name))
+    return found
+
+
 def lint_file(path: Path, all_ids: set[str]) -> list[str]:
     errs: list[str] = []
     text = path.read_text(encoding="utf-8")
@@ -80,6 +100,11 @@ def lint_file(path: Path, all_ids: set[str]) -> list[str]:
             continue  # domain + tier ride on the combined 'domain:' line, validated below
         if not str(hdr.get(f, "")).strip():
             errs.append(f"{rel}: field '{f}' is empty")
+
+    # The export probes what reads lists: a view left out fails for a blocked role instead of reading not assessed.
+    declared = {x.upper() for x in _SOURCE.findall(str(hdr["_raw"].get("reads", "")))}
+    for missing in sorted(_sources(text) - declared):
+        errs.append(f"{rel}: reads does not list {missing}")
 
     if hdr["query_id"] != path.stem:
         errs.append(f"{rel}: query_id '{hdr['query_id']}' != filename '{path.stem}'")

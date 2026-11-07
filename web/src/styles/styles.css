@@ -287,11 +287,11 @@ button { font-family: inherit; }
 .table-wrap {
   /* overflow:hidden here (for the corner radius) also clipped the expanded detail's own data
      table and made its horizontal scrollbar unreachable -- wide findings simply ran off the
-     right edge with no way to see the rest (observed 2026-09-22). */
+     right edge with no way to see the rest. */
   border: 1px solid var(--border); border-radius: var(--radius-md); overflow-x: auto;
   background: var(--surface); box-shadow: var(--shadow-card);
 }
-/* F1: table-layout:fixed + a <colgroup> (FindingsTable) so an expanded detail row's own data
+/* table-layout:fixed + a <colgroup> (FindingsTable) so an expanded detail row's own data
    table (below) can never widen this outer list and push Domain/Status/Rows off screen -- see
    the .data-table-wrap comment below for the bug this closes. Column widths are fixed except
    the Finding column, which takes whatever is left. */
@@ -357,7 +357,7 @@ table.findings tbody tr:last-child td { border-bottom: none; }
 .d-title { font-family: var(--f-serif); font-size: 19px; color: var(--text); }
 .d-meta { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 
-/* --- summary-first detail (P4-detail): verdict line, fix line, related-checks line ------------- */
+/* --- summary-first detail: verdict line, fix line, related-checks line ------------- */
 .verdict-line { font-size: 13.5px; color: var(--text); line-height: 1.5; margin: 10px 0 8px; }
 .fix-line { font-size: 13px; color: var(--text-2); line-height: 1.5; margin: 0 0 12px; }
 .fix-line b { color: var(--text); font-weight: 600; }
@@ -378,7 +378,7 @@ table.findings tbody tr:last-child td { border-bottom: none; }
 .columns-hidden-row { justify-content: space-between; cursor: default; }
 .columns-hidden-row:hover { background: none; }
 
-/* --- shareable-link buttons (P4-44) -- FindingDetail's own header, the job focus panel --------- */
+/* --- shareable-link buttons -- FindingDetail's own header, the job focus panel --------- */
 .copy-link-btn {
   background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm, 6px);
   color: var(--text-dim); font-size: var(--fs-xs); padding: 4px 10px; cursor: pointer; white-space: nowrap;
@@ -390,7 +390,7 @@ table.findings tbody tr:last-child td { border-bottom: none; }
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 28px; margin: 12px 0 16px;
 }
 /* Grid children default to min-width:auto, so a long unbroken caveat refused to shrink and the
-   right-hand column was clipped off the panel (observed 2026-09-22). min-width:0 lets it shrink,
+   right-hand column was clipped off the panel. min-width:0 lets it shrink,
    overflow-wrap breaks the long system.access.table_lineage-style identifiers that caused it. */
 .d-grid > * { min-width: 0; }
 .d-field .v, .d-actions li, .g-text { overflow-wrap: anywhere; }
@@ -427,7 +427,7 @@ table.findings tbody tr:last-child td { border-bottom: none; }
 .honest-card .h-note { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
 
 /* ─────────── Data table (inside an expanded ok_rows finding) ─────────── */
-/* F1: the outer relative box the scroll cue (below) pins itself to -- NOT the scrolling element
+/* The outer relative box the scroll cue (below) pins itself to -- NOT the scrolling element
    itself, so the cue/fade stay put at the box's top-right corner while the table underneath
    scrolls sideways, instead of sliding out of view with the columns they are pointing at. */
 .data-table-outer { position: relative; max-width: 100%; }
@@ -511,7 +511,7 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
   box-shadow: 0 8px 24px rgba(28,26,21,.18);
 }
 .tip:hover .bubble, .tip:focus-within .bubble { display: block; }
-/* F2/F4: placements for a Tip that has no room to open upward (a header pinned to the top of a
+/* Placements for a Tip that has no room to open upward (a header pinned to the top of a
    scrolling box) or leftward (one sitting near a box's right edge) -- see primitives.tsx's Tip. */
 .tip.down .bubble { top: calc(100% + 6px); bottom: auto; }
 .tip.end .bubble { left: auto; right: 0; }
@@ -915,7 +915,7 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
    colour for text that never made any such claim. */
 .ws-row .ws-region { font-size: 12px; color: var(--text-3); white-space: nowrap; margin-left: 6px; }
 
-/* --------- P2-TABLE: the search box + "Download CSV" button above every findings table
+/* --------- the search box + "Download CSV" button above every findings table
    (findings_table.tsx FindingsTable) --------- */
 .findings-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -935,7 +935,7 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
 }
 .csv-download-btn:hover { border-color: var(--focus); }
 
-/* ─────────── P2-BOUNDARY: ErrorBoundary card (primitives.tsx) -- same honest-card look every
+/* ─────────── ErrorBoundary card (primitives.tsx) -- same honest-card look every
    other "could not X" state already uses (finding_detail.tsx), plus a details toggle for the raw
    error and a Try again button that resets the boundary in place. ─────────── */
 .honest-card .h-detail { margin-top: 6px; }
@@ -949,7 +949,7 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
 }
 .eb-retry:hover { background: var(--st-crit-tint); }
 
-/* ─────────── P2-NOBUILD: the first-run / not-ready screen (components/first_run.tsx) -- App.tsx
+/* ─────────── the first-run / not-ready screen (components/first_run.tsx) -- App.tsx
    renders this instead of the whole shell when GET /api/status says the app is not ready. Two new
    honest-card tones (info/warn) alongside the existing not_assessed/empty_filters/error ones, plus
    page-level centering and a command block, both new to this screen only. ─────────── */
@@ -968,7 +968,7 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
   color: var(--st-ok-ink); overflow-x: auto; white-space: pre-wrap; word-break: break-word;
 }
 
-/* P4-T tag picker (components/tag_picker.tsx TagPicker/TagScopeBanner) -- reuses .ws-picker/
+/* Tag picker (components/tag_picker.tsx TagPicker/TagScopeBanner) -- reuses .ws-picker/
    .ws-trigger/.ws-pop/.ws-search/.ws-list/.ws-row/.ws-empty/.ws-foot/.caret/.muted/.scope-banner
    verbatim; only the tag-specific pieces (the wider popover, the key headers, the source chips,
    the clear button) get their own classes here. */
@@ -1014,7 +1014,7 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
   border: 1px solid var(--border); border-radius: 999px; padding: 0 5px;
 }
 
-/* ══════════════════ P4-44: the printable one-page summary ══════════════════
+/* ══════════════════ the printable one-page summary ══════════════════
    .print-only is hidden on screen and shown only inside @media print; .no-print is the reverse --
    Overview wraps its own normal content in it so only PrintSummary's own markup prints. "Save as
    PDF" is the browser's own print-dialog option, nothing extra to build for that part. */
@@ -1051,14 +1051,13 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
   cursor: pointer; font-size: 12.5px; font-family: inherit;
 }
 
-/* === P3 components === */
-/* design/DESIGN-DIRECTION.md section 6-7: StatusIcon/StatusPill, the KPI-card look for
-   SummaryTile, ChartCard and StateNote, built on the P1 tokens above. (The Ref "name (id)"
-   styles live in names.css per the task split, not here.) This block comes AFTER the plain
+/* === Status and card components === */
+/* StatusIcon/StatusPill, the KPI-card look for
+   SummaryTile, ChartCard and StateNote, built on the tokens above. (The Ref "name (id)"
+   styles live in names.css.) This block comes AFTER the plain
    .summary-tile/.badge/.dot rules further up the file on purpose: several selectors below repeat
    an earlier selector at equal specificity so the later declaration wins by source order alone,
-   which is how a reserved, non-overlapping block can still restyle earlier lines without editing
-   them (P1 and P3 were edited in the same pass window and must never touch the same lines). */
+   which is how this block restyles earlier lines without editing them. */
 
 /* ─────────── StatusIcon / StatusPill (section 6) ─────────── */
 .status-icon { display: inline-block; vertical-align: -1.5px; flex: none; }
@@ -1122,8 +1121,7 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
 .summary-tile.clickable:hover .summary-tile-open { text-decoration: underline; }
 
 /* ─────────── ChartCard (section 6): its own class, distinct from the existing .chart-card the
-   current tabs already use, since this pass builds and exports it without rewiring any tab
-   (section 7's own split -- P5 does that rewiring later) ─────────── */
+   current tabs already use, since no tab is rewired to it ─────────── */
 .chart-card-v2 {
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: var(--shadow-card); padding: 16px 18px;
@@ -1172,11 +1170,11 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
    no pointer cursor -- it must never read as a link that goes nowhere on click. */
 .state-note-link-text { color: var(--st-na-ink); }
 
-/* === P4 charts === */
-/* P4 pass (design/DESIGN-DIRECTION.md sections 5 & 7): styling for charts.tsx's shared ChartFrame
+/* === Charts === */
+/* Styling for charts.tsx's shared ChartFrame
    plus charts_more.tsx's RankedBars/Columns/Meter/Heatmap/Icicle/DivergingBars/Dumbbell/Scatter.
    The chart-series colours themselves (--c1..--c5, --seq-*, --div-up/down, the untagged hatch) are
-   P1 tokens already defined at the top of this file -- this block is layout/typography only. */
+   tokens already defined at the top of this file -- this block is layout/typography only. */
 
 /* ─────────── ChartFrame shell: legend, Table toggle, ticks, note (every chart in this file) ── */
 .cf { width: 100%; }

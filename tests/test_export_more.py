@@ -92,7 +92,7 @@ def _export(tmp_path, cursor, **kw):
 
 def test_the_rate_sql_prices_only_consumption_and_leaves_out_ai_overage_and_rebates():
     sql = ex.org_rate_sql("ABC12345", NOW.date())
-    assert "rating_type IN ('compute', 'storage')" in sql and "billing_type = 'consumption'" in sql
+    assert "WHEN 'ai_compute' THEN 'ai'" in sql and "LOWER(billing_type) = 'consumption'" in sql
     assert "COALESCE(is_adjustment, FALSE) = FALSE" in sql
     assert "'overage'" in sql and "(AI|CORTEX)" in sql
     assert "usage_type ILIKE" not in sql, "the rate no longer guesses from the usage_type text"
@@ -118,16 +118,22 @@ def test_a_cli_price_wins_and_the_invoice_still_fills_the_other(tmp_path):
     assert both["storage_source"] == "cli" and both["storage_price_usd_tb_month"] == 20.0
 
 
-def test_a_settings_price_beats_the_invoice_and_is_not_marked_invoice(tmp_path, monkeypatch):
+def test_the_invoice_beats_a_settings_price_and_settings_fill_in_without_one(tmp_path, monkeypatch):
     real = ex.app_config.load_settings
     monkeypatch.setattr(ex.app_config, "load_settings",
                         lambda: {**real(), "credit_price_usd": 2.5, "storage_price_usd_tb_month": 21.0})
     pricing = _export(tmp_path, Cursor())["pricing"]
+    assert (pricing["source"], pricing["credit_price_usd"]) == ("usage_in_currency_daily", 3.0)
+    assert pricing["storage_source"] == "usage_in_currency_daily"
+    pricing = _export(tmp_path, Cursor(deny={"USAGE_IN_CURRENCY_DAILY": 2003}))["pricing"]
     assert (pricing["source"], pricing["credit_price_usd"]) == ("settings", 2.5)
     assert (pricing["storage_source"], pricing["storage_price_usd_tb_month"]) == ("settings", 21.0)
 
 
-def test_no_price_anywhere_is_unpriced_never_zero(tmp_path):
+def test_no_price_anywhere_is_unpriced_never_zero(tmp_path, monkeypatch):
+    real = ex.app_config.load_settings
+    monkeypatch.setattr(ex.app_config, "load_settings",
+                        lambda: {**real(), "credit_price_usd": None, "storage_price_usd_tb_month": None})
     cur = Cursor(deny={"USAGE_IN_CURRENCY_DAILY": 2003})
     pricing = _export(tmp_path, cur)["pricing"]
     assert pricing["credit_price_usd"] is None and pricing["source"] is None

@@ -4,7 +4,8 @@
 -- entity: statement groups = warehouse_id, group_kind, group_id, statement_type
 -- windowed: yes
 -- reads: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY,
---   SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+--   SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY,
+--   SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :period_days (default 30) days of history the check looks at, counted back from the export
 --   date; :warn_cost_usd (default 50) dollars a group must reach in the window to flag WARN;

@@ -11,9 +11,9 @@
 --   :top_pairs (default 10) users kept per table and tables kept per user
 -- confidence: needs_confirmation
 -- confidence_note: Not yet run on a live account.
--- read_this: one row = one table (row_level = table) or one user (row_level = user), the :top_n busiest
---   of each, or one user on one of those tables (row_level = table_user, the :top_pairs busiest users of
---   the table) or one table of one of those users (row_level = user_table). queries counts distinct
+-- read_this: one row = one table, one user, or one pair of them; row_level says which. Tables and users
+--   are the :top_n busiest of each; table_user is the :top_pairs busiest users of a table and user_table
+--   the same the other way round. queries counts distinct
 --   queries that read or wrote the table (or that the user ran on tables); the time, scan and spill
 --   figures are those queries' own, from QUERY_HISTORY: avg_elapsed_s and p90_elapsed_s are seconds per
 --   query, avg_partitions_scanned is micro-partitions per query and scan_pct the share of the partitions

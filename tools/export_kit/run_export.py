@@ -106,7 +106,7 @@ _FQN_LAST_KIND = {"task_full_name": "task", "root_task_full_name": "task", "job_
                   "last_first_error_task_name": "task"}
 _FQN_RE = re.compile(r"(_fqn|_full_name)$")
 _FQN_COLUMNS = {"object_name", "job_id", "sample_tables", "sample_objects", "sample_sources", "sample_targets",
-                "source_fqn", "table_fqn"}
+                "source_fqn", "target_fqn", "table_fqn"}
 # DB.SCHEMA.NAME inside free text: masked by position, so a database that shares a table's name
 # still gets the database token.
 _DOTTED_RE = re.compile(r'(?<![A-Za-z0-9_$."])((?:"[^"]+"|[A-Za-z_][A-Za-z0-9_$]*)(?:\.(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_$]*)){2})(?![A-Za-z0-9_$"])')

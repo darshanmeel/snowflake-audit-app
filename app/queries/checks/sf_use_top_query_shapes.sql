@@ -12,8 +12,8 @@
 --   sf_use_query_profile; :top_shapes (default 10) shapes kept per table or user for each ranking
 -- confidence: needs_confirmation
 -- confidence_note: Not yet run on a live account.
--- read_this: one row = one query shape on one of the :top_n busiest tables (row_level = table) or of one
---   of the :top_n busiest users (row_level = user). A shape is Snowflake's query_parameterized_hash: the
+-- read_this: one row = one query shape on a busy table (row_level = table) or of a busy user (row_level
+--   = user): the :top_n busiest of each. A shape is Snowflake's query_parameterized_hash: the
 --   same statement with different literals, so a dashboard query run 500 times is one row. A shape is
 --   kept when it is in the top :top_shapes of its table or user by runs (rank_runs), total time
 --   (rank_time), partitions scanned (rank_scanned) or bytes spilled (rank_spilled). Its lineage covers

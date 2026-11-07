@@ -3,7 +3,8 @@
 -- domain: governance_access   tier: standard
 -- windowed: yes
 -- reads: SNOWFLAKE.ACCOUNT_USAGE.EXTERNAL_ACCESS_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY,
---   SNOWFLAKE.ACCOUNT_USAGE.DATA_TRANSFER_HISTORY
+--   SNOWFLAKE.ACCOUNT_USAGE.DATA_TRANSFER_HISTORY,
+--   SNOWFLAKE.ACCOUNT_USAGE.USERS
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :period_days (default 30) days of history the check looks at, counted back from the export
 --   date; :warn_sent_mb (default 100) MB: sent at or above this the row reads WARN; :crit_sent_mb

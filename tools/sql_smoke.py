@@ -412,17 +412,23 @@ def hint(error: str) -> str:
 
 
 def run_smoke(*, windows: int = 90, only: list[str] | None = None,
-              export_to: Path | None = None, lenient: bool = False, demo: bool = False) -> dict:
+              export_to: Path | None = None, lenient: bool = False, demo: bool = False,
+              scenario: str | None = None) -> dict:
     """Run the checks and dims through export_results.run_export on the fake account.
 
     Returns {"manifest", "status_counts": {qid: {status: n}}, "export_dir"}.
     """
     now = fake_data.NOW
     con = build_fake_db(now.date(), lenient, demo)
+    connect = lambda: FakeConnection(con, not lenient)  # noqa: E731
+    if scenario:
+        from tests.fake_snowflake import demo_scenarios
+        demo_scenarios.apply(con, scenario, now.date())
+        connect = lambda: demo_scenarios.wrap(FakeConnection(con, not lenient), scenario)  # noqa: E731
     work = Path(tempfile.mkdtemp(prefix="sql_smoke_"))
     out = work / "export"
     try:
-        manifest = ex.run_export(out, windows=windows, only=only, connect_fn=lambda: FakeConnection(con, not lenient),
+        manifest = ex.run_export(out, windows=windows, only=only, connect_fn=connect,
                                  include_today=False, now=now)
         counts = {qid: _status_counts(out / "findings" / f"{qid}.parquet")
                   for qid, f in manifest["findings"].items() if f["status"] != "failed"}

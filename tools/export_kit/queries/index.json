@@ -159,7 +159,9 @@
    "pre": [],
    "sources": [
     "ACCOUNT_USAGE.QUERY_HISTORY",
-    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
    ],
    "params": {},
    "needs_enterprise": false
@@ -171,7 +173,8 @@
    "sources": [
     "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
     "ACCOUNT_USAGE.QUERY_HISTORY",
-    "ACCOUNT_USAGE.TASK_HISTORY"
+    "ACCOUNT_USAGE.TASK_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "warn_hour_share_pct": 15,
@@ -254,7 +257,8 @@
    "pre": [],
    "sources": [
     "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
-    "ACCOUNT_USAGE.QUERY_HISTORY"
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "warn_increase_pct": 25,
@@ -635,7 +639,8 @@
    "sources": [
     "ACCOUNT_USAGE.QUERY_HISTORY",
     "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
-    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "warn_cost_usd": 50,
@@ -655,7 +660,8 @@
    "sources": [
     "ACCOUNT_USAGE.QUERY_HISTORY",
     "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
-    "SHOW.WAREHOUSES"
+    "SHOW.WAREHOUSES",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
    ],
    "params": {
     "min_queries": 20,
@@ -1393,7 +1399,8 @@
    "sources": [
     "ACCOUNT_USAGE.TAG_REFERENCES",
     "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
-    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "warn_untagged_pct": 20,
@@ -1410,7 +1417,8 @@
     "ACCOUNT_USAGE.TAG_REFERENCES",
     "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
     "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
-    "ACCOUNT_USAGE.QUERY_HISTORY"
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "warn_usd": 50,
@@ -1705,7 +1713,8 @@
    "sources": [
     "SHOW.WAREHOUSES",
     "SHOW.RESOURCE MONITORS",
-    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "min_spend_credits": 20,
@@ -2363,7 +2372,8 @@
    "sources": [
     "ACCOUNT_USAGE.SCHEMATA",
     "ACCOUNT_USAGE.GRANTS_TO_ROLES",
-    "ACCOUNT_USAGE.TAG_REFERENCES"
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
    ],
    "params": {
     "warn_owners": 3,
@@ -2383,6 +2393,26 @@
     "warn_dependents": 10,
     "crit_dependents": 30
    },
+   "needs_enterprise": false
+  },
+  "sf_lin_copied_links": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY"
+   ],
+   "params": {},
+   "needs_enterprise": true
+  },
+  "sf_lin_declared_links": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.OBJECT_DEPENDENCIES"
+   ],
+   "params": {},
    "needs_enterprise": false
   },
   "sf_lin_table_flows": {
@@ -2661,7 +2691,8 @@
     "SHOW.STREAMLITS",
     "SHOW.NOTEBOOKS",
     "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
-    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "warn_usd": 100
@@ -3213,7 +3244,8 @@
    "windowed": true,
    "pre": [],
    "sources": [
-    "ACCOUNT_USAGE.QUERY_HISTORY"
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "min_runs": 20,
@@ -3836,7 +3868,8 @@
    "sources": [
     "ACCOUNT_USAGE.EXTERNAL_ACCESS_HISTORY",
     "ACCOUNT_USAGE.QUERY_HISTORY",
-    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+    "ACCOUNT_USAGE.DATA_TRANSFER_HISTORY",
+    "ACCOUNT_USAGE.USERS"
    ],
    "params": {
     "warn_sent_mb": 100,
@@ -3852,7 +3885,8 @@
    "sources": [
     "ACCOUNT_USAGE.GRANTS_TO_ROLES",
     "ACCOUNT_USAGE.SCHEMATA",
-    "ACCOUNT_USAGE.TAG_REFERENCES"
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
    ],
    "params": {
     "warn_grants": 1,
@@ -4951,7 +4985,8 @@
    "pre": [],
    "sources": [
     "ACCOUNT_USAGE.QUERY_HISTORY",
-    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+    "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+    "ACCOUNT_USAGE.METERING_DAILY_HISTORY"
    ],
    "params": {
     "min_queries": 1000,
@@ -5375,7 +5410,8 @@
    ],
    "sources": [
     "ACCOUNT_USAGE.QUERY_HISTORY",
-    "SHOW.WAREHOUSES"
+    "SHOW.WAREHOUSES",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
    ],
    "params": {
     "pipeline_hour_pct": 50,
@@ -5453,7 +5489,8 @@
    "sources": [
     "ACCOUNT_USAGE.QUERY_ACCELERATION_ELIGIBLE",
     "ACCOUNT_USAGE.QUERY_HISTORY",
-    "SHOW.WAREHOUSES"
+    "SHOW.WAREHOUSES",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
    ],
    "params": {
     "min_eligible_hours": 1,
@@ -5619,7 +5656,8 @@
    "sources": [
     "ACCOUNT_USAGE.QUERY_HISTORY",
     "ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
-    "SHOW.WAREHOUSES"
+    "SHOW.WAREHOUSES",
+    "ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
    ],
    "params": {
     "min_queries": 20,

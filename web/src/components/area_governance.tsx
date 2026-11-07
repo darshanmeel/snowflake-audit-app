@@ -29,6 +29,7 @@ import type { Chk } from "./area_ai_storage";
 import { CxBarRows, CxChip, CxDot, CxDotLegend, CxEyebrow, CxMiniCols, CxMissing, CxObjName, CxRanked, CxStat, CxSwatches, CxTable as CxTableE, CxTwoBar, rankTally } from "./cx_e";
 import type { CxBarRow, CxRankItem } from "./cx_e";
 import type { FetchState, Finding, Row } from "../types";
+import { ApLineageExplorer } from "./area_lineage_explorer";
 import { AccDisabledUsers, AccRoleModel, AccSensitiveReach, ApAccessExplorer } from "./area_access_explorer";
 
 // ═══════════════════════ shared helpers ═══════════════════════
@@ -1957,7 +1958,7 @@ export const GOV_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) => 
   access: { roles: ApAccessRoles, users: ApAccessUsers, perimeter: ApAccessPerimeter, explorer: ApAccessExplorer },
   audit: { admins: ApAuditAdmins, changes: ApAuditChanges },
   pii: { sensitive: ApPiiSensitive, policies: ApPiiPolicies, reads: ApPiiReads, quality: ApPiiQuality },
-  lineage: { dependencies: ApLineageDeps },
+  lineage: { dependencies: ApLineageDeps, explorer: ApLineageExplorer },
   sharing: { shares: ApSharingShares, accounts: ApSharingAccounts, spend: ApSharingSpend, replication: ApSharingReplication },
 };
 Object.values(GOV_CHART_PAGES).forEach((m) => Object.values(m).forEach((fn) => { (fn as any).ownsTiles = true; (fn as any).ownsLede = true; }));

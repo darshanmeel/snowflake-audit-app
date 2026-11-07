@@ -64,15 +64,18 @@ rows_ AS (
 ),
 s AS (
   SELECT r.*, amount / NULLIF(usage_qty, 0) AS effective_rate,
+         -- AI credits (Cortex, Copilot) have their own price
+         IFF(LOWER(COALESCE(rating_type, '')) = 'ai_compute' OR REGEXP_LIKE(UPPER(usage_type), '(^|.*_)(AI|CORTEX|COCO|COWORK)(_.*|$)'),
+             __AI_CREDIT_PRICE__, __CREDIT_PRICE__) AS app_price,
          IFF(non_credit OR LOWER(COALESCE(billing_type, 'consumption')) <> 'consumption', NULL,
-             100 * (amount / NULLIF(usage_qty, 0) - __CREDIT_PRICE__) / __CREDIT_PRICE__) AS rate_gap_pct,
+             100 * (amount / NULLIF(usage_qty, 0) - app_price) / app_price) AS rate_gap_pct,
          100 * (usage_qty - metered_credits) / NULLIF(metered_credits, 0) AS credit_gap_pct
   FROM rows_ r
 )
 SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id, usage_type, rating_type, billing_type,
        usage_type = 'ALL CREDITS' AS is_total_row, currency,
        usage_qty AS invoice_usage, amount AS invoice_amount, effective_rate,
-       __CREDIT_PRICE__ AS app_credit_price_usd, rate_gap_pct,
+       app_price AS app_credit_price_usd, rate_gap_pct,
        metered_credits, credit_gap_pct,
        metered_credits * __CREDIT_PRICE__ AS est_metered_usd_list,
        IFF(__CREDIT_PRICE__ IS NULL, 'unpriced', 'priced') AS price_basis,

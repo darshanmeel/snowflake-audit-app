@@ -15,8 +15,8 @@
 --   :top_n (default 2000) objects: kept per kind and band, largest tables and oldest other objects; the band totals are exact
 -- confidence: needs_confirmation
 -- confidence_note: Not yet run on a busy account.
--- read_this: one row = one live table or object (row_level = 'object'), or one kind, band, database and
---   schema as a total row (row_level = 'band', exact, with objects and storage_gb). last_read_at, last_write_at and
+-- read_this: one row = one live table or object (row_level = 'object'), or a total per kind, band and
+--   schema (row_level = 'band'). Totals are exact, with objects and storage_gb. last_read_at, last_write_at and
 --   last_run_at look back up to 365 days; NULL means none in that history. last_active_at is the newest of
 --   read, write, run, DDL, last change and creation, so a new table reads as active. active_band is the
 --   time since: under_30, d30_90, d90_180, d180_360, over_360. beyond_history = nothing in the history

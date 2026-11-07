@@ -17,7 +17,7 @@ import random
 
 from tests.fake_snowflake import demo_entities
 
-AREAS = ["compute", "tags", "security", "storage", "pipelines", "queries", "platform"]
+AREAS = ["compute", "tags", "security", "storage", "pipelines", "queries", "platform", "lifecycle"]
 
 
 class B:

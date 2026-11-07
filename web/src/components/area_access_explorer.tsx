@@ -80,9 +80,10 @@ interface GBox { key: string; title: string; sub: string; sensitive?: number; mo
 interface GBoxEdge { from: string; to: string; label: string; full?: string; cls: string }
 const BW = 300, BGAP = 150, BROW = 19;
 
-function RoleGraph({ paths, focus, users, objects, onPick, laneName, boxes, boxEdges, boxLabel, onBox }: {
+export function RoleGraph({ paths, focus, users, objects, onPick, laneName, boxes, boxEdges, boxLabel, onBox, shortName }: {
   paths: string[][]; focus: string; users: Set<string>; objects: Set<string>; onPick: (kind: Kind, name: string) => void;
   laneName: (lane: number) => string; boxes?: GBox[]; boxEdges?: GBoxEdge[]; boxLabel?: string; onBox?: (key: string) => void;
+  shortName?: (name: string) => string;
 }) {
   const [open, setOpen] = React.useState<Set<number>>(new Set());
   const [hover, setHover] = React.useState<string | null>(null);
@@ -210,7 +211,7 @@ function RoleGraph({ paths, focus, users, objects, onPick, laneName, boxes, boxE
               onClick={kind ? () => onPick(kind, x) : undefined}>
               <title>{`${x}${n ? ` · granted directly to ${plural(n, "user")}` : ""}${ADMIN.has(x) ? " · admin role" : ""}`}</title>
               <rect width={W} height={H} rx={users.has(x) ? H / 2 : 6} />
-              <text x={10} y={H / 2 + 4}>{clip(kind === "object" ? x.split(".").pop() || x : x, n ? 18 : 26)}</text>
+              <text x={10} y={H / 2 + 4}>{clip(shortName ? shortName(x) : kind === "object" ? x.split(".").pop() || x : x, n ? 18 : 26)}</text>
               {n > 0 && <text className="ax-badge" x={W - 8} y={H / 2 + 4} textAnchor="end">{`${fmtInt(n)} ${n === 1 ? "user" : "users"}`}</text>}
             </g>
           );
@@ -371,7 +372,7 @@ function PathTo({ targets, value, onPick, placeholder }: {
 }
 
 /** A name box with suggestions from the export's users, roles or objects. */
-function NamePicker({ kind, names, value, onPick }: { kind: Kind; names: any; value: string; onPick: (n: string) => void }) {
+export function NamePicker({ kind, names, value, onPick }: { kind: Kind; names: any; value: string; onPick: (n: string) => void }) {
   const [text, setText] = React.useState(value);
   React.useEffect(() => setText(value), [value, kind]);
   const list: string[] = names ? (kind === "user" ? names.users : kind === "role" ? names.roles : names.objects).map((x: any) => x.name) : [];
@@ -380,7 +381,7 @@ function NamePicker({ kind, names, value, onPick }: { kind: Kind; names: any; va
   const exact = list.find((n) => n.toUpperCase() === t);
   return (
     <div className="ax-pick">
-      <input className="ax-input wide" value={text} placeholder={`Type a ${kind} name`} aria-label={`${kind} name`}
+      <input className="ax-input wide" value={text} placeholder={`Type ${kind === "object" ? "an" : "a"} ${kind} name`} aria-label={`${kind} name`}
         onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (exact || hits[0])) onPick(exact || hits[0]); }} />
       {t && !exact && hits.length > 0 && (
         <div className="cx-pick-list" role="listbox" aria-label={`${kind} names`}>

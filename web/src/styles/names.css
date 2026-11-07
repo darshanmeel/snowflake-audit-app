@@ -42,8 +42,8 @@ button.ref-name.ref-job-open {
 }
 button.ref-name.ref-job-open:hover { border-bottom-style: solid; }
 
-/* P3 (DESIGN-DIRECTION.md section 6, "Ref 'name (id)'"): the id rides beside a resolved name, in
-   Plex Mono, muted -- "name (id)" everywhere (section 1 rule 4), never the name alone. */
+/* The id rides beside a resolved name, in
+   Plex Mono, muted -- "name (id)" everywhere, never the name alone. */
 .ref-id {
   font-family: var(--f-mono);
   font-size: 12.5px;

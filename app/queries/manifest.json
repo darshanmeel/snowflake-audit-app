@@ -709,7 +709,8 @@
       },
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
-        "SHOW WAREHOUSES"
+        "SHOW WAREHOUSES",
+        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; MONITOR on the warehouses (SHOW WAREHOUSES lists only warehouses the role can see)",
       "params": [
@@ -926,7 +927,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ACCELERATION_ELIGIBLE",
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
-        "SHOW WAREHOUSES"
+        "SHOW WAREHOUSES",
+        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; MONITOR on the warehouses (SHOW WAREHOUSES lists only warehouses the role can see)",
       "params": [
@@ -1358,7 +1360,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
-        "SHOW WAREHOUSES"
+        "SHOW WAREHOUSES",
+        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; MONITOR on the warehouses (SHOW WAREHOUSES lists only warehouses the role can see)",
       "params": [
@@ -1426,7 +1429,9 @@
       "entity": null,
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -1465,7 +1470,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -1625,7 +1631,8 @@
       "entity": null,
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -2650,7 +2657,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES",
         "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -2709,7 +2717,8 @@
         "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES",
         "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -3684,7 +3693,8 @@
       "reads": [
         "SHOW WAREHOUSES",
         "SHOW RESOURCE MONITORS",
-        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; MONITOR on the warehouses (SHOW WAREHOUSES lists only warehouses the role can see); MONITOR on the resource monitors (SHOW lists only those the role can see)",
       "params": [
@@ -6766,7 +6776,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.SCHEMATA",
         "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
-        "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES"
+        "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES",
+        "SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -6847,6 +6858,91 @@
         }
       ],
       "sql_url": "app/queries/checks/sf_lin_blast_radius.sql"
+    },
+    {
+      "query_id": "sf_lin_copied_links",
+      "title": "Every copy between tables in the window: which table was written from which",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "lineage links",
+        "columns": [
+          "source_fqn",
+          "target_fqn"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database (GOVERNANCE_VIEWER); Enterprise edition",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one table (target_fqn) that a query wrote from another (source_fqn) in the window. columns counts the target columns written, queries the writes and writers the users behind them. The Lineage explorer walks these links with sf_lin_declared_links.",
+      "healthy": "n/a - inventory",
+      "investigate_if": "n/a - inventory",
+      "actions": [],
+      "next": [
+        {
+          "query_id": "sf_lin_table_flows",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_lin_copied_links.sql"
+    },
+    {
+      "query_id": "sf_lin_declared_links",
+      "title": "Every declared lineage link: which object is built on which",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "lineage links",
+        "columns": [
+          "source_fqn",
+          "target_fqn"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database (OBJECT_VIEWER)",
+      "params": [],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one object (target_fqn) built on another (source_fqn), as Snowflake records it. The Lineage explorer walks these links with sf_lin_copied_links to show everything upstream and downstream of one table.",
+      "healthy": "n/a - inventory",
+      "investigate_if": "n/a - inventory",
+      "actions": [],
+      "next": [
+        {
+          "query_id": "sf_lin_copied_links",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_lin_declared_links.sql"
     },
     {
       "query_id": "sf_lin_table_flows",
@@ -7023,7 +7119,8 @@
         "SHOW STREAMLITS IN ACCOUNT",
         "SHOW NOTEBOOKS IN ACCOUNT",
         "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES"
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; a role that can see the objects SHOW lists (SHOW returns only those)",
       "params": [
@@ -8250,7 +8347,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.EXTERNAL_ACCESS_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.DATA_TRANSFER_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.DATA_TRANSFER_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -8307,7 +8405,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES",
         "SNOWFLAKE.ACCOUNT_USAGE.SCHEMATA",
-        "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES"
+        "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES",
+        "SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -9110,7 +9209,7 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a busy account.",
-      "read_this": "one row = one live table or object (row_level = 'object'), or one kind, band, database and schema as a total row (row_level = 'band', exact, with objects and storage_gb). last_read_at, last_write_at and last_run_at look back up to 365 days; NULL means none in that history. last_active_at is the newest of read, write, run, DDL, last change and creation, so a new table reads as active. active_band is the time since: under_30, d30_90, d90_180, d180_360, over_360. beyond_history = nothing in the history the account has, and it is too short to say how long (history_days). use_pattern for tables: read_and_written, read_not_written, written_not_read, no_read_no_write; for other objects: used or not_used. last_write_at comes from ACCESS_HISTORY and TABLE_DML_HISTORY only. dependents = live objects built on it, from OBJECT_DEPENDENCIES; NULL for procedures, tasks and pipes, which it can't tell. Sizes are not priced here: what an unread table costs is on sf_storage_unused_tables.",
+      "read_this": "one row = one live table or object (row_level = 'object'), or a total per kind, band and schema (row_level = 'band'). Totals are exact, with objects and storage_gb. last_read_at, last_write_at and last_run_at look back up to 365 days; NULL means none in that history. last_active_at is the newest of read, write, run, DDL, last change and creation, so a new table reads as active. active_band is the time since: under_30, d30_90, d90_180, d180_360, over_360. beyond_history = nothing in the history the account has, and it is too short to say how long (history_days). use_pattern for tables: read_and_written, read_not_written, written_not_read, no_read_no_write; for other objects: used or not_used. last_write_at comes from ACCESS_HISTORY and TABLE_DML_HISTORY only. dependents = live objects built on it, from OBJECT_DEPENDENCIES; NULL for procedures, tasks and pipes, which it can't tell. Sizes are not priced here: what an unread table costs is on sf_storage_unused_tables.",
       "healthy": "status = OK; this check only shows use and never flags. Priced unused tables are in sf_storage_unused_tables, and the 90-day figure there is the one that reaches Waste & savings.",
       "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows (the role cannot see it, or an undetected Standard edition); task and pipe rows still read then, from their own history. On a detected Standard account the export skips the whole check.",
       "actions": [
@@ -11766,7 +11865,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -11830,7 +11930,8 @@
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY",
-        "SHOW WAREHOUSES"
+        "SHOW WAREHOUSES",
+        "SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; MONITOR on the warehouses (SHOW WAREHOUSES lists only warehouses the role can see)",
       "params": [
@@ -12577,7 +12678,8 @@
       "money": null,
       "entity": null,
       "reads": [
-        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -13110,7 +13212,7 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one table (row_level = table) or one user (row_level = user), the :top_n busiest of each, or one user on one of those tables (row_level = table_user, the :top_pairs busiest users of the table) or one table of one of those users (row_level = user_table). queries counts distinct queries that read or wrote the table (or that the user ran on tables); the time, scan and spill figures are those queries' own, from QUERY_HISTORY: avg_elapsed_s and p90_elapsed_s are seconds per query, avg_partitions_scanned is micro-partitions per query and scan_pct the share of the partitions they could have read, spill_pct the share of queries that spilled. timed_queries counts the queries found in QUERY_HISTORY; the figures cover those. entity_rank 1 = most queries; pair_rank orders the pairs inside their table or user.",
+      "read_this": "one row = one table, one user, or one pair of them; row_level says which. Tables and users are the :top_n busiest of each; table_user is the :top_pairs busiest users of a table and user_table the same the other way round. queries counts distinct queries that read or wrote the table (or that the user ran on tables); the time, scan and spill figures are those queries' own, from QUERY_HISTORY: avg_elapsed_s and p90_elapsed_s are seconds per query, avg_partitions_scanned is micro-partitions per query and scan_pct the share of the partitions they could have read, spill_pct the share of queries that spilled. timed_queries counts the queries found in QUERY_HISTORY; the figures cover those. entity_rank 1 = most queries; pair_rank orders the pairs inside their table or user.",
       "healthy": "status = OK on every listed row; this check describes how queries run, it does not judge them.",
       "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the window.",
       "actions": [
@@ -13138,7 +13240,8 @@
       "entity": null,
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
-        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY"
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
       "params": [
@@ -13300,7 +13403,7 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one query shape on one of the :top_n busiest tables (row_level = table) or of one of the :top_n busiest users (row_level = user). A shape is Snowflake's query_parameterized_hash: the same statement with different literals, so a dashboard query run 500 times is one row. A shape is kept when it is in the top :top_shapes of its table or user by runs (rank_runs), total time (rank_time), partitions scanned (rank_scanned) or bytes spilled (rank_spilled). Its lineage covers every run of the shape in the window: tables_read and tables_written (from ACCESS_HISTORY), and the columns it filtered (where_columns) and joined (join_columns) on, from COLUMN_QUERY_PRUNING_HISTORY. slowest_query_id is the slowest single run, to open in Snowsight's query profile. No query text is kept.",
+      "read_this": "one row = one query shape on a busy table (row_level = table) or of a busy user (row_level = user): the :top_n busiest of each. A shape is Snowflake's query_parameterized_hash: the same statement with different literals, so a dashboard query run 500 times is one row. A shape is kept when it is in the top :top_shapes of its table or user by runs (rank_runs), total time (rank_time), partitions scanned (rank_scanned) or bytes spilled (rank_spilled). Its lineage covers every run of the shape in the window: tables_read and tables_written (from ACCESS_HISTORY), and the columns it filtered (where_columns) and joined (join_columns) on, from COLUMN_QUERY_PRUNING_HISTORY. slowest_query_id is the slowest single run, to open in Snowsight's query profile. No query text is kept.",
       "healthy": "status = OK on every listed row; this check describes the heaviest shapes, it does not judge them.",
       "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the window.",
       "actions": [

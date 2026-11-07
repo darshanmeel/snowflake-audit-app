@@ -2,7 +2,8 @@
 -- title: What each warehouse is used for, by statement type
 -- domain: performance   tier: standard
 -- windowed: yes
--- reads: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY
+-- reads: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY,
+--   SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :period_days (default 30) days of history the check looks at, counted back from the export
 --   date; :min_queries (default 1000) queries: least a row needs before it can flag; :warn_metadata_pct

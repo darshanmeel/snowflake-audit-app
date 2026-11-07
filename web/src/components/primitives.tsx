@@ -1,7 +1,7 @@
 // web/src/components/primitives.tsx -- small reusable bits (adapted from the reference
 // dashboard's components/primitives.tsx Badge/Tip pattern, kept minimal for this vertical slice).
 
-// P3 (DESIGN-DIRECTION.md section 6): a status never rides on colour alone -- Critical/Warning/
+// A status never rides on colour alone -- Critical/Warning/
 // OK/Not assessed/Reference (and Badge's own "error", drawn the same shape as Critical) each get
 // StatusIcon's hand-drawn 12px mark ahead of the word. A `kind` outside this map (e.g. "info", or
 // a free-text chip like a domain/tier label) draws no icon and renders exactly as before -- it was
@@ -137,10 +137,10 @@ export function Dot({ kind }: { kind?: string | null }) {
 
 // Hover tooltip -- read_this / confidence_note, off the row to keep the table scannable
 // (mirrors app/ui/panel.tooltip_text's own reasoning for putting this on a help= hover).
-// `placement` (F2/F4): the bubble opens upward by default, which a header pinned to the TOP of a
+// `placement`: the bubble opens upward by default, which a header pinned to the TOP of a
 // scrolling box (finding_detail.tsx's table.data thead, position:sticky top:0) has no room for --
 // .data-table-wrap's own overflow:auto then clips it to an unreadable sliver (found wiring up
-// F2's column-header tips). "down" opens it below instead; "end" right-aligns it (for a tip near
+// the column-header tips). "down" opens it below instead; "end" right-aligns it (for a tip near
 // the right edge of a narrow box) instead of the default left-aligned bubble.
 export function Tip({ text, children, placement }: { text?: React.ReactNode; children?: React.ReactNode; placement?: string | null }) {
   if (!text) return children || null;
@@ -292,7 +292,7 @@ export function bandPillKind(band?: string | null) {
   }
 }
 
-// P2-BOUNDARY: a React error boundary. getDerivedStateFromError/componentDidCatch only exist on
+// A React error boundary. getDerivedStateFromError/componentDidCatch only exist on
 // a class component (no hooks equivalent), so this is the one class component in app/web. It
 // catches a render error anywhere in its children and shows a small card in the app's own
 // honest-card style (finding_detail.tsx's NotAssessedCard/EmptyWindowCard/ErrorCard family)
@@ -337,11 +337,10 @@ export class ErrorBoundary extends React.Component<{ children?: React.ReactNode 
   }
 }
 
-// ChartCard (DESIGN-DIRECTION.md section 6): the title reads as a question (16/600), the subtitle
+// ChartCard: the title reads as a question (16/600), the subtitle
 // gives unit/dates/basis once (13, --text-3), and "Table"/"Open check ->" are right-side slots a
 // caller wires up or omits. `children` is the chart itself; `takeaway` is one optional line under
-// it. Exported for later lanes (P5 rewires the tab_*.jsx chart cards onto it) -- this pass only
-// builds and exports it, per the task split in section 7; no existing tab is rewired to use it,
+// it. No existing tab is rewired to use it,
 // so it draws its own "chart-card-v2" class rather than the "chart-card" class those tabs already
 // own, and nothing here touches charts.tsx/charts_more.tsx (edited in parallel this same round).
 export function ChartCard({ title, subtitle, onToggleTable, showingTable, onOpenCheck, takeaway, children }: {
@@ -376,12 +375,11 @@ export function ChartCard({ title, subtitle, onToggleTable, showingTable, onOpen
   );
 }
 
-// StateNote (DESIGN-DIRECTION.md section 6, "the honesty rule, one component"): takes the chart's
+// StateNote: takes the chart's
 // own slot and height and is never blank. Six states, each worded so the reader can tell "nothing
 // happened here" apart from "nothing was found" apart from "we could not tell" -- the same
 // distinction the rest of the app already draws (bandOf/isUncertainBand above), given its own
-// reusable shape for chart space. Exported for later lanes; no existing chart is rewired to it
-// this pass (section 7's own split -- P4/P5 wire it into charts.tsx's ChartFrame and the tabs).
+// reusable shape for chart space. No existing chart is rewired to it.
 //   loading        -- skeleton bars, no spinner
 //   ok_empty       -- nothing flagged (a verified, judged zero)
 //   empty_window   -- a real but unjudged zero: "Not a verified zero."

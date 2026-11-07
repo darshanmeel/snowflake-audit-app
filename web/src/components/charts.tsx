@@ -11,12 +11,12 @@
 // data and draws it. Aggregation itself (group-by, top-N-plus-Other, sums) lives in hooks.tsx so
 // it can be reasoned about independently of markup.
 
-// P4 (design/DESIGN-DIRECTION.md sections 2 & 5): the chart-series scale is its own token set,
+// The chart-series scale is its own token set,
 // never a status colour and never the UI accent -- "colour is evidence". Six slots: --c1..--c5 in
 // fixed order, then --c-other for whatever a chart folds past its 5th series. Read as CSS variable
 // strings (not resolved to hex) so a theme toggle repaints every chart with zero JS re-render.
 // paletteColor(i) keeps its old signature (existing callers -- tab_*.jsx, pressure.tsx -- index
-// into it directly and must keep working unchanged); new P4 components use foldTopNOther below
+// into it directly and must keep working unchanged); newer charts use foldTopNOther below
 // instead, which folds at 5 + Other and never cycles past it.
 import React from "react";
 import { Facts } from "./primitives";
@@ -84,7 +84,7 @@ export function tipText({ name, id, date, value, basis }: { name?: unknown; id?:
 }
 
 // ─────────── foldTopNOther -- "fold at 5 + Other, colours never cycle" (section 2 & 5), shared by
-// every P4 multi-item chart (RankedBars, Columns' series, Icicle's per-parent children). Untagged/
+// every multi-item chart (RankedBars, Columns' series, Icicle's per-parent children). Untagged/
 // unknown items are pulled out first and always rendered last with the hatch pattern -- they are
 // never counted toward the N and never folded into Other (section 2's untagged rule). `categorical`
 // assigns each of the top N its own --c1..--c5 slot (a real category breakdown, e.g. donut
@@ -469,7 +469,7 @@ export function Sparkline({ data, color = "var(--c1)", height = 38, fill = true 
     // preserveAspectRatio="none" is what lets a sparkline stretch to its container, but it scales
     // x and y by different factors -- a 100x26 viewBox in a 780x150 panel is 7.8x by 5.8x. That
     // distorts a 1.6px stroke into a tapering wedge and turns the end-marker circle into a blob
-    // (observed on the Pareto line, 2026-09-23). vector-effect keeps the stroke at its true width
+    //. vector-effect keeps the stroke at its true width
     // whatever the scale; the marker is drawn as a short non-scaling stroke rather than a circle,
     // because a circle's radius cannot survive a non-uniform scale.
     <svg

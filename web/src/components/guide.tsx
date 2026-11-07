@@ -597,9 +597,11 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
       "What breaks if this table changes?",
       "Which tables feed the most other tables?",
       "Which views point at dropped objects?",
+      "What is this table built from, and what does it feed?",
     ],
     screen: [
       { sub: "dependencies", d: "Blast radius of a change, broken views, table flows and the view inventory." },
+      { sub: "explorer", d: "Pick a table or view: a graph of everything upstream and downstream, joining declared dependencies and the copies queries made." },
     ],
     measure: "Object dependencies and access history.",
     judge: "Broken references against config/thresholds.yml.",

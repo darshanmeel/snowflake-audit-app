@@ -279,6 +279,20 @@ def performance(b: _B) -> None:
              rows_matched=int(scanned * matched_pct / 100))
         if credits:
             attr(f"01scan-{qh}-{tid}", wid, wname, qh, credits, 6)
+    # a statement that reads every partition of a big table, run three times
+    b.au("TABLE_QUERY_PRUNING_HISTORY", interval_start_time=_ts(b.back(6), 10), interval_end_time=_ts(b.back(6), 11),
+         table_id=5003, table_name="EVENTS_RAW", schema_id=205, schema_name="LANDING", database_id=102,
+         database_name="RAW_DB", warehouse_id=1403, warehouse_name="WH_SCAN_C", query_hash="hfull",
+         query_parameterized_hash="hfull", num_queries=3, aggregate_query_elapsed_time=7_200_000,
+         aggregate_query_compilation_time=1000, aggregate_query_execution_time=7_200_000, partitions_scanned=30_000,
+         partitions_pruned=0, rows_scanned=G, rows_pruned=0, rows_matched=G // 100)
+    for k in range(3):
+        b.au("QUERY_HISTORY", query_id=f"01full-{k}", query_hash="hfull", query_parameterized_hash="hfull",
+             warehouse_id=1403, warehouse_name="WH_SCAN_C", user_name="ANALYST_DAN", role_name="ANALYST_ROLE",
+             database_name="RAW_DB", schema_name="LANDING", query_type="SELECT", execution_status="SUCCESS",
+             start_time=_ts(b.back(6), 10, k), end_time=_ts(b.back(6), 10, k + 40), execution_time=2_400_000,
+             total_elapsed_time=2_400_000, bytes_scanned=G * 40)
+        attr(f"01full-{k}", 1403, "WH_SCAN_C", "hfull", 4.0, 6)
 
     # clustering: column and table pruning, over the 90 days so every window has rows
     def prune(tid, db, sch, tname, col, access, back, queries, exec_ms, scanned, pruned, rows, matched, sos=None):
@@ -413,6 +427,9 @@ def performance(b: _B) -> None:
 # Security
 # ---------------------------------------------------------------------------------------------------------------------------
 def security(b: _B) -> None:
+    # granted directly and also through BI_ROLE, which holds ANALYST_ROLE
+    b.au("GRANTS_TO_USERS", created_on=_ts(b.back(300), 9), role="BI_ROLE", granted_to="USER",
+         grantee_name="ANALYST_CARA", granted_by="USERADMIN")
     # personal access tokens: OK, WARN (long-lived, never used), CRITICAL (admin, no role limit, may skip network policy)
     def pat(cid, name, user, created_back, life_days, used_back, details):
         created = _ts(b.back(created_back), 9)

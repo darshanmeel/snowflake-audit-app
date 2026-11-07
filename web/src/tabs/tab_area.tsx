@@ -485,7 +485,7 @@ export function QueryTagRollup({ filters, meta }: { filters: Filters; meta: Meta
   ["access", ["roles", "users", "perimeter", "explorer"]],
   ["audit", ["admins", "changes"]],
   ["pii", ["sensitive", "policies", "reads", "quality"]],
-  ["lineage", ["dependencies"]],
+  ["lineage", ["dependencies", "explorer"]],
   ["activity", ["databases", "schemas", "tables", "lastactive", "users", "objects"]],
   ["sharing", ["shares", "accounts", "spend", "replication"]],
   ["storage", ["growth", "unused", "retention", "backups"]],

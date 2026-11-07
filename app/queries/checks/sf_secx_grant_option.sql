@@ -3,7 +3,8 @@
 -- domain: governance_access   tier: standard
 -- windowed: no
 -- reads: SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES, SNOWFLAKE.ACCOUNT_USAGE.SCHEMATA,
---   SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES
+--   SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES,
+--   SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :warn_grants (default 1) grants: at or above this the row reads WARN; :crit_sensitive_objects
 --   (default 1) sensitive objects: at or above this the row reads CRITICAL

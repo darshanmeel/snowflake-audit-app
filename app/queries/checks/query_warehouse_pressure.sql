@@ -5,7 +5,8 @@
 -- windowed: yes
 -- pre: SHOW WAREHOUSES
 -- reads: SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY, SHOW
---   WAREHOUSES
+--   WAREHOUSES,
+--   SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database; MONITOR on the warehouses (SHOW WAREHOUSES
 --   lists only warehouses the role can see)
 -- params: :period_days (default 30) days of history the check looks at, counted back from the export

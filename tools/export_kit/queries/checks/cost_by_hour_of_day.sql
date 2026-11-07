@@ -6,7 +6,8 @@
 -- entity: hour-of-day slots = weekday_num, hour_of_day
 -- windowed: yes
 -- reads: SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY,
---   SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY
+--   SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY,
+--   SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database
 -- params: :period_days (default 30) days of history the check looks at, counted back from the
 --   export date; :warn_hour_share_pct (default 15) percent of the window's whole list-priced spend

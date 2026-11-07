@@ -1,4 +1,4 @@
-// web/src/components/charts_more.tsx -- P4 (design/DESIGN-DIRECTION.md sections 5 & 7): the
+// web/src/components/charts_more.tsx -- the
 // chart primitives charts.tsx's original set did not need -- RankedBars, Columns, Meter, Heatmap,
 // Icicle, DivergingBars, Dumbbell and Scatter. Everything here is presentation-only, exactly like
 // charts.tsx: it takes already-aggregated {name/id/value/...} data and draws it; group-by/top-N/sum
@@ -7,9 +7,7 @@
 // one script tag earlier (index.html), no import needed (same pattern pressure.tsx already uses
 // for paletteColor).
 //
-// P3 (running in parallel in this worktree) owns the real StateNote in primitives.tsx; every
-// "no rows" case below renders the small local EmptyChart instead of importing that in-progress
-// component, matching this pass's own instruction.
+// Every "no rows" case below renders the small local EmptyChart.
 
 // ─────────── EmptyChart -- StateNote-like, never a blank chart (mirrors charts.tsx's own
 // Treemap/HBarList "nothing to rank" fallback, same .chart-note classes, so it already matches the
@@ -334,7 +332,7 @@ export function Meter({ segments, valueFmt, width = 760, height = 26, note, aria
   );
 }
 
-// ─────────── Heatmap({rows, cols, value, bins}) -- section 5's own prop names. `value` is a 2-D
+// ─────────── Heatmap({rows, cols, value, bins}). `value` is a 2-D
 // array value[rowIndex][colIndex]; a cell that is undefined/null (not 0) is "no data" and hatched,
 // never coloured --seq-0 (that is reserved for a real, verified zero). Rows show "name
 // (abcd…wxyz)" in a left column; a right total column sums each row; the legend lists the bin

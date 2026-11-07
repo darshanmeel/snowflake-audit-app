@@ -74,14 +74,16 @@ s AS (
          credits * rate.credit_rate AS est_cost,
          100 * (credits - prev_credits) / NULLIF(prev_credits, 0) AS change_pct,
          100 * credits / NULLIF(account_credits, 0) AS share_of_account_pct,
-         COALESCE(credits * rate.credit_rate, credits * __CREDIT_PRICE__) AS cost_for_status
+         -- AI credits (Cortex, Copilot) have their own price
+         credits * IFF(REGEXP_LIKE(service_type, '(^|.*_)(AI|CORTEX|COCO|COWORK)(_.*|$)'), __AI_CREDIT_PRICE__, __CREDIT_PRICE__) AS list_usd,
+         COALESCE(credits * rate.credit_rate, list_usd) AS cost_for_status
   FROM tot LEFT JOIN rate ON rate.account_locator = tot.account_locator
   WHERE service_type NOT IN ('WAREHOUSE_METERING', 'WAREHOUSE_METERING_READER', 'CLOUD_SERVICES')
 )
 SELECT :period_days AS window_days, account_locator AS account_id, account_name, account_locator,
        service_type, credits, prev_credits, change_pct, share_of_account_pct, currency, credit_rate,
-       est_cost, credits * __CREDIT_PRICE__ AS est_cost_usd_list,
-       IFF(__CREDIT_PRICE__ IS NULL, 'unpriced', 'priced') AS price_basis,
+       est_cost, list_usd AS est_cost_usd_list,
+       IFF(list_usd IS NULL, 'unpriced', 'priced') AS price_basis,
        CASE WHEN credits = 0 AND prev_credits = 0 THEN 'no_credits'
             WHEN cost_for_status IS NULL THEN 'unpriced' END AS not_assessed_reason,
        CASE

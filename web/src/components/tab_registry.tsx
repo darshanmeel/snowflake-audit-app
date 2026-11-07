@@ -395,6 +395,11 @@ export const LINEAGE_SUBTABS: SubtabDef[] = [
     ids: ["sf_lin_blast_radius", "sf_obj_broken_views", "sf_lin_table_flows"],
     refIds: ["access_views_inventory"],
   },
+  {
+    key: "explorer", label: "Explorer",
+    ids: ["sf_lin_declared_links", "sf_lin_copied_links"],
+    refIds: [],
+  },
 ];
 export const LINEAGE_IDS = LINEAGE_SUBTABS.flatMap((s) => s.ids);
 export const LINEAGE_REF_IDS = LINEAGE_SUBTABS.flatMap((s) => s.refIds);

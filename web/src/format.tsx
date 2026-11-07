@@ -6,7 +6,7 @@
 
 // Numbers are formatted in a FIXED locale, never the viewer's. toLocaleString(undefined, ...)
 // takes the browser's locale, so on a European machine 33096 ms rendered as "33.096" -- which
-// reads as 33 milliseconds for 61 queries (observed 2026-09-22). In an audit tool the same
+// reads as 33 milliseconds for 61 queries. In an audit tool the same
 // figure must not change meaning between two people's screens, and the "." / "," ambiguity is a
 // real misreading risk on money. Consistency beats localisation here.
 import { fmtChangePct } from "./components/hooks";
