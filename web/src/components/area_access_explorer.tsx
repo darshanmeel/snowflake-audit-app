@@ -396,6 +396,9 @@ export function NamePicker({ kind, names, value, onPick }: { kind: Kind; names: 
 export function ApAccessExplorer(p: ApPageProps) {
   const [names, setNames] = React.useState<any>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  // Why there is nothing to explore: the check's own reason, not the API's status line.
+  const links = useCheck(p, "sf_acc_grant_links");
+  const noLinks = !links.loading && !links.rows?.length ? links.why : null;
   const [sel, setSel] = React.useState<{ kind: Kind; name: string }>(() => START || { kind: "user", name: "" });
   const [res, setRes] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
@@ -579,7 +582,7 @@ export function ApAccessExplorer(p: ApPageProps) {
             placeholder={sel.kind === "user" ? "a role or table" : sel.kind === "role" ? "a user, role or table" : "a user or role"} />
         )}
       </div>
-      {err && <CxStat>{`– ${err}`}</CxStat>}
+      {(noLinks || err) && <CxStat>{`– ${noLinks || String(err).replace(/^\d{3} /, "")}`}</CxStat>}
       {res && sel.kind === "user" && res.user && (
         <div className="ax-who">{<span><b>{res.name}</b>{` · ${String(res.user.user_type || "PERSON").toLowerCase()}${res.user.is_disabled ? " · disabled" : ""} · default role ${res.user.default_role || "none"} · last sign-in ${lastDay(res.user.last_success_login)}`}</span>}</div>
       )}

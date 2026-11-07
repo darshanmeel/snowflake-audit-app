@@ -19,7 +19,7 @@ export function CxEyebrow({ children }: { children?: React.ReactNode }) {
 
 /** A one-line sentence in place of a chart that would carry no information. */
 export function CxStat({ children }: { children?: React.ReactNode }) {
-  return <div className="cx-stat">{children}</div>;
+  return <div className="cx-stat cx-stat-line">{children}</div>;
 }
 
 export interface CxRankItem {

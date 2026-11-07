@@ -11,6 +11,8 @@
 
 .cx-eyebrow { font-size: 12px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); margin: 4px 0 8px; }
 .cx-stat { font-size: 14px; color: var(--text-2); line-height: 1.5; }
+/* One line of text: not the label-and-value grid .cx-stat has on the Waste page. */
+.cx-stat.cx-stat-line { display: block; }
 .cx-stat b { color: var(--text); font-weight: 600; }
 .cx-statnum { margin-bottom: 8px; font-size: 14px; }
 .cx-statnum b { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 4px; }

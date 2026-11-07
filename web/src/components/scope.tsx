@@ -40,6 +40,12 @@ export function notAssessedText(data: Row | null | undefined) {
   const src = (info.blocking_sources || [])[0];
   if (src) return `Not assessed: ${src.source} is ${src.reason === "no_grant" ? "not readable by the audit role" : "not in this export"}.`;
   if (info.status === "failed" || info.status === "error") {
+    const msg = String(info.message || "");
+    if (/^edition_too_low/.test(msg)) return `Not assessed: ${msg.replace(/^edition_too_low:\s*/, "")}.`.replace(/\.\.$/, ".");
+    if (/^role_cannot_see|not authorized/i.test(msg)) {
+      const view = msg.match(/(?:ACCOUNT_USAGE|ORGANIZATION_USAGE)\.\w+/);
+      return `Not assessed: the audit role can't read ${view ? view[0] : "what this check needs"}.`;
+    }
     return info.message ? `Not assessed: the check failed (${String(info.message).slice(0, 140)}).` : "Not assessed: the check failed in the export.";
   }
   if (isUnpricedAgg(data)) return NO_PRICE_READING;
