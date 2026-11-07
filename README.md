@@ -24,9 +24,13 @@ yourself") let you check the figures on your own account.
 [Masking names](#masking-names) · [If something fails](#if-something-fails) ·
 [Repository](#repository) · [Tests](#tests)
 
-**In short:** make a key pair, run the grant script once as `ACCOUNTADMIN`, fill in `.env`, then
-`python tools/first_run.py` and `python -m app.api`, and open `http://127.0.0.1:8000/`. Start on
-Overview, then Fix these first; How it works (left rail) explains any number.
+**In short:** unzip, open a terminal in the folder and run `python start.py` (Python 3.11 or newer).
+It makes `.venv`, installs the packages, asks for the account, user, role, warehouse and private
+key file (leave the key blank to sign in through the browser), runs the export, loads it and opens
+the app in the browser. Any role works: what it can read is collected, and the rest reads "the role
+can't see it". Later runs open the loaded data; `python start.py --refresh` exports again, and
+`--windows 90` takes 90 days. Start on Overview, then Fix these first; How it works (left rail)
+explains any number. The sections below are the same steps by hand.
 
 ## What you need
 
@@ -197,6 +201,8 @@ roles per view, at 297 checks. A check can need more than one grant, so they ove
   <https://docs.snowflake.com/en/sql-reference/sql/grant-privilege> for the current syntax.
 
 ## Set up once
+
+`python start.py` does all of this and "Run" below. These are the same steps by hand.
 
 1. **Get the code.** Either download the ZIP from GitHub (the green **Code** button, then
    **Download ZIP**) and unzip it, or `git clone` the repository. Open a terminal in the unzipped
@@ -781,6 +787,7 @@ tools/           export, load, lint and build scripts
 tools/export_kit the standalone export to send to someone else (refresh: tools/make_export_kit.py)
 tools/streamlit_deploy  optional deploy to Streamlit in Snowflake
 tests/           pytest suite
+start.py         one command: set up, sign in, export, load and open the app
 ```
 
 ## Tests

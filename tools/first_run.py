@@ -81,6 +81,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="USD per AI credit (or set ai_credit_price_usd in config/settings.yml)",
     )
     ap.add_argument(
+        "--workers", type=int, default=None, metavar="N",
+        help="checks run at once, passed to tools/export_results.py (1 for browser sign-in, which asks once per session)",
+    )
+    ap.add_argument(
         "--storage-price", type=float, default=None, metavar="USD",
         help="USD per TB-month of storage (or set storage_price_usd_tb_month in config/settings.yml)",
     )
@@ -121,6 +125,8 @@ def export_argv(out_dir: Path, args: argparse.Namespace) -> list[str]:
         cmd += ["--ai-credit-price", str(args.ai_credit_price)]
     if args.storage_price is not None:
         cmd += ["--storage-price", str(args.storage_price)]
+    if args.workers is not None:
+        cmd += ["--workers", str(args.workers)]
     return cmd
 
 
