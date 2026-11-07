@@ -50,7 +50,9 @@ What is in this folder:
    python -m pip install "snowflake-connector-python[pandas]" "pyarrow>=14"
    ```
 
-2. **Grants:** edit the names in `grants.sql` and run it once as `ACCOUNTADMIN`. "Roles and
+2. **Grants:** edit the names in `grants.sql` and run it once as `ACCOUNTADMIN`. If you are
+   `ACCOUNTADMIN` yourself, you can skip this and put `SNOWFLAKE_ROLE=ACCOUNTADMIN` in `.env`: the
+   export still runs only `SELECT`, `WITH` and `SHOW`. "Roles and
    privileges" below says what each grant opens and what is missing without it.
 
 3. **Sign-in:** create a file called `.env` in this folder:

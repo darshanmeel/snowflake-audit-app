@@ -34,7 +34,9 @@ Overview, then Fix these first; How it works (left rail) explains any number.
 - **A Snowflake account** and a role that can read `SNOWFLAKE.ACCOUNT_USAGE` (see below).
 - **A small warehouse** for the role. The export runs 4 checks at once, each on its own session
   (`--workers N` on `tools/export_results.py`; `--workers 1` runs them one by one).
-- **A user with key-pair authentication** (`SNOWFLAKE_PRIVATE_KEY_FILE`); see "Make the key pair".
+- **A way to sign in.** A key pair (`SNOWFLAKE_PRIVATE_KEY_FILE`) is best; see "Make the key pair".
+  `SNOWFLAKE_PASSWORD` works too. With neither set, the export signs in through the browser, which
+  can ask once per session, so add `--workers 1` or use the key pair.
 
 At the start the export probes every view and SHOW command the checks use. A check whose source the
 role cannot read is not run and reads "the role can't see it" in the app, never as clean. A check
@@ -231,6 +233,7 @@ roles per view, at 297 checks. A check can need more than one grant, so they ove
    - `SNOWFLAKE_USER`
    - `SNOWFLAKE_PRIVATE_KEY_FILE`: the full path of `rsa_key.p8`
    - `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE`: only if the key is encrypted
+   - or `SNOWFLAKE_PASSWORD` instead of the key, or neither to sign in through the browser
    - `SNOWFLAKE_ROLE`
    - `SNOWFLAKE_WAREHOUSE`
 
@@ -669,7 +672,9 @@ and start the app with `AUDIT_DB=<file>`.
 
 ### Export kit: someone else runs the SQL
 
-When someone else runs the export, send them `tools/export_kit/` instead of the repo. Zip the
+When someone else runs the export, send them `tools/export_kit/` instead of the repo. An
+`ACCOUNTADMIN` can skip `grants.sql` and run it with `SNOWFLAKE_ROLE=ACCOUNTADMIN`; it still runs
+only `SELECT`, `WITH` and `SHOW`, and sees every warehouse, task and policy. Zip the
 folder and send it; its own `README.md` says how to install, sign in and run, and which roles and
 privileges it needs. Inside:
 
