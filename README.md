@@ -789,7 +789,7 @@ python tools/gate.py     # header lint, manifest, SQL parse, UI type check and t
 
 The tests run against a fake Snowflake account (`tests/fake_snowflake`): every check runs on it
 through DuckDB, and at least 100 show a WARN or CRITICAL row. `python tools/sql_smoke.py` runs only
-that part. The full pytest suite takes about 20 minutes.
+that part. The full pytest suite takes about 25 minutes and several GB of free memory.
 
 ### Fake data: the app without a Snowflake account
 
