@@ -811,6 +811,7 @@ The same account can also be built as other kinds of account, to see every block
 ```
 python tools/build_demo_db.py --list                    # what the scenarios are
 python tools/build_demo_db.py --scenario limited_role   # one of them, in data/demo/limited_role/
+python tools/build_demo_db.py --scenario worst_case     # an account in trouble, to see the red and amber results
 python tools/build_demo_db.py --scenario all            # all of them, one at a time, and data/demo/coverage_report.md
 ```
 
