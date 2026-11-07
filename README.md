@@ -672,9 +672,8 @@ and start the app with `AUDIT_DB=<file>`.
 
 ### Export kit: someone else runs the SQL
 
-When someone else runs the export, send them `tools/export_kit/` instead of the repo. An
-`ACCOUNTADMIN` can skip `grants.sql` and run it with `SNOWFLAKE_ROLE=ACCOUNTADMIN`; it still runs
-only `SELECT`, `WITH` and `SHOW`, and sees every warehouse, task and policy. Zip the
+When someone else runs the export, send them `tools/export_kit/` instead of the repo. Any role
+works: what it can read is collected, and the rest reads "the role can't see it" in the app. Zip the
 folder and send it; its own `README.md` says how to install, sign in and run, and which roles and
 privileges it needs. Inside:
 
