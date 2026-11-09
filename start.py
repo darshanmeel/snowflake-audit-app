@@ -7,6 +7,7 @@
 
 First run: makes .venv, installs requirements.txt, and asks for the account, user, role, warehouse
 and private key file (blank key = sign in through the browser), saved in the git-ignored .env.
+It checks the sign-in before the export, so a typo costs seconds and is asked again.
 The export reads what the role can see; the rest shows in the app as "the role can't see it".
 Later runs open the data already loaded. Stdlib only, so the system Python can run it.
 """
@@ -16,6 +17,7 @@ import argparse
 import getpass
 import hashlib
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -41,6 +43,10 @@ PROMPTS = (
 )
 
 
+class Stop(Exception):
+    """A problem the user can fix: print the message and exit, no traceback."""
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(prog="start.py", description=__doc__.splitlines()[0])
     ap.add_argument("--windows", type=int, default=7, metavar="DAYS", help="days of history to export (7, the fastest)")
@@ -51,36 +57,72 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
+# ---- stage 1, system Python: the virtual environment ----
+
+def venv_ok() -> bool:
+    """A half-made or old .venv (no pip, Python below 3.11, base Python gone) is rebuilt, not reused."""
+    if not VENV_PY.exists():
+        return False
+    probe = subprocess.run([str(VENV_PY), "-c", "import sys, pip; sys.exit(sys.version_info < (3, 11))"],
+                           capture_output=True)
+    return probe.returncode == 0
+
+
 def setup_venv() -> None:
     """Make .venv and install requirements.txt, again only when requirements.txt changes."""
-    if not VENV_PY.exists():
+    if not venv_ok():
         print("Creating .venv ...", flush=True)
-        subprocess.run([sys.executable, "-m", "venv", str(VENV)], check=True)
+        if subprocess.run([sys.executable, "-m", "venv", "--clear", str(VENV)]).returncode or not venv_ok():
+            hint = " On Debian or Ubuntu, install python3-venv first." if sys.platform.startswith("linux") else ""
+            raise Stop(f"Could not create .venv with this Python (see above).{hint}")
     want = hashlib.sha256(REQS.read_bytes()).hexdigest()
     if STAMP.exists() and STAMP.read_text(encoding="utf-8").strip() == want:
         return
     print("Installing packages (a few minutes the first time) ...", flush=True)
-    subprocess.run([str(VENV_PY), "-m", "pip", "install", "-q", "--disable-pip-version-check", "-r", str(REQS)],
-                   check=True, cwd=ROOT)
+    if subprocess.run([str(VENV_PY), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(REQS)],
+                      cwd=ROOT).returncode:
+        raise Stop("pip could not install the packages (see above). Check the network or proxy, then run this again.")
     STAMP.write_text(want, encoding="utf-8")
 
 
+# ---- stage 2, .venv Python: sign in, export, open ----
+
+def env_lines() -> list[str]:
+    if not DOTENV.exists():
+        return []
+    try:
+        return DOTENV.read_text(encoding="utf-8-sig").splitlines()
+    except UnicodeDecodeError:
+        raise Stop(f"{DOTENV} is not UTF-8. Save it as UTF-8, or delete it to be asked again.") from None
+
+
+def env_key(line: str) -> str:
+    return line.strip().removeprefix("export ").partition("=")[0].strip()
+
+
 def read_env() -> dict[str, str]:
-    env = {}
-    if DOTENV.exists():
-        for raw in DOTENV.read_text(encoding="utf-8-sig").splitlines():
-            key, sep, value = raw.strip().removeprefix("export ").partition("=")
-            if sep and not key.strip().startswith("#"):
-                env[key.strip()] = value.strip().strip("'\"")
-    return {**env, **{k: v for k, v in os.environ.items() if k.startswith("SNOWFLAKE_") and v}}
+    """The same reading as the export: the environment first, then the first line of .env per key."""
+    env = {k: v for k, v in os.environ.items() if k.startswith("SNOWFLAKE_") and v}
+    for raw in env_lines():
+        key, sep, value = raw.strip().removeprefix("export ").partition("=")
+        key = key.strip()
+        if sep and not key.startswith("#") and not env.get(key):
+            env[key] = value.strip().strip("'\"")
+    return env
 
 
-def ask_env() -> dict[str, str]:
-    """Ask for the sign-in details .env lacks; never echoes a value back."""
+def clean_account(value: str) -> str:
+    """People paste the URL; the connector wants orgname-account_name or locator.region."""
+    value = re.sub(r"^https?://", "", value.strip(), flags=re.I).split("/")[0]
+    return re.sub(r"\.snowflakecomputing\.com$", "", value, flags=re.I)
+
+
+def ask_env(force: bool = False) -> dict[str, str]:
+    """Ask for the sign-in details (all of them when force) and save them in .env; never echoes a value."""
     env = read_env()
-    if env.get("SNOWFLAKE_ACCOUNT") and env.get("SNOWFLAKE_USER"):
+    if not force and env.get("SNOWFLAKE_ACCOUNT") and env.get("SNOWFLAKE_USER"):
         return env
-    print("\nSign-in details (saved in .env in this folder; edit it any time):")
+    print(f"\nSign-in details (saved in {DOTENV}):")
     new = {}
     for key, label, required in PROMPTS:
         while True:
@@ -90,24 +132,63 @@ def ask_env() -> dict[str, str]:
                 continue
             if value or not required:
                 break
+        if key == "SNOWFLAKE_ACCOUNT":
+            value = clean_account(value)
+        if key == "SNOWFLAKE_PRIVATE_KEY_FILE" and value:
+            value = str(Path(value).expanduser().resolve())
         if value:
-            new[key] = str(Path(value).expanduser().resolve()) if key == "SNOWFLAKE_PRIVATE_KEY_FILE" else value
-    lines = DOTENV.read_text(encoding="utf-8-sig").splitlines() if DOTENV.exists() else []
-    lines = [x for x in lines if x.partition("=")[0].strip() not in new]
+            new[key] = value
+    # Every asked key is replaced, so a blank answer drops an old or placeholder line too.
+    asked = {k for k, _, _ in PROMPTS}
+    lines = [x for x in env_lines() if env_key(x) not in asked]
     DOTENV.write_text("\n".join(lines + [f"{k}={v}" for k, v in new.items()]) + "\n", encoding="utf-8")
-    return {**env, **new}
+    for k in asked:
+        os.environ.pop(k, None)
+    return read_env()
 
 
-def key_passphrase(env: dict[str, str]) -> dict[str, str]:
-    """An encrypted key needs its passphrase: asked each run and kept out of .env."""
+def key_passphrase(env: dict[str, str]) -> None:
+    """An encrypted key needs its passphrase: asked each run, kept in memory for the export and Refresh."""
     key = env.get("SNOWFLAKE_PRIVATE_KEY_FILE")
     if not key or env.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"):
-        return {}
+        return
     try:
         encrypted = "ENCRYPTED" in Path(key).read_text(encoding="utf-8", errors="ignore")[:200]
     except OSError:
-        return {}
-    return {"SNOWFLAKE_PRIVATE_KEY_PASSPHRASE": getpass.getpass("  Passphrase for the private key: ")} if encrypted else {}
+        return
+    if encrypted:
+        os.environ["SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"] = getpass.getpass("  Passphrase for the private key: ")
+
+
+def check_sign_in(env: dict[str, str]) -> str | None:
+    """None when the sign-in works and a warehouse is in use, else what went wrong and how to fix it."""
+    from tools import export_results as ex
+    try:
+        conn = ex.connect({**env, **{k: v for k, v in os.environ.items() if k.startswith("SNOWFLAKE_") and v}})
+    except Exception as exc:  # noqa: BLE001 - any sign-in failure is reported the same way
+        return ex.explain_connection_error(exc)
+    try:
+        role, warehouse = conn.cursor().execute("SELECT CURRENT_ROLE(), CURRENT_WAREHOUSE()").fetchone()
+    finally:
+        conn.close()
+    if not warehouse:
+        return "No warehouse: the user has no default warehouse, or the role can't use the one given. Give a warehouse."
+    print(f"Signed in: role {role}, warehouse {warehouse}.", flush=True)
+    return None
+
+
+def db_in_use() -> bool:
+    """On Windows the load cannot replace the database while an app still has it open."""
+    from app.core import datasource
+    path = datasource.db_path()
+    if not path.exists():
+        return False
+    import duckdb
+    try:
+        duckdb.connect(str(path)).close()
+    except Exception:  # noqa: BLE001 - a lock shows up as different error types by version
+        return True
+    return False
 
 
 def has_data() -> bool:
@@ -116,61 +197,85 @@ def has_data() -> bool:
 
 
 def free_port(start: int) -> int:
+    """Binding is instant and also refuses ports Windows has reserved, which look free to a connect."""
     for port in range(start, start + 50):
         with socket.socket() as s:
-            if s.connect_ex(("127.0.0.1", port)):
-                return port
-    raise SystemExit(f"no free port from {start} to {start + 49}; pass --port")
+            try:
+                s.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise Stop(f"No free port from {start} to {start + 49}; pass --port.")
 
 
 def open_when_up(port: int) -> None:
-    for _ in range(120):
+    for _ in range(240):
         with socket.socket() as s:
+            s.settimeout(0.5)
             if not s.connect_ex(("127.0.0.1", port)):
                 webbrowser.open(f"http://127.0.0.1:{port}/")
                 return
         time.sleep(0.5)
 
 
+def export(args: argparse.Namespace) -> int:
+    if db_in_use():
+        raise Stop("The app is still open on the loaded data. Stop it first (Ctrl+C in its terminal), "
+                   "or use Refresh in the app's top bar.")
+    env = ask_env()
+    while True:
+        key_passphrase(env)
+        if not env.get("SNOWFLAKE_PRIVATE_KEY_FILE") and not env.get("SNOWFLAKE_PASSWORD"):
+            print("\nBrowser sign-in: a browser tab opens to sign in. The checks then run one at a time.", flush=True)
+        problem = check_sign_in(env)
+        if not problem:
+            break
+        print(f"\nSign-in failed: {problem}", file=sys.stderr)
+        if input("Enter the sign-in details again? [Y/n]: ").strip().lower() in ("n", "no"):
+            raise Stop(f"Edit {DOTENV}, or delete it to be asked again, then run python start.py.")
+        env = ask_env(force=True)
+    cmd = [sys.executable, "tools/first_run.py", "--windows", str(args.windows)]
+    rc = subprocess.run(cmd, cwd=ROOT, env={**os.environ, "AUDIT_FROM_START": "1"}).returncode
+    if rc:
+        old = " The data loaded before is still there: python start.py opens it." if has_data() else ""
+        print(f"\nThe export did not finish; the lines above say why. The sign-in details are in {DOTENV}. "
+              f"Fix it and run python start.py --refresh.{old}", file=sys.stderr)
+    return rc
+
+
 def run_inside(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(ROOT))
     if args.refresh or not has_data():
-        env = ask_env()
-        extra = key_passphrase(env)
-        browser = not env.get("SNOWFLAKE_PRIVATE_KEY_FILE") and not env.get("SNOWFLAKE_PASSWORD")
-        if browser:
-            print("\nBrowser sign-in: one session, so checks run one at a time.")
-        cmd = [sys.executable, "tools/first_run.py", "--windows", str(args.windows)] + (["--workers", "1"] if browser else [])
-        rc = subprocess.run(cmd, cwd=ROOT, env={**os.environ, **extra}).returncode
+        rc = export(args)
         if rc:
-            print("\nThe export did not finish; the lines above say why. Fix it and run python start.py --refresh.",
-                  file=sys.stderr)
             return rc
+    else:
+        key_passphrase(read_env())  # so Refresh in the app can sign in with an encrypted key
     port = args.port or int(os.environ.get("AUDIT_API_PORT") or 0) or free_port(8000)
     print(f"\nThe app is at http://127.0.0.1:{port}/  (Ctrl+C stops it)", flush=True)
     if not args.no_browser:
         threading.Thread(target=open_when_up, args=(port,), daemon=True).start()
-    try:
-        return subprocess.run([sys.executable, "-m", "app.api"], cwd=ROOT,
-                              env={**os.environ, "AUDIT_API_PORT": str(port)}).returncode
-    except KeyboardInterrupt:
-        return 0
+    return subprocess.run([sys.executable, "-m", "app.api"], cwd=ROOT,
+                          env={**os.environ, "AUDIT_API_PORT": str(port)}).returncode
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     args = parse_args(argv)
-    if args._in_venv:
-        return run_inside(args)
-    if sys.version_info < (3, 11):
-        print(f"Python 3.11 or newer is needed; this is {sys.version.split()[0]}. "
-              "On Windows: py -3.12 start.py", file=sys.stderr)
-        return 2
-    setup_venv()
     try:
+        if args._in_venv:
+            return run_inside(args)
+        if sys.version_info < (3, 11):
+            raise Stop(f"Python 3.11 or newer is needed; this is {sys.version.split()[0]}. "
+                       "Windows: py -3.12 start.py; macOS and Linux: python3.12 start.py")
+        setup_venv()
         return subprocess.run([str(VENV_PY), str(Path(__file__).resolve()), INNER, *argv], cwd=ROOT).returncode
-    except KeyboardInterrupt:
-        return 0
+    except Stop as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        return 2
+    except (KeyboardInterrupt, EOFError):
+        print("\nStopped.", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

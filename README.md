@@ -34,10 +34,12 @@ yourself") let you check the figures on your own account.
    python start.py
    ```
 
-   If `python` is an older version on Windows, run `py -3.12 start.py`.
+   If `python` is an older version on Windows, run `py -3.12 start.py`; on macOS and Linux, run
+   `python3 start.py`.
 4. Answer the questions: account (`orgname-account_name`), user, role and warehouse. Leave the role
    and warehouse blank to use your defaults. For the private key, give the path to your `.p8` file
-   (see "Make the key pair"), or leave it blank to sign in through the browser.
+   (see "Make the key pair"), or leave it blank to sign in through the browser. It checks the
+   sign-in first, in seconds, and asks again if it fails.
 5. Wait for the export. It takes 7 days of history, the fastest setting; a busy account takes
    longer, and the terminal shows one line per check as it goes. The app then opens in your browser.
 
@@ -58,7 +60,7 @@ below are the same steps by hand, and what each grant opens.
   (`--workers N` on `tools/export_results.py`; `--workers 1` runs them one by one).
 - **A way to sign in.** A key pair (`SNOWFLAKE_PRIVATE_KEY_FILE`) is best; see "Make the key pair".
   `SNOWFLAKE_PASSWORD` works too. With neither set, the export signs in through the browser, which
-  can ask once per session, so add `--workers 1` or use the key pair.
+  can ask once per session, so the export then runs one check at a time.
 
 At the start the export probes every view and SHOW command the checks use. A check whose source the
 role cannot read is not run and reads "the role can't see it" in the app, never as clean. A check
@@ -327,7 +329,7 @@ steps by hand: `python tools/export_results.py --out <folder> [options]`, then
 | `--credit-price`, `--ai-credit-price`, `--storage-price` | Prices in USD (see "Prices"). |
 | `--max-rows N` | Rows kept per check, worst first (50,000). |
 | `--statement-timeout SECONDS` | Time limit per statement (900). |
-| `--workers N` | Checks run at once, each on its own session (4). |
+| `--workers N` | Checks run at once, each on its own session (4, or 1 with browser sign-in). |
 | `--only ID ...` | Only these checks. |
 | `--mask KINDS`, `--mask-salt TEXT` | Replace names with tokens (see "Masking names"). |
 | `--use-fallbacks` | Run the INFORMATION_SCHEMA versions even when ACCOUNT_USAGE is readable. |

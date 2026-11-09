@@ -740,6 +740,16 @@ def normalise(table: pa.Table, renames: dict[str, str] | None = None) -> pa.Tabl
     return pa.Table.from_arrays(cols, names=names)
 
 
+def default_workers() -> int:
+    """1 with browser sign-in, where each extra session would ask the user to sign in again."""
+    try:
+        env = _load_env()
+    except (ExportConfigError, OSError, UnicodeDecodeError):
+        return DEFAULT_WORKERS
+    browser = not env.get("SNOWFLAKE_PRIVATE_KEY_FILE") and not env.get("SNOWFLAKE_PASSWORD")         and env.get("SNOWFLAKE_AUTHENTICATOR", "externalbrowser").lower() == "externalbrowser"
+    return 1 if browser else DEFAULT_WORKERS
+
+
 def explain_connection_error(exc: Exception) -> str:
     """One line for a sign-in or session failure: what Snowflake said (with its code), then the fix."""
     text = " ".join(str(exc).split())
@@ -1475,8 +1485,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--statement-timeout", type=int, default=DEFAULT_STATEMENT_TIMEOUT_S, metavar="SECONDS",
                    help="cancel any one statement after this long (default %(default)s)")
     p.add_argument("--only", nargs="+", help="run just these check ids")
-    p.add_argument("--workers", type=int, default=DEFAULT_WORKERS,
-                   help="checks run at once, each on its own session (default %(default)s; 1 runs them one by one)")
+    p.add_argument("--workers", type=int, default=None,
+                   help=f"checks run at once, each on its own session (default {DEFAULT_WORKERS}, or 1 with browser sign-in; 1 runs them one by one)")
     p.add_argument("--mask", metavar="KINDS", default=None,
                    help="mask these kinds of names, comma-separated: " + ", ".join(app_masking.MASK_KINDS)
                    + " or all (default: privacy.mask_fields in config/settings.yml, which Refresh uses)")
@@ -1543,7 +1553,7 @@ def main(argv: list[str] | None = None) -> int:
                               credit_price=args.credit_price, storage_price=args.storage_price,
                               ai_credit_price=args.ai_credit_price, use_fallbacks=args.use_fallbacks,
                               only=args.only, mask=mask_kinds(args.mask), mask_salt=args.mask_salt,
-                              workers=max(int(args.workers), 1), include_today=include_today_setting(), progress=_print_progress)
+                              workers=max(int(args.workers or default_workers()), 1), include_today=include_today_setting(), progress=_print_progress)
     except ExportConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

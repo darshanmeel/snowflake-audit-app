@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -193,7 +194,8 @@ def main(
     rc = _stream(export_argv(out_dir, args), run)
     if rc != 0:
         print(f"\nfirst_run.py: step 1 (tools/export_results.py) failed, exit {rc}.", file=sys.stderr)
-        print(_advise_export_failure(rc), file=sys.stderr)
+        if not os.environ.get("AUDIT_FROM_START"):  # start.py gives its own advice about .env
+            print(_advise_export_failure(rc), file=sys.stderr)
         return rc
 
     print(
@@ -206,6 +208,8 @@ def main(
         print(_advise_load_failure(rc, out_dir), file=sys.stderr)
         return rc
 
+    if os.environ.get("AUDIT_FROM_START"):
+        return 0  # start.py opens the app itself, maybe on another port
     print("\nDone -- open the app:\n", flush=True)
     print(APP_CMD, flush=True)
     print(f"then open {APP_URL} in a browser", flush=True)
