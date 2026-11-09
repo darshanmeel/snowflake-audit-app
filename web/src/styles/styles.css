@@ -1129,6 +1129,8 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
 .chart-card-v2-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px;
 }
+/* A long object name in a title would push the card past a phone screen: let it shrink and break. */
+.chart-card-v2-titles { min-width: 0; overflow-wrap: anywhere; }
 .chart-card-v2-title { font-size: 16px; font-weight: 600; color: var(--text); line-height: 1.35; }
 .chart-card-v2-subtitle { font-size: 13px; color: var(--text-3); margin-top: 3px; line-height: 1.4; }
 .chart-card-v2-actions { display: flex; align-items: center; gap: 8px; flex: none; }
