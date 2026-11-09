@@ -26,10 +26,10 @@ yourself") let you check the figures on your own account.
 
 **In short:** unzip, open a terminal in the folder and run `python start.py` (Python 3.11 or newer).
 It makes `.venv`, installs the packages, asks for the account, user, role, warehouse and private
-key file (leave the key blank to sign in through the browser), runs the export, loads it and opens
-the app in the browser. Any role works: what it can read is collected, and the rest reads "the role
+key file (leave the key blank to sign in through the browser), runs the export (7 days, the fastest), loads it
+and opens the app in the browser. Any role works: what it can read is collected, and the rest reads "the role
 can't see it". Later runs open the loaded data; `python start.py --refresh` exports again, and
-`--windows 90` takes 90 days. Start on Overview, then Fix these first; How it works (left rail)
+`--windows 30` or `--windows 90` takes more days (the 30- and 90-day views show only what was exported). Start on Overview, then Fix these first; How it works (left rail)
 explains any number. The sections below are the same steps by hand.
 
 ## What you need

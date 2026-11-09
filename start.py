@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One command from an unzipped folder to the app in the browser.
 
-    python start.py                 set up, sign in, export 30 days, load, open the app
+    python start.py                 set up, sign in, export 7 days, load, open the app
     python start.py --windows 90    the same with 90 days
     python start.py --refresh       export again even when data is already loaded
 
@@ -43,7 +43,7 @@ PROMPTS = (
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(prog="start.py", description=__doc__.splitlines()[0])
-    ap.add_argument("--windows", type=int, default=30, metavar="DAYS", help="days of history to export (30)")
+    ap.add_argument("--windows", type=int, default=7, metavar="DAYS", help="days of history to export (7, the fastest)")
     ap.add_argument("--refresh", action="store_true", help="export again even when data is already loaded")
     ap.add_argument("--port", type=int, default=None, help="app port (8000, or the next free one)")
     ap.add_argument("--no-browser", action="store_true", help="don't open the browser")
