@@ -15,7 +15,7 @@ its figures recomputed from the source views. Each still says "needs confirmatio
 confidence note until it has run on a busy account. The test queries ("Check the numbers
 yourself") let you check the figures on your own account.
 
-**Contents:** [What you need](#what-you-need) · [Make the key pair](#make-the-key-pair) ·
+**Contents:** [Quick start](#quick-start) · [What you need](#what-you-need) · [Make the key pair](#make-the-key-pair) ·
 [Roles and privileges](#roles-and-privileges) · [Set up once](#set-up-once) · [Run](#run) ·
 [Run inside Snowflake](#run-inside-snowflake) ·
 [Update to a new version](#update-to-a-new-version) · [What the app shows](#what-the-app-shows) ·
@@ -24,13 +24,31 @@ yourself") let you check the figures on your own account.
 [Masking names](#masking-names) · [If something fails](#if-something-fails) ·
 [Repository](#repository) · [Tests](#tests)
 
-**In short:** unzip, open a terminal in the folder and run `python start.py` (Python 3.11 or newer).
-It makes `.venv`, installs the packages, asks for the account, user, role, warehouse and private
-key file (leave the key blank to sign in through the browser), runs the export (7 days, the fastest), loads it
-and opens the app in the browser. Any role works: what it can read is collected, and the rest reads "the role
-can't see it". Later runs open the loaded data; `python start.py --refresh` exports again, and
-`--windows 30` or `--windows 90` takes more days (the 30- and 90-day views show only what was exported). Start on Overview, then Fix these first; How it works (left rail)
-explains any number. The sections below are the same steps by hand.
+## Quick start
+
+1. Install Python 3.11 or newer from <https://www.python.org/downloads/>.
+2. Download the ZIP from GitHub (the green **Code** button, then **Download ZIP**) and unzip it.
+3. Open a terminal in the unzipped folder (the one with `README.md`) and run:
+
+   ```
+   python start.py
+   ```
+
+   If `python` is an older version on Windows, run `py -3.12 start.py`.
+4. Answer the questions: account (`orgname-account_name`), user, role and warehouse. Leave the role
+   and warehouse blank to use your defaults. For the private key, give the path to your `.p8` file
+   (see "Make the key pair"), or leave it blank to sign in through the browser.
+5. Wait for the export. It takes 7 days of history, the fastest setting; a busy account takes
+   longer, and the terminal shows one line per check as it goes. The app then opens in your browser.
+
+It runs only `SELECT`, `WITH` and `SHOW`, so nothing in Snowflake changes, and the results stay on
+your machine. Any role works: whatever it can't read shows as "the role can't see it", never as
+zero. To get fresh data later, run `python start.py --refresh`; add `--windows 30` or
+`--windows 90` for more days (the 30- and 90-day views show only what was exported). The answers
+are saved in `.env` in the folder; edit or delete it to change them.
+
+Start on Overview, then Fix these first; How it works (left rail) explains any number. The sections
+below are the same steps by hand, and what each grant opens.
 
 ## What you need
 
