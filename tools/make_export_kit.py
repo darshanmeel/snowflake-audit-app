@@ -121,7 +121,7 @@ def roles_section() -> str:
 
 def grants_sql() -> str:
     """The grant script from the README's "Roles and privileges" section, so the two never differ."""
-    section = roles_section()
+    section = roles_section().split("### The grant script", 1)[1]
     return section.split("```sql", 1)[1].split("```", 1)[0].lstrip()
 
 

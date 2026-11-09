@@ -100,6 +100,39 @@ Then set `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` in `.env`.
 The export signs in with one role, and that role decides what you see. Everything below is
 read-only: nothing lets the role change data, warehouses or settings.
 
+### Who sets it up, and who runs it
+
+Any role works: the export reads what that role can see. For the full picture, an admin makes one
+read-only role for the audit (here `AUDIT_ROLE`), and whoever runs the audit uses it.
+
+| Step | Who can do it |
+|---|---|
+| Create the role and, if wanted, a service user | `USERADMIN`, or any role with `CREATE ROLE` and `CREATE USER` |
+| Grant the role to users | `SECURITYADMIN`, or the role's owner |
+| Grant `IMPORTED PRIVILEGES` on the `SNOWFLAKE` database, the `SNOWFLAKE.*_VIEWER` roles and the account-level grants | `ACCOUNTADMIN` |
+| Create the small warehouse, or grant `USAGE` on one | `SYSADMIN`, or the warehouse's owner |
+
+The simplest is one `ACCOUNTADMIN` running the grant script below. Then the audit runs as one of
+these:
+
+- **A person, signing in through the browser.** Grant the role to them; they sign in with their own user,
+  leave the private key out and use `AUDIT_ROLE` as the role:
+
+  ```sql
+  GRANT ROLE AUDIT_ROLE TO USER <their user>;
+  ```
+
+- **A service user with a key pair**, for runs without a person (the `AUDIT_USER` in the script).
+  The run uses `AUDIT_USER`, `AUDIT_ROLE` and the path to its `.p8` key.
+
+To check the role before a run, in a worksheet as a user who holds it:
+
+```sql
+USE ROLE AUDIT_ROLE;
+USE WAREHOUSE AUDIT_WH;
+SELECT COUNT(*) FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY;  -- an error means a grant is missing
+```
+
 ### The grant script
 
 Run this once as `ACCOUNTADMIN` (or a role that can create roles and grant on the account). The
