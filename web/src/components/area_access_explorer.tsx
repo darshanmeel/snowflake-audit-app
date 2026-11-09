@@ -32,6 +32,49 @@ let startTo = START_TO_M ? decodeURIComponent(START_TO_M[1]) : "";   // used onc
 const START_OPEN_M = /[#&]open=([^&]+)/.exec(window.location.hash);
 let startOpen = START_OPEN_M ? decodeURIComponent(START_OPEN_M[1]) : "";   // a schema box opened by the link, once
 const ADMIN = new Set(["ACCOUNTADMIN", "SECURITYADMIN", "USERADMIN", "SYSADMIN", "ORGADMIN", "GLOBALORGADMIN"]);
+// A person not signed in for this long still holding access is the easiest access to take away.
+const DORMANT_DAYS = 90;
+const SERVICE_TYPES = new Set(["SERVICE", "LEGACY_SERVICE"]);
+
+/** Users with a path who are enabled people, not signed in for DORMANT_DAYS before the as-of day, or never. */
+export function dormantUsers(users: any[], asOf: string | null | undefined): Set<string> {
+  const cut = asOf ? new Date(new Date(`${String(asOf).slice(0, 10)}T00:00:00Z`).getTime() - DORMANT_DAYS * 86400000).toISOString().slice(0, 10) : null;
+  return new Set(users.filter((u) => !u.is_disabled && !SERVICE_TYPES.has(String(u.user_type || "").toUpperCase())
+    && (!u.last_success_login || (cut !== null && String(u.last_success_login).slice(0, 10) < cut))).map((u) => u.name));
+}
+
+/** The roles on every path (not the two ends): taking any one away ends the access. Read from the paths shown. */
+export function cutPoints(paths: string[][]): string[] {
+  if (!paths.length) return [];
+  let on = new Set(paths[0].slice(1, -1));
+  paths.slice(1).forEach((p) => { const mid = new Set(p.slice(1, -1)); on = new Set([...on].filter((r) => mid.has(r))); });
+  return paths[0].slice(1, -1).filter((r) => on.has(r));
+}
+
+/** One line over a picked route: where to cut it, and how many users each cut also touches. */
+function WhereToCut({ paths, count, usersOf, onPick }: {
+  paths: string[][]; count: number; usersOf: Map<string, number>; onPick: (kind: Kind, name: string) => void;
+}) {
+  const cut = cutPoints(paths);
+  const part = count > paths.length ? ` (read from the first ${fmtInt(paths.length)} of ${fmtInt(count)} paths)` : "";
+  if (!cut.length) {
+    return <div className="ax-cut cx-muted">{`Where to cut: no role is on every path, so each of the ${plural(count, "path")} needs its own cut${part}.`}</div>;
+  }
+  return (
+    <div className="ax-cut">
+      <span className="cx-muted">{"Where to cut: every path runs through "}</span>
+      {cut.map((r, i) => (
+        <React.Fragment key={r}>
+          {i > 0 && <span className="cx-muted">{i === cut.length - 1 ? " and " : ", "}</span>}
+          <button type="button" className={`ax-node${ADMIN.has(r) ? " admin" : ""}`} onClick={() => onPick("role", r)}>{r}</button>
+          {r === "PUBLIC" ? <span className="cx-muted">{" (every user holds it: take away what it was granted instead)"}</span>
+            : usersOf.has(r) && <span className="cx-muted">{` (${plural(usersOf.get(r)!, "user")} use it)`}</span>}
+        </React.Fragment>
+      ))}
+      <span className="cx-muted">{`. Taking one away ends this access, for those users too${part}.`}</span>
+    </div>
+  );
+}
 
 /** One path as chips: user › role › role › object; admin roles in red, the last step plain. */
 function PathLine({ path, onPick }: { path: string[]; onPick?: (kind: Kind, name: string) => void }) {
@@ -458,6 +501,8 @@ export function ApAccessExplorer(p: ApPageProps) {
   const roles: any[] = (res && res.roles) || [];
   const holders: any[] = (res && res.holders) || [];
   const users = holders.filter((h) => h.kind === "user");
+  const dormant = dormantUsers(users, p.meta && p.meta.as_of_date);
+  const usersOf = new Map<string, number>(((names && names.roles) || []).map((r: any) => [r.name, numOrZero(r.users)]));
   const adminGrants = grants.filter((g) => g.admin).length;
   const deepest = Math.max(0, ...roles.map((r) => r.depth));
   const objects = new Set(grants.map((g) => g.object)).size;
@@ -559,6 +604,8 @@ export function ApAccessExplorer(p: ApPageProps) {
         base={`${fmtInt(new Set(users.filter((u) => u.cls === "write" || u.cls === "own").map((u) => u.name)).size)} can change or own it`} />
       <IssueTile label="Disabled users with a path" headline={fmtInt(new Set(users.filter((u) => u.is_disabled).map((u) => u.name)).size)} unit=" users"
         status={users.some((u) => u.is_disabled) ? "warn" : "ok"} base="Enabling them again brings this access back" />
+      <IssueTile label="Dormant users with a path" headline={fmtInt(dormant.size)} unit=" users"
+        status={dormant.size ? "warn" : "ok"} base={`People with no sign-in in ${DORMANT_DAYS} days, or never: the easiest access to remove`} />
       <IssueTile label="Roles with a grant" headline={fmtInt(new Set(holders.filter((h) => h.kind === "role").map((h) => h.name)).size)} unit=" roles" status="neutral"
         base={`Directly or through roles they inherit`} />
       <IssueTile label="Through an admin role" headline={fmtInt(new Set(users.filter((u) => u.admin).map((u) => u.name)).size)} unit=" users"
@@ -595,6 +642,7 @@ export function ApAccessExplorer(p: ApPageProps) {
             takeaway={null}>
             {(focusRow || openGroup) && <div className="ax-graph-bar"><button type="button" className="cx-linkbtn" onClick={() => { setFocusRow(null); setPathTo(""); setDrill(null); }}>
               {focusRow ? "← Show the whole graph" : "← All schemas"}</button></div>}
+            {focusRow && <WhereToCut paths={focusRow.paths} count={focusRow.count} usersOf={usersOf} onPick={pick} />}
             <RoleGraph key={focusRow ? focusRow.key : drill || "all"} paths={graphPaths} focus={res.name} users={userNames} objects={graphObjects} onPick={pick} laneName={laneName}
               boxes={box ? box.boxes : undefined} boxEdges={box ? box.edges : undefined} boxLabel={openGroup ? openGroup.title : "Objects, by schema"} onBox={box ? onBox : undefined} />
           </ChartCard>
@@ -618,6 +666,7 @@ export function ApAccessExplorer(p: ApPageProps) {
             onRow={(r) => showRow(holderKey(r), `${r.name} gets ${r.privilege} on ${res.name}`, r)} />
         </ChartCard>
       )}
+      {res && <p className="cx-muted ax-more">{"For what-if, access requests and review sign-off, use Snowflake Access Explorer."}</p>}
     </div>
   );
 }

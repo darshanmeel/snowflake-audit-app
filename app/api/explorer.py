@@ -174,15 +174,34 @@ def _holders_of(g: dict, roles: list[str], mask: bool) -> list:
     return out
 
 
+def _users_per_role(g: dict) -> dict:
+    """{role: users who can use it, directly or through other roles}: who else a cut on that role touches."""
+    below: dict = {}
+
+    def reach(role: str) -> set:
+        if role not in below:
+            below[role] = {role}   # set first, so a loop in the role graph stops here
+            for c in g["children"].get(role, []):
+                below[role] |= reach(c)
+        return below[role]
+    count: dict = {}
+    for held in g["user_roles"].values():
+        for r in set().union(*(reach(r) for r in held)) if held else ():
+            count[r] = count.get(r, 0) + 1
+    return count
+
+
 @router.get("/api/access/names")
 def get_names(account_id: str | None = None) -> dict:
     g = _load(account_id)
     mask = identity.masking_enabled()
     roles = set(g["grants"]) | set(g["children"]) | set(g["parents"]) | {r for v in g["user_roles"].values() for r in v}
+    per_role = _users_per_role(g)
     users = [{"name": _who(u, mask), **info, "roles": len(g["user_roles"].get(u, []))} for u, info in g["users"].items()]
     return {"account_id": g["account_id"], "accounts": g["accounts"],
             "users": sorted(users, key=lambda u: u["name"]),
-            "roles": [{"name": r, "admin": r in ADMIN, "privileges": len(g["grants"].get(r, []))} for r in sorted(roles)],
+            "roles": [{"name": r, "admin": r in ADMIN, "privileges": len(g["grants"].get(r, [])),
+                       "users": per_role.get(r, 0)} for r in sorted(roles)],
             "objects": [{"name": o, "granted_on": k} for o, k in sorted(g["kinds"].items())]}
 
 
