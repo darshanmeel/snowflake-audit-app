@@ -218,6 +218,17 @@ def open_when_up(port: int) -> None:
         time.sleep(0.5)
 
 
+def remove_old_results() -> None:
+    """Keep the newest two results folders, as Refresh does, and drop exports cut off part way."""
+    import shutil
+    from app.api import refresh
+    from app.core import datasource
+    base = datasource.data_dir()
+    refresh._remove_old_results(base, keep=set())  # noqa: SLF001 - the same rule as Refresh
+    for tmp in (base / "results").glob("*.tmp"):
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def export(args: argparse.Namespace) -> int:
     if db_in_use():
         raise Stop("The app is still open on the loaded data. Stop it first (Ctrl+C in its terminal), "
@@ -236,6 +247,8 @@ def export(args: argparse.Namespace) -> int:
         env = ask_env(force=True)
     cmd = [sys.executable, "tools/first_run.py", "--windows", str(args.windows)]
     rc = subprocess.run(cmd, cwd=ROOT, env={**os.environ, "AUDIT_FROM_START": "1"}).returncode
+    if not rc:
+        remove_old_results()
     if rc:
         old = " The data loaded before is still there: python start.py opens it." if has_data() else ""
         print(f"\nThe export did not finish; the lines above say why. The sign-in details are in {DOTENV}. "
@@ -261,6 +274,17 @@ def run_inside(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    rc = run(argv)
+    # A window opened by double-click closes on exit, so an error would flash past unread.
+    if rc not in (0, 130) and os.name == "nt" and INNER not in argv and sys.stdin.isatty():
+        try:
+            input("\nPress Enter to close.")
+        except (KeyboardInterrupt, EOFError):
+            pass
+    return rc
+
+
+def run(argv: list[str]) -> int:
     args = parse_args(argv)
     try:
         if args._in_venv:

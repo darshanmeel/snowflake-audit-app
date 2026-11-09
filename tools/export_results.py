@@ -688,6 +688,8 @@ def connect(env: dict | None = None):
         kwargs["password"] = env["SNOWFLAKE_PASSWORD"]
     else:
         kwargs["authenticator"] = env.get("SNOWFLAKE_AUTHENTICATOR", "externalbrowser")
+        # Reuses one browser sign-in across sessions and runs, where the account allows it (ALLOW_ID_TOKEN).
+        kwargs["client_store_temporary_credential"] = True
     return snowflake.connector.connect(**{k: v for k, v in kwargs.items() if v is not None})
 
 
