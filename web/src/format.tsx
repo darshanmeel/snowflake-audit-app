@@ -104,16 +104,6 @@ export function fmtChange(current: any, previous: any, money = true) {
   return fmtChangePct(((cur - prev) / prev) * 100);
 }
 
-// The same change as a phrase against `what` ("the previous period"): "6.2× vs ...", "up from $30
-// in ...", "none in ..."; null when there is nothing to compare.
-export function fmtChangeVs(current: any, previous: any, what: string) {
-  const t = fmtChange(current, previous);
-  if (t === "-") return null;
-  if (t === "new") return `none in ${what}`;
-  if (t.indexOf("from ") === 0) return `${Number(current) >= Number(previous) ? "up" : "down"} ${t} in ${what}`;
-  return `${t} vs ${what}`;
-}
-
 
 export function fmtHours(value: any, decimals = 1) {
   if (!isNumericValue(value)) return "-";
@@ -175,15 +165,6 @@ export function fmtDayShort(dateStr: any) {
   const d = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return String(dateStr || "");
   return d.toLocaleDateString(LOCALE, { month: "short", day: "numeric", timeZone: "UTC" });
-}
-
-// "21 Sep" -- day before month, no year, for a card with no room for fmtDate's year. UTC-parsed;
-// the input may carry a trailing time, only the leading YYYY-MM-DD is read.
-export function fmtDayMonth(dateStr: any) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr || ""));
-  if (!m) return String(dateStr || "");
-  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${Number(m[3])} ${names[Number(m[2]) - 1] || m[2]}`;
 }
 
 // Adaptive byte size (B/KB/MB/GB/TB): picks the smallest unit that keeps the number readable, so a

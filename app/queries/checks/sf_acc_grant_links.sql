@@ -58,4 +58,5 @@ SELECT 0, __ACCOUNT_ID__, IFF(granted_on IN ('ROLE', 'DATABASE_ROLE') AND privil
        COALESCE(grant_option, FALSE),
        NULL, NULL, NULL, NULL
 FROM g
-ORDER BY 3, 4, 6, 8
+-- Users and role links first: when the export's row cap cuts, it cuts role-to-object grants, not who holds what.
+ORDER BY CASE link_kind WHEN 'user' THEN 0 WHEN 'user_role' THEN 1 WHEN 'role_role' THEN 2 ELSE 3 END, 4, 6, 8

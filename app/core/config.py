@@ -162,8 +162,8 @@ DEFAULT_SETTINGS: dict = {
     "export_tag_keys": None,  # None = every tag
     "include_today": True,
     "include_snowflake_tasks": False,
-    "credit_price_usd": None,
-    "ai_credit_price_usd": None,
+    "credit_price_usd": 3.0,  # the same list prices config/settings.yml ships with
+    "ai_credit_price_usd": 2.0,
     "storage_price_usd_tb_month": None,
     "required_tag_keys": [],
     "env_patterns": {

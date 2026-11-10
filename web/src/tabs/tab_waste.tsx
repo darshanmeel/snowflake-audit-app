@@ -19,7 +19,7 @@ import { DrawerBus } from "../components/drawer";
 import { CellBar, CxTable, LabelBars, NameBars, NameIdText, SevWord } from "../components/cx_b";
 import type { CxBarRow, CxGroup, CxRow } from "../components/cx_b";
 import { IssueTile, fmtShare, pctOf } from "../components/blocks";
-import { buildWasteWorklist, useBelowFloorWaste, useWasteTopRows, overlapNote, wasteTotal, wasteUnitOf } from "../components/waste_total";
+import { buildWasteWorklist, useBelowFloorWaste, useWasteTopRows, overlapNote, wasteMissingReason, wasteTotal, wasteUnitOf } from "../components/waste_total";
 import { pickNum, priceBasisText } from "./tab_overview";
 import { emptyLabelFor, pickLabelColumn, rowLabelOf } from "./tab_area";
 import type { MultiFetchState } from "../components/hooks";
@@ -136,25 +136,6 @@ export function InfoMark() {
   );
 }
 
-export function UnitKpi({ unit, fig, windowDays, ready, spend }: { unit: WasteUnit; fig: WasteFigure; windowDays: number; ready: boolean; spend?: number | null }) {
-  const um = UNIT_META[unit];
-  const value = !ready ? "…" : fig.usd == null ? "-" : fmtMoney(fig.usd, 0);
-  const share = unit !== "month" && fig.usd != null && spend ? fmtShare(pctOf(fig.usd, spend)) : null;
-  const caption = !ready ? null : fig.usd == null
-    ? (fig.ran > 0 ? "flagged, but no figure of this kind in this export" : "not assessed: none of these checks ran")
-    : `${share ? `${share} of spend · ` : ""}${um.period(windowDays)} · ${fmtInt(fig.flagged)} of ${fmtInt(fig.ran)} checks flagged`;
-  return (
-    <div className="card ov-kpi-card">
-      <div className="ov-kpi-label">{um.title}</div>
-      <div className="ov-kpi-value-row">
-        <span className={`ov-kpi-value mono${um.tone && (fig.usd ?? 0) > 0 ? ` tone-${um.tone}` : ""}`}>{value}</span>
-        {unit === "month" && fig.usd != null && ready ? <span className="ov-kpi-unit">/mo</span> : null}
-      </div>
-      {caption && <div className="ov-kpi-caption">{caption}</div>}
-    </div>
-  );
-}
-
 /** "Aug 2026" from a YYYY-MM-DD month start. */
 function monthWord(d: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(d);
@@ -163,7 +144,7 @@ function monthWord(d: string): string {
 
 export function WasteVerdict({ ready, wt, windowDays }: { ready: boolean; wt: WasteTotal; windowDays: number }) {
   if (!ready) return null;
-  if (wt.waste.usd == null) return "Possible waste could not be assessed: none of the waste checks ran (see Coverage & Gaps).";
+  if (wt.waste.usd == null) return `Possible waste could not be assessed: ${wasteMissingReason(wt.waste)} (see Coverage & Gaps).`;
   const bits = [`${fmtMoney(wt.waste.usd, 0)} of possible waste over the last ${windowDays} days`];
   if (wt.saving.usd != null) bits.push(`${fmtMoney(wt.saving.usd, 0)} of possible saving from resizing`);
   if (wt.month.usd != null) bits.push(`${fmtMoney(wt.month.usd, 0)} a month of storage that could be freed`);
@@ -181,7 +162,6 @@ export function WastePricedContent({ filters, dims, goTo, setVerdict, allFinding
   const spendAgg = useFindingAgg("cost_dollarized_by_service_day", filters.window, filters.accountIds, ["usage_date"], "sum", COST_MONEY_COL);
   const spend = spendAgg.phase === "ready" && spendAgg.outcome === "ok_rows"
     ? aggTotal(spendAgg.data) : null;
-  const ready = Object.keys(byId).length > 0 && topState.phase === "ready";
   // Storage to free is per month, so its base is a month of storage spend: the last full calendar month.
   const storeAgg = useFindingAgg("cost_monthly_actuals", filters.window, filters.accountIds, ["month_start", "billing_origin_product", "partial_reason"], "sum", "net_list_cost_usd");
   const storeMonth = React.useMemo(() => {
@@ -190,6 +170,8 @@ export function WastePricedContent({ filters, dims, goTo, setVerdict, allFinding
       .sort((a: Row, b: Row) => String(b.key[0]).localeCompare(String(a.key[0])))[0];
     return full ? { usd: numOrZero(full.value) * (1 - numOrZero(storeAgg.data.discount_pct)), month: String(full.key[0]).slice(0, 10) } : null;
   }, [storeAgg]);
+  // The tiles' lines depend on spend too: "…" until it settles, never an interim line.
+  const ready = Object.keys(byId).length > 0 && topState.phase === "ready" && spendAgg.phase !== "loading" && storeAgg.phase !== "loading";
 
   const sentence = ready ? WasteVerdict({ ready, wt, windowDays: filters.window }) : null;
   React.useEffect(() => { if (setVerdict) setVerdict(sentence); }, [sentence]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -561,7 +543,7 @@ export function WasteMethodContent({ setVerdict, goTo, filters, allFindingsIndex
       <PatternCard title="The floor, and what is not counted" sub={floor && floor.min != null ? `A flagged row is priced only when it is worth at least ${fmtMoney(floor.min, 0)}; under that it stays flagged, not priced` : "A flagged row under the materiality floor stays flagged, not priced"}>
         <div className="cx-fgrid" role="list" aria-label="The floor and what is not counted">
           {cell("Floor", floor && floor.min != null ? fmtMoney(floor.min, 0) : null, floorDays ? `per ${fmtInt(floorDays)} days` : null, floor && floor.label ? String(floor.label) : null, ready ? "No floor reported." : "…")}
-          {cell("Rows under the floor", wt.belowFloorUsd != null ? fmtInt(wt.belowFloorRows) : null, "rows", wt.belowFloorUsd != null ? `${fmtMoney(wt.belowFloorUsd, 0)} flagged, not priced.` : null, "…")}
+          {cell("Rows under the floor", wt.belowFloorUsd != null ? fmtInt(wt.belowFloorRows) : null, "rows", wt.belowFloorUsd != null ? `${fmtMoney(wt.belowFloorUsd, 0)} flagged, not priced.` : null, wt.belowFloorPending ? "…" : "no waste check ran")}
           {cell("Checks with no $", ready ? `${fmtInt(noUsdN)} of ${fmtInt(worklist.length)}` : null, "checks", `Counted as checks; ${fmtInt(ranNoUsd)} flagged.`, "…")}
           {cell("Did not run", ready ? `${fmtInt(wt.notRun.length)} of ${fmtInt(worklist.length)}` : null, "checks", 'Would read "–" and stay out of every total.', "…")}
           {cell("Effective $ per credit", price != null ? fmtMoney(price, 2) : null, "per credit", priceBasisText(meta || null) ? `${priceBasisText(meta || null)}.` : null, "No credit price in this export.")}

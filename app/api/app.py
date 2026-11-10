@@ -159,6 +159,10 @@ async def _cache_read_only(request: Request, call_next):
     if response.status_code != 200:
         return response
     body = b"".join([chunk async for chunk in response.body_iterator])
+    # A read error may be passing (a lock, the memory limit): serve it, but let the next visit try again.
+    if b'"outcome":"error"' in body or b'"outcome": "error"' in body:
+        return Response(body, status_code=200, headers={
+            k: v for k, v in response.headers.items() if k.lower() != "content-length"})
     # Bounded by bytes, not entries: a few large row pages must not fill a small machine's memory.
     if len(body) > cap:  # one oversized page is served, not kept
         return Response(body, status_code=200, headers={

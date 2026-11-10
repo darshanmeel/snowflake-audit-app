@@ -160,9 +160,6 @@ function Note({ children }: { children?: React.ReactNode }) { return <div classN
 
 const opener = (p: ApPageProps) => (id: string) => () => p.goTo({ tab: p.area, subtab: p.subtab, focusQueryId: id });
 
-/** Pages that draw their own tiles mark themselves, so the shell can skip its generic ones. */
-export type PlPage = ((p: ApPageProps) => React.JSX.Element) & { ownsTiles?: boolean };
-
 // ═══════════════════════ Tasks & pipelines ═══════════════════════
 
 const TASK_CAUSE: Record<string, string> = {
@@ -181,21 +178,6 @@ export const computeWord = (r: Row) => {
   if (!v) return "(no compute)";
   return String(v).toUpperCase() === "SERVERLESS" ? "Serverless" : (warehouseNameId(r, String(v)) || String(v));
 };
-
-/** Failed runs split by one key; a missing key is the hatched unknown part. */
-export function failedSplit(rows: Row[], keyOf: (r: Row) => string | null, aria: string) {
-  const m = new Map<string, number>();
-  let none = 0;
-  rows.forEach((r) => {
-    const v = numOrZero(r.failed_runs);
-    if (v <= 0) return;
-    const k = keyOf(r);
-    if (k) m.set(k, (m.get(k) || 0) + v); else none += v;
-  });
-  const segs = [...m.entries()].map(([label, value]) => ({ key: label, label, value }));
-  if (none > 0) segs.push({ key: "__none", label: "(no error code)", value: none, unknown: true } as any);
-  return segs.length ? <StackedShareBar segments={segs} pareto valueFmt={(v) => `${fmtInt(v)} runs`} ariaLabel={aria} /> : null;
-}
 
 /** Failed runs ranked by one key; a missing key counts under `none`. */
 function failedRanked(rows: Row[], keyOf: (r: Row) => string | null, none: string): CxRankItem[] {

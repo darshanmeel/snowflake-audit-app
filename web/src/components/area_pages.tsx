@@ -6,14 +6,13 @@
 // One chart slot: loads one check's rows, then draws build(rows, ctx) or says why it can't.
 // build returns a node, or null to hide the slot (fewer than two categories).
 import React from "react";
-import { fmtDayShort, fmtGb, fmtInt, fmtMoney } from "../format";
-import { numOrZero, taskName, useFindingData } from "./hooks";
-import type { DimMaps } from "./hooks";
+import { fmtInt } from "../format";
+import { numOrZero, useFindingData } from "./hooks";
 import { ChartCard } from "./primitives";
-import { Columns, RankedBars } from "./charts_more";
+import { RankedBars } from "./charts_more";
 import { notAssessedText } from "./scope";
 import { partialBarKeys, windowShortLabel } from "./overview_tile";
-import { rowLabelOf, withoutTotalRows } from "../tabs/tab_area";
+import { withoutTotalRows } from "../tabs/tab_area";
 import type { Dims, FetchState, Filters, Finding, GoToFn, Meta, Row } from "../types";
 import { ApCostBudgets, ApCostByService, ApCostChargeback, ApCostContract, ApCostWho } from "./ap_cost";
 import { ApCostBeforeAfter } from "./cost_before_after";
@@ -65,7 +64,6 @@ export interface ApChartOpts {
   ratio?: boolean;
   aria: string;
 }
-type ApLabelFn = (r: Row, dims: Dims) => string;
 type ApValueFn = (r: Row) => any;
 
 export function ApPanel({ id, title, subtitle, area, subtab, findings, filters, dims, meta, goTo, build, more }: ApPanelProps) {
@@ -108,13 +106,6 @@ export function ApRow({ children }: { children?: React.ReactNode }) {
   return <div className="cj-charts-2">{children}</div>;
 }
 
-export function apWarehouse(r: Row, dims: Dims): string {
-  return rowLabelOf(r, r.warehouse_name ? "warehouse_name" : "warehouse_id", dims) || "(no warehouse)";
-}
-export function apTask(r: Row, dims: Dims): string {
-  const name = taskName(dims as DimMaps, r.task_full_name || r.task_name);
-  return r.task_id ? `${name} (${r.task_id})` : name;
-}
 export function apDay(v: any): string { return String(v).slice(0, 10); }
 
 // Sum of value(r) and of whole(r) per label(r), as RankedBars items; zero parts are dropped.
@@ -137,46 +128,7 @@ export function apBars(items: { name: string; value: number; whole?: number }[],
   return <RankedBars items={items} n={8} valueFmt={o.fmt} unitLabel={o.unit} note={o.note} ariaLabel={o.aria} ratio={o.fmt === apPct || !!o.ratio} />;
 }
 
-// Daily columns of one or more count series; hidden below two days.
-export function apDaily(rows: Row[], ctx: ApCtx, dayCol: string, seriesOf: (r: Row) => string, valueOf: (r: Row) => number, o: ApChartOpts) {
-  const days = [...new Set(rows.map((r) => apDay(r[dayCol])))].sort();
-  if (days.length < 2) return null;
-  const names = [...new Set(rows.map(seriesOf))];
-  const series = names.map((name) => ({
-    name,
-    values: days.map((d) => rows.filter((r) => apDay(r[dayCol]) === d && seriesOf(r) === name).reduce((s, r) => s + valueOf(r), 0)),
-  }));
-  const partial = ctx.partial(days);
-  return (
-    <Columns
-      days={days} series={series} partialDays={partial} valueFmt={o.fmt} unitLabel={o.unit} ariaLabel={o.aria}
-      note={partial.length ? `The faded bar is today (${fmtDayShort(partial[0])}): partial.` : o.note}
-    />
-  );
-}
-
-export const apMin = (v: number) => `${fmtInt(Math.round(v))} min`;
-export const apGb = (v: number) => fmtGb(v, v >= 100 ? 0 : 1);
-export const apGbBytes = (v: number) => fmtGb(v, v >= 100 ? 0 : 1, true);
 export const apPct = (v: number) => `${Number(v).toFixed(v >= 10 ? 0 : 1)}%`;
-export const apUsd = (v: number) => fmtMoney(v, 0);
-export const apSecs = (v: number) => (v >= 120 ? `${(v / 60).toFixed(1)} min` : `${Math.round(v)} s`);
-export const apCount = (v: number) => fmtInt(Math.round(v));
-
-// A bar chart of a check's rows by one label and one column.
-export function apBarPanel(props: ApPageProps, id: string, title: string, subtitle: string, label: ApLabelFn, value: ApValueFn, whole: ApValueFn | null, o: ApChartOpts) {
-  return (
-    <ApPanel {...props} id={id} title={title} subtitle={subtitle}
-      build={(rows, ctx) => apBars(apItems(rows, (r) => label(r, ctx.dims), value, whole), o)} />
-  );
-}
-
-// ---------------------------------------------------------------------------------------------
-// Queries
-// ---------------------------------------------------------------------------------------------
-// A statement type in plain words: MERGE, CREATE TABLE AS SELECT, SHOW.
-export function apStatement(r: Row): string { return String(r.statement_type || "(unknown)").replace(/_/g, " "); }
-export const apCredits = (v: number) => `${v >= 10 ? fmtInt(Math.round(v)) : Number(v).toFixed(v >= 1 ? 1 : 3)} credits`;
 
 export const AREA_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) => React.JSX.Element>> = {
   // Warehouses and Queries draw their whole page in area_compute.tsx.

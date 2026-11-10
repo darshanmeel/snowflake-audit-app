@@ -630,7 +630,10 @@ def list_findings(*args, **kwargs) -> list[FindingRow]:
     if key not in _LIST_CACHE:
         if len(_LIST_CACHE) > 64:
             _LIST_CACHE.clear()
-        _LIST_CACHE[key] = _list_findings_uncached(*args, **kwargs)
+        rows = _list_findings_uncached(*args, **kwargs)
+        if any(r.outcome == OUTCOME_ERROR for r in rows):
+            return rows  # a read error may be passing; don't keep it
+        _LIST_CACHE[key] = rows
     return copy.deepcopy(_LIST_CACHE[key])
 
 

@@ -114,13 +114,6 @@ export const CV_GROUP_NOTE: Record<string, string> = {
   Functions: "Read one value from Snowflake itself.",
 };
 
-// The last segment of the source, in plain words: never a fabricated description.
-export function cvSourceLabel(key: string) {
-  const k = String(key).replace(/\(\)$/, "").replace(/^SHOW /i, "");
-  const last = k.split(".").pop()!.replace(/_/g, " ").toLowerCase();
-  return last.charAt(0).toUpperCase() + last.slice(1);
-}
-
 // "ok" with 0 rows is not a verified pass: derive "empty" so a 0-row source never reads as clean.
 export function cvEffectiveState(info: CoverageSource | null | undefined) {
   if (!info) return "not_assessed";

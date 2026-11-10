@@ -107,12 +107,6 @@ export const INITIAL_LIMIT = 5000;
 export const FULL_FETCH_CAP = 50000;
 export const PAGE_SIZE = 100;
 
-export function firstSentence(text: any): string {
-  if (!text) return "";
-  const m = String(text).match(/^(.*?[.!?])(\s|$)/);
-  return (m ? m[1] : String(text)).trim();
-}
-
 export function capitalize(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
@@ -408,7 +402,8 @@ export function buildEntitySummary(rows: Row[] | null | undefined, plan: ColumnP
   const noEntityName = `(no ${(plan.entityNoun && plan.entityNoun.s) || "entity"})`;
   const compositeKey = entity === "task_full_name" || entity === "job_id";
   const map = new Map<string, Omit<EntityGroup, "avg" | "agg">>();
-  (rows || []).forEach((row: Row) => {
+  // A tie-out TOTAL row is the sum of the parts, never one of them.
+  withoutTotalRows(rows || []).forEach((row: Row) => {
     const raw = row[entity];
     const hasEntity = raw !== null && raw !== undefined && raw !== "";
     const mapKey = hasEntity ? (compositeKey ? `${acctId(row)}:${raw}` : String(raw)) : "\u0000none";
@@ -1308,7 +1303,8 @@ export function FindingDetail({ queryId, windowDays, accountIds, onJumpTo, findi
         setLoadError(null);
         setData((prev) => {
           if (append && prev && prev.rows) {
-            return { ...d, rows: [...prev.rows, ...d.rows] };
+            // rows now start at the first page's offset, so the footer and the next offset count from it
+            return { ...d, offset: prev.offset, rows: [...prev.rows, ...d.rows] };
           }
           return d;
         });
@@ -1355,7 +1351,7 @@ export function FindingDetail({ queryId, windowDays, accountIds, onJumpTo, findi
     [rawCols, rows, data && data.discount_pct, data && data.order_by, Names.isReady()]
   );
   const hasStatus = rawCols.some((c) => c.name === "status");
-  const statusCounts = React.useMemo<Record<string, number>>(() => (hasStatus ? tallyStatusCounts(rows) : {}), [rows, hasStatus]);
+  const statusCounts = React.useMemo<Record<string, number>>(() => (hasStatus ? tallyStatusCounts(withoutTotalRows(rows || [])) : {}), [rows, hasStatus]);
   const band = data
     ? bandOf({ outcome: data.outcome, status_counts: (isOkRows && hasStatus) ? statusCounts : null, query_id: data.query_id })
     : null;
@@ -1392,7 +1388,6 @@ export function FindingDetail({ queryId, windowDays, accountIds, onJumpTo, findi
             <DimNotAppliedChip dimApplied={dimAppliedFromScope(data.scope)} />
           </div>
         </div>
-        {/* FindingsTable syncs its expanded query_id to location.hash, so the address already reopens here. */}
         <div className="d-head-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {isOkRows && <RowsCsvButton queryId={queryId} windowDays={windowDays} accountIds={accountIds} />}
           <CopyLinkButton label="Copy link to this finding" />

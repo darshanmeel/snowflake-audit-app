@@ -13,7 +13,7 @@
 // Treemap/HBarList "nothing to rank" fallback, same .chart-note classes, so it already matches the
 // theme without any new CSS). ───────────
 import React from "react";
-import { fmtCredits, fmtDayShort } from "../format";
+import { LOCALE, fmtCredits, fmtDayShort } from "../format";
 import { CHART_OTHER_COLOR, CHART_UNTAGGED_BG, CHART_UNTAGGED_LINE, ChartFrame, HatchDef, RoundRect, chartLabel, foldTopNOther, inkForFill, measureTextPx, niceTicks, paletteColor, tipText, truncateLeft, useChartWidth, useHatchId, useThemeVersion } from "./charts";
 import type { ChartItem } from "./charts";
 import type { Row } from "../types";
@@ -94,7 +94,7 @@ export function RankedBars({
   const hatchId = useHatchId();
   const [measureRef, W] = useChartWidth(width);
   if (!folded.length) return <div ref={measureRef}><EmptyChart text={emptyText} /></div>;
-  const fmt = valueFmt || ((v: number) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 }));
+  const fmt = valueFmt || ((v: number) => Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 1 }));
   // Fewer than 2 non-zero categories isn't a ranking -- one plain line instead of a bar chart
   // with a single bar (and every other row reading a silent "0").
   const nonZero = folded.filter((it) => (it.whole != null ? it.whole : it.value) > 0);
@@ -290,7 +290,7 @@ export function Meter({ segments, valueFmt, width = 760, height = 26, note, aria
   if (!list.length) return <div ref={measureRef}><EmptyChart text={"Nothing to show -- every part is zero or absent at this window/filters."} /></div>;
   const withColor = list.map((s, i) => ({ ...s, color: s.color || (s.untagged ? CHART_UNTAGGED_LINE : paletteColor(i)) }));
   const total = withColor.reduce((s, x) => s + x.value, 0) || 1;
-  const fmt = valueFmt || ((v: number) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 }));
+  const fmt = valueFmt || ((v: number) => Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 1 }));
   const legend = withColor.map((s) => ({
     label: `${s.label} · ${((s.value / total) * 100).toFixed(0)}% · ${fmt(s.value)}`,
     color: s.color, hatch: !!s.untagged, bg: CHART_UNTAGGED_BG,
@@ -352,7 +352,7 @@ export function Heatmap({ rows, cols, value, bins, valueFmt, width, note }: {
   const rowName = (r: any) => (r && typeof r === "object" ? r.name : r);
   const get = (ri: number, ci: number) => { const row = value && value[ri]; return row ? row[ci] : undefined; };
   const nBins = bins || 5;
-  const fmt = valueFmt || ((v: any) => (v == null ? "" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })));
+  const fmt = valueFmt || ((v: any) => (v == null ? "" : Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 1 })));
   const allVals: number[] = [];
   R.forEach((_, ri) => C.forEach((_, ci) => { const v = get(ri, ci); if (v > 0) allVals.push(v); }));
   const max = allVals.length ? Math.max(...allVals) : 1;
@@ -508,7 +508,7 @@ export function buildIcicleTree(node: IcicleNode, depth: number, color: string |
 export function Icicle({ root, width = 760, height = 280, valueFmt, note, ariaLabel }: {
   root?: IcicleNode | null; width?: number; height?: number; valueFmt?: ValueFmt; note?: React.ReactNode; ariaLabel?: string;
 }) {
-  const fmt = valueFmt || ((v: number) => "$" + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 }));
+  const fmt = valueFmt || ((v: number) => "$" + Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 0 }));
   const empty = !root || !Number.isFinite(root.value) || root.value <= 0;
   // A stable placeholder (memoized once) when there is nothing to show, so the hooks below never
   // see a fresh object identity every render while `empty` stays true (that would re-fire the
@@ -626,7 +626,7 @@ export function DivergingBars({ items, n = 8, valueFmt, unitLabel, width = 760, 
   const [measureRef, W] = useChartWidth(width);
   if (!list.length) return <div ref={measureRef}><EmptyChart text={"Nothing to show -- no change to rank in this window."} /></div>;
   const sorted = [...list].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, n);
-  const fmt = valueFmt || ((v: number) => (v > 0 ? "+" : "") + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 }));
+  const fmt = valueFmt || ((v: number) => (v > 0 ? "+" : "") + Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 0 }));
   const labelW = rowLabelWidth(W, sorted.map((it) => chartLabel(it.name, it.id)), 90), rowH = 26, barH = 18, padTop = 4, padBottom = 4;
   const height = padTop + sorted.length * rowH + padBottom;
   // Review round 1: at plotX = labelW+10, the biggest negative bar's leftmost edge sits exactly at
@@ -697,7 +697,7 @@ export function Dumbbell({ items, n = 8, valueFmt, unitLabel, width = 760, note,
     return <div ref={measureRef}><EmptyChart text={emptyText || dflt} /></div>;
   }
   const sorted = [...list].sort((a, b) => Math.abs(b.after - b.before) - Math.abs(a.after - a.before)).slice(0, n);
-  const fmt = valueFmt || ((v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 }));
+  const fmt = valueFmt || ((v) => Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 1 }));
   const labelW = rowLabelWidth(W), rowH = 30, padTop = 4, padBottom = 4;
   // Review round 1: ChartFrame was given pad={l:0,r:0,t:0,b:0} while xLabels ("0"/mid/max) render
   // at ChartFrame's OWN P.l/(width-P.r) -- with a zero pad that's x=0 (on the name column) and
@@ -762,7 +762,7 @@ export function Scatter({ items, xLabel, yLabel, valueFmt, width = 760, height =
   const list = (items || []).filter((it) => it && Number.isFinite(it.x) && Number.isFinite(it.y));
   const [measureRef, W] = useChartWidth(width);
   if (!list.length) return <div ref={measureRef}><EmptyChart text={"Nothing to show -- no rows in this window."} /></div>;
-  const fmt = valueFmt || ((v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 }));
+  const fmt = valueFmt || ((v) => Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 1 }));
   const cats: string[] = [];
   const catColor: Record<string, string> = {};
   list.forEach((it) => {

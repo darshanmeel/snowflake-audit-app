@@ -210,30 +210,6 @@ export function CompareToBaseline({ title, selLabel = "selection", allLabel = "a
 
 export interface DumbbellRow { key?: string; name: string; id?: string | number | null; before: number; after: number; valueText: React.ReactNode }
 
-/** Earlier -> now on one track: blue ring earlier, warn ring now, a soft span between. */
-export function DumbbellRows({ rows, max }: { rows: DumbbellRow[]; max?: number }) {
-  const top = max && max > 0 ? max : Math.max(1, ...rows.flatMap((r) => [r.before, r.after]));
-  const at = (v: number) => `${Math.max(0, Math.min(100, (100 * v) / top))}%`;
-  return (
-    <div className="b2-dumbbells" role="list">
-      {rows.map((r, i) => {
-        const lo = Math.min(r.before, r.after), hi = Math.max(r.before, r.after);
-        return (
-          <div key={r.key || i} className="b2-db-row" role="listitem">
-            <span className="b2-db-name"><NameId name={r.name} id={r.id} /></span>
-            <span className="b2-db-track">
-              <span className="b2-db-span" style={{ left: at(lo), width: `calc(${at(hi)} - ${at(lo)})` }} />
-              <span className="b2-db-dot before" style={{ left: at(r.before) }} title="earlier" />
-              <span className="b2-db-dot after" style={{ left: at(r.after) }} title="now" />
-            </span>
-            <span className="b2-mono b2-db-val">{r.valueText}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ═══════════════════════ ScheduleStrip ═══════════════════════
 
 /** 24 columns, one per hour: bar height = starts in that hour; hours at or over `collisionAt` in warn. */

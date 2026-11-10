@@ -126,7 +126,6 @@ export const TOPIC_DOC_KEYS: Record<string, string[]> = {
 // them nested under the "Coverage and gaps" topic instead of counted alongside the universal ones.
 export const GUIDE_UNIVERSAL_SECTIONS = GUIDE_SECTIONS.filter((s) => !s.slug.startsWith("coverage-") && s.group !== "concept");
 export const GUIDE_CONCEPT_SECTIONS = GUIDE_SECTIONS.filter((s) => s.group === "concept");
-export const GUIDE_COVERAGE_SUBSECTIONS = GUIDE_SECTIONS.filter((s) => s.slug.startsWith("coverage-"));
 
 // Every screen with a Guide page, in sidebar order (All findings is the same checks as one list).
 // "money" is the executive overview: the CFO's only page and the CTO's Overview.
@@ -2493,7 +2492,9 @@ export function CheckRail({ f, data, home, area, findingsById }: CheckRailProps)
   const reads = (f.reads || []);
   const related = (f.next || []).filter((n: any) => n.title);
   let buildLine = "Not in this export";
-  if (s && checkRan(s)) {
+  if (s && s.outcome === "ok_empty_window") buildLine = "Nothing in this window (not a verified zero)";
+  else if (s && s.outcome === "error") buildLine = "Failed in this export";
+  else if (s && checkRan(s)) {
     const a = s.affected || {};
     if (f.is_finding && a.total != null) buildLine = `${fmtInt(a.flagged || 0)} of ${fmtInt(a.total)} ${a.noun || "rows"} flagged`;
     else buildLine = s.row_count != null ? `${fmtInt(s.row_count)} rows` : "Ran";

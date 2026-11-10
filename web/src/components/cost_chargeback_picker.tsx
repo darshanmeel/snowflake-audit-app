@@ -6,7 +6,7 @@
 // else "–" and why; never $0. Change is $ only, so it reads "–" without a price.
 import React from "react";
 import "../styles/css/p_shared_tabs.css";
-import { fmtInt, fmtMoney } from "../format";
+import { LOCALE, fmtInt, fmtMoney } from "../format";
 import { fmtChangePct, numOrZero, useFindingData } from "./hooks";
 import { PatternCard, noDataText } from "./primitives";
 import { NO_PRICE_READING, notAssessedText } from "./scope";
@@ -62,7 +62,7 @@ const fmtCr = (v: number) => {
   const a = Math.abs(v);
   if (v === 0) return "0 credits";
   if (a < 0.01) return "<0.01 credits";
-  return `${v.toLocaleString(undefined, { minimumFractionDigits: a < 10 ? 2 : a < 1000 ? 1 : 0, maximumFractionDigits: a < 10 ? 2 : a < 1000 ? 1 : 0 })} credits`;
+  return `${v.toLocaleString(LOCALE, { minimumFractionDigits: a < 10 ? 2 : a < 1000 ? 1 : 0, maximumFractionDigits: a < 10 ? 2 : a < 1000 ? 1 : 0 })} credits`;
 };
 const usd0 = (v: number) => fmtMoney(v, 0);
 const signedUsd = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmtMoney(Math.abs(v), 0)}`;

@@ -202,7 +202,8 @@ def get_names(account_id: str | None = None) -> dict:
             "users": sorted(users, key=lambda u: u["name"]),
             "roles": [{"name": r, "admin": r in ADMIN, "privileges": len(g["grants"].get(r, [])),
                        "users": per_role.get(r, 0)} for r in sorted(roles)],
-            "objects": [{"name": o, "granted_on": k} for o, k in sorted(g["kinds"].items())]}
+            "objects": [{"name": o, "granted_on": k} for o, k in sorted(g["kinds"].items())],
+            "truncated": bool(app_core_data.truncation_info("sf_acc_grant_links", 0).get("truncated"))}
 
 
 @router.get("/api/access/explore")

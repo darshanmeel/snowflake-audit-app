@@ -75,8 +75,6 @@ export const ROLLUP_ACCOUNT_LEVEL = "workspace";
 export const ROLLUP_ACCOUNT_FILTERED = "workspace_filtered";
 export const CREDITS_COLUMNS = ["net_credits", "credits", "net_dbus"];
 export const TOTAL_CREDITS_COLUMNS = ["total_net_credits", "total_credits", "total_net_dbus"];
-export const SERVERLESS_CREDITS_COLUMNS = ["serverless_net_credits", "serverless_credits", "serverless_net_dbus"];
-export const WAREHOUSE_CREDITS_COLUMNS = ["warehouse_net_credits", "warehouse_credits", "classic_net_credits", "classic_net_dbus"];
 export function acctId(row: Row | null | undefined) { return row ? row[ACCOUNT_COLUMN] : undefined; }
 export function scopeHasAccount(scope: Row | null | undefined) { return !scope || scope["has_" + ACCOUNT_COLUMN] !== false; }
 export function excludedNoAccount(data: Row | null | undefined) { return data ? data["excluded_no_account"] : null; }
@@ -229,9 +227,6 @@ export const Api = {
   // The warehouse / database pickers' feeds (contract 11.5).
   warehouses: (accountIds: AccountIds) => getJson("/api/warehouses", { [ACCOUNT_PARAM]: accountIds }),
   databases: () => getJson("/api/databases"),
-  // Fix these first (11.8): three groups that are never added.
-  fixFirst: (window_: number, accountIds: AccountIds, limit?: number) =>
-    getJson("/api/fix-first", { window: window_, [ACCOUNT_PARAM]: accountIds, limit, ..._tagParams(), ..._ownerParams(), ..._dimParams() }),
   // Tag compliance (11.7): the required keys setting and the page's feed. `keys` overrides the setting.
   requiredTags: () => getJson("/api/settings/required-tags"),
   saveRequiredTags: (keys: string[]) => putJson("/api/settings/required-tags", { keys }),
@@ -240,8 +235,6 @@ export const Api = {
   // The tag picker's feed. `tagKey` (optional) restricts to one key's values.
   tags: (search?: string, tagKey?: string | null, limitKeys?: number, limitValues?: number) => getJson("/api/tags", { search, tag_key: tagKey, limit_keys: limitKeys, limit_values: limitValues }),
   // The stored tag and owner filters ride along on every call below; no caller passes them.
-  tagOrigins: (window_: number, accountIds: AccountIds) =>
-    getJson("/api/tag_origins", { window: window_, [ACCOUNT_PARAM]: accountIds, ..._tagParams() }),
   findings: (window_: number, accountIds: AccountIds) =>
     getJson("/api/findings", {
       window: window_, [ACCOUNT_PARAM]: accountIds, ..._tagParams(), ..._ownerParams(), ..._dimParams(),

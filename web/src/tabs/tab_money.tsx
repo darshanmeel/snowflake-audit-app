@@ -21,7 +21,7 @@ import { NO_PRICE_LEDE, NO_PRICE_READING, isUnpricedAgg, notAssessedText } from 
 import { KpiRow, windowShortLabel } from "../components/overview_tile";
 import { CalMonthRows, CxBars, RanLine, ReconChain, TieLine, costCenterBars } from "../components/cx_a";
 import type { CxBarItem } from "../components/cx_a";
-import { buildWasteWorklist, wasteTotal } from "../components/waste_total";
+import { buildWasteWorklist, wasteMissingReason, wasteTotal } from "../components/waste_total";
 import { MoneyPrintHeader } from "../components/print_summary";
 import { OV_TOTAL_CREDITS, pickNum, priceBasisText, sumPick } from "./tab_overview";
 import { forecastFigures, serviceOf, serviceWords } from "./tab_cost";
@@ -63,29 +63,6 @@ export function buildSpendMovers(rows: Row[] | null | undefined, discountPct: un
 export type SpendMovers = NonNullable<ReturnType<typeof buildSpendMovers>>;
 export interface WaterfallRow { kind: string; label: string; start: number; end: number; value: number; svc?: string | null }
 
-export function spendMoverRows(movers: SpendMovers, windowDays: number | string, todayPartial = false): WaterfallRow[] {
-  const rows: WaterfallRow[] = [{ kind: "total", label: `Previous ${windowDays} days`, start: 0, end: movers.totalPrev, value: movers.totalPrev }];
-  let running = movers.totalPrev;
-  movers.top.forEach((g) => {
-    const start = running;
-    running += g.delta;
-    rows.push({
-      kind: g.delta >= 0 ? "up" : "down",
-      label: serviceWords(g.id === "__none__" ? null : g.id) + (g.prev < 1 && g.cur >= 1 ? " · new" : ""),
-      start, end: running, value: g.delta, svc: g.id,
-    });
-  });
-  if (movers.othersCount > 0) {
-    const start = running;
-    running += movers.othersDelta;
-    rows.push({ kind: movers.othersDelta >= 0 ? "up" : "down", label: `${fmtInt(movers.othersCount)} others`, start, end: running, value: movers.othersDelta });
-  }
-  rows.push({ kind: "total", label: `Last ${windowDays} days${todayPartial ? " · today partial" : ""}`, start: 0, end: movers.totalCur, value: movers.totalCur });
-  return rows;
-}
-
-type MonthBar = ReturnType<typeof buildMonthBars>[number];
-
 const isWarehouseService = (svc: string | null | undefined) => /WAREHOUSE/i.test(String(svc || ""));
 
 // The top 3 behind one service's change: warehouses for warehouse metering, else accounts.
@@ -124,42 +101,6 @@ export function MoverDetail({ svc, periodRows, discountPct, filters }: { svc: st
           <span className={`mono tone-${it.value >= 0 ? "up" : "down"}`}>{`${it.value >= 0 ? "+" : "-"}${fmtMoney(Math.abs(it.value), 0)}`}</span>
         </div>
       ))}
-    </div>
-  );
-}
-
-export function MoneyWaterfall({ rows, renderDetail, canOpen: canOpenSvc }: { rows: WaterfallRow[]; renderDetail?: ((svc: string) => React.ReactNode) | null; canOpen?: (svc: string) => boolean }) {
-  const [open, setOpen] = React.useState<string | null>(null);
-  const domainMin = Math.min(0, ...rows.map((r) => Math.min(r.start, r.end)));
-  const domainMax = Math.max(0, ...rows.map((r) => Math.max(r.start, r.end)));
-  const span = domainMax - domainMin || 1;
-  const pct = (v: number) => ((v - domainMin) / span) * 100;
-  return (
-    <div className="money-waterfall">
-      {rows.map((r, i) => {
-        const left = pct(Math.min(r.start, r.end));
-        const w = Math.max(pct(Math.max(r.start, r.end)) - left, 0);
-        const sign = r.kind !== "total" && r.value >= 0 ? "+" : "";
-        const canOpen = !!(renderDetail && r.svc && (!canOpenSvc || canOpenSvc(r.svc)));
-        const isOpen = canOpen && open === r.svc;
-        const body = (
-          <>
-            <div className="money-waterfall-label" title={r.label}>{canOpen ? `${isOpen ? "▾" : "▸"} ` : ""}{r.label}</div>
-            <div className="money-waterfall-track">
-              <div className={`money-waterfall-bar tone-${r.kind}`} style={{ left: `${left}%`, width: `${w}%` }} />
-            </div>
-            <div className="money-waterfall-value mono">{`${sign}${fmtMoney(r.value, 0)}`}</div>
-          </>
-        );
-        return (
-          <React.Fragment key={i}>
-            {canOpen
-              ? <button type="button" className="money-waterfall-row money-waterfall-btn" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : r.svc!)}>{body}</button>
-              : <div className={`money-waterfall-row${r.kind === "total" ? " is-total" : ""}`}>{body}</div>}
-            {isOpen && renderDetail!(r.svc!)}
-          </React.Fragment>
-        );
-      })}
     </div>
   );
 }
@@ -243,33 +184,6 @@ export function SpendMoversCard({ periodState, filters, title, sub, link, onLink
       {openSvc && renderDetail && renderDetail(openSvc)}
       {note && <div className="cx-moved-note">{note}</div>}
     </div>,
-  );
-}
-
-// Calendar months with their $ on top and the change vs the month before under the name; the month
-// in progress is its spend so far, with a hollow bar up to the month-end forecast.
-export function MoneyMonthBars({ months, projected }: { months: MonthBar[]; projected?: number | null }) {
-  const max = Math.max(1, ...months.map((m) => m.total), projected || 0);
-  return (
-    <div className="money-mbars" role="img" aria-label="Spend by calendar month">
-      {months.map((m, i) => {
-        const prev = i > 0 ? months[i - 1] : null;
-        // A month whose history starts mid-month is not a base for a change.
-        const chg = !m.partial && !m.startsMid && prev && !prev.partial && !prev.startsMid && prev.total > 0 ? ((m.total - prev.total) / prev.total) * 100 : null;
-        const fc = m.partial && projected != null && projected > m.total ? projected : null;
-        return (
-          <div className="money-mbar-col" key={m.month} title={`${m.label}: ${fmtMoney(m.total, 0)}${m.partial ? ` so far${fc != null ? `, forecast ${fmtMoney(fc, 0)}` : ""}` : ""}`}>
-            <div className="money-mbar-val mono">{m.partial ? `${fmtMoneyShort(m.total)} MTD` : fmtMoneyShort(m.total)}</div>
-            <div className="money-mbar-track">
-              {fc != null && <div className="money-mbar-forecast" style={{ height: `${(fc / max) * 100}%` }} />}
-              <div className={`money-mbar-fill${m.partial ? " partial" : ""}`} style={{ height: `${Math.max(1, (m.total / max) * 100)}%` }} />
-            </div>
-            <div className="money-mbar-label">{m.shortLabel}</div>
-            <div className={`money-mbar-chg mono${chg != null && chg >= 15 ? " tone-warn" : ""}`}>{chg != null ? fmtChangePct(chg) : m.partial ? "partial" : m.startsMid ? "from mid-month" : ""}</div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -554,7 +468,7 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
         <IssueTile label="Possible waste" loading={!findingsReady || dailyAgg.phase === "loading"}
           status={wasteUsd == null ? "not_assessed" : wt.waste.flagged > 0 ? "warn" : "ok"}
           headline={wastePct != null ? fmtShare(wastePct) : (wasteUsd != null ? fmtMoney(wasteUsd, 0) : null)} unit={wastePct != null ? "of spend" : undefined}
-          missingReason="none of the waste checks ran"
+          missingReason={wasteMissingReason(wt.waste)}
           base={wasteUsd != null ? `${fmtMoney(wasteUsd, 0)}${spend != null ? ` of ${fmtMoney(spend, 0)}` : ""}, flagged by ${fmtInt(wt.waste.flagged)} of ${fmtInt(wt.waste.ran)} checks.` : null}
           cause="It is part of spend, so it is never added to it." onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
       </KpiRow>
@@ -613,7 +527,7 @@ export function MoneyTab({ filters, meta, findingsById, goTo, role }: MoneyTabPr
                 base: [mtd != null ? `${fmtMoney(mtd, 0)} so far` : null, prog ? `day ${prog.day} of ${prog.days}` : null].filter(Boolean).join(" · ") || null, missing: notAssessedText(forecastState.data) },
               { key: "waste", label: "Possible waste", pill: wasteUsd != null && wt.waste.flagged > 0 ? "warn" : null,
                 value: wastePct != null ? fmtShare(wastePct) : (wasteUsd != null ? fmtMoney(wasteUsd, 0) : null),
-                base: wasteUsd != null ? `${fmtMoney(wasteUsd, 0)} · not added to spend · ${fmtInt(wt.waste.flagged)} of ${fmtInt(wt.waste.ran)} checks` : null, missing: "none of the waste checks ran" },
+                base: wasteUsd != null ? `${fmtMoney(wasteUsd, 0)} · not added to spend · ${fmtInt(wt.waste.flagged)} of ${fmtInt(wt.waste.ran)} checks` : null, missing: wasteMissingReason(wt.waste) },
             ]} />
           </div>
         </div>

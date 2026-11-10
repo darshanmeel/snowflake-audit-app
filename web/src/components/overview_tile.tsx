@@ -221,11 +221,6 @@ export function clause(text: string | null | undefined, maxLen?: number) {
   return s || null;
 }
 
-// The WHY from the header: investigate_if, else read_this; null rather than an invented cause.
-export function headerReason(header: { investigate_if?: string | null; read_this?: string | null; [key: string]: any } | null | undefined) {
-  return clause(header && header.investigate_if) || clause(header && header.read_this) || null;
-}
-
 // The tile for ONE finding row's own band, with an honest branch for every band bandOf() can
 // return: a check that did not run (or errored) reads "-" and why, never a number; a verified empty
 // window or an empty filter set reads a real 0 only where 0 is the truth; only a check that ran,
@@ -345,16 +340,6 @@ export function windowRangeLabel(asOfDate: string | null | undefined, windowDays
   if (s.partialDay != null) text += ` and today (${_dayMonth(s.partialDay)}, partial)`;
   if (snapshotDays && windowDays != null && snapshotDays < windowDays) text += ` -- partial, export covers ${snapshotDays}d of ${windowDays}d`;
   return text;
-}
-
-// sf_task_duration_regression's two periods: the window's days up to the day before the export
-// date, against the same number of days before them. "6 Sep - 5 Oct against 7 Aug - 5 Sep 2026".
-export function slowdownPeriods(asOfDate: string | null | undefined, windowDays: number | null | undefined) {
-  const end = _utcDay(asOfDate);
-  if (end == null || !windowDays) return null;
-  const nowLast = end - DAY_MS, nowFirst = end - windowDays * DAY_MS;
-  const prevLast = nowFirst - DAY_MS, prevFirst = nowFirst - windowDays * DAY_MS;
-  return `${_dayMonth(nowFirst)} - ${_dayMonth(nowLast)} against ${_dayMonth(prevFirst)} - ${_dayMonth(prevLast)} ${new Date(nowLast).getUTCFullYear()}`;
 }
 
 // windowRangeLabel as a Window fact + (when partial) a separate amber Coverage fact.

@@ -39,7 +39,6 @@ export const MONEY_KIND_WORD: Record<string, string> = {
   waste: "possible waste", saving: "possible saving", saving_month: "possible saving per month", spend: "spend", spend_month: "storage",
   change: "change vs previous period", gap: "gap", balance: "balance", context: "context, not counted as waste",
 };
-export const MONEY_KIND_ORDER: Record<string, number> = { waste: 0, saving: 1, saving_month: 2, change: 3, spend: 4, spend_month: 5, gap: 6, balance: 7, context: 8 };
 
 // A check's money column is monthly (storage) rather than over the window.
 export function moneyPeriodWord(col: string | null | undefined, kind?: string | null) {
@@ -465,9 +464,6 @@ export function registerAreaContent(area: string, subtab: string, Extra?: React.
   ));
 }
 
-export function CostTagRollup({ filters, meta }: { filters: Filters; meta: Meta }) {
-  return <Card title="Spend by tag"><TagRollupView filters={filters} area="cost" meta={meta} /></Card>;
-}
 export function QueryTagRollup({ filters, meta }: { filters: Filters; meta: Meta }) {
   return <div className="cxd-tagroll"><Card title="Statements by tag"><TagRollupView filters={filters} area="performance" meta={meta} /></Card></div>;
 }

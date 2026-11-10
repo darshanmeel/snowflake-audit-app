@@ -40,23 +40,6 @@ export function rollUpMonths(days: string[], series: number[][]): { months: stri
   return { months, series: out };
 }
 
-// Month totals (any order, YYYY-MM-DD keys) as a gap-free run oldest first: a month with no row is a real $0.
-export function fillMonths(entries: { key: string; value: number }[]): { key: string; value: number }[] {
-  const sums = new Map<string, number>();
-  entries.forEach((e) => { const k = monthOf(e.key); sums.set(k, (sums.get(k) || 0) + e.value); });
-  const keys = Array.from(sums.keys()).sort();
-  if (!keys.length) return [];
-  const out: { key: string; value: number }[] = [];
-  let [y, m] = keys[0].split("-").map(Number);
-  const last = keys[keys.length - 1];
-  for (let k = keys[0]; k <= last; ) {
-    out.push({ key: k, value: sums.get(k) || 0 });
-    m += 1; if (m > 12) { m = 1; y += 1; }
-    k = `${y}-${String(m).padStart(2, "0")}-01`;
-  }
-  return out;
-}
-
 export const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 export function nextDay(d: string): string {

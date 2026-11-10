@@ -20,8 +20,8 @@
 // instead, which folds at 5 + Other and never cycles past it.
 import React from "react";
 import { Facts } from "./primitives";
-import { EmptyChart } from "./charts_more";
 import { notAssessedText } from "./scope";
+import { LOCALE } from "../format";
 import type { FetchState } from "../types";
 
 /** One item a chart draws: a name (and optional id) with a value; extra fields ride along. */
@@ -436,18 +436,6 @@ export interface KpiProps {
   tone?: string;
   facts?: React.ComponentProps<typeof Facts>["items"];
 }
-export function Kpi({ label, value, unit, sub, tone = "default", facts }: KpiProps) {
-  return (
-    <div className="kpi-tile">
-      <div className="kpi-label">{label}</div>
-      <div className={`kpi-value tone-${tone}`}>
-        {value}
-        {unit && <span className="kpi-unit">{unit}</span>}
-      </div>
-      {facts ? <Facts items={facts} /> : (sub && <div className="kpi-sub">{sub}</div>)}
-    </div>
-  );
-}
 
 export function KpiRow({ children }: { children?: React.ReactNode }) {
   return <div className="kpi-row">{children}</div>;
@@ -514,7 +502,7 @@ export function MultiLine({ series, height = 160, width = 760, xLabels }: { seri
   const range = max - min || 1;
   // Left gutter wide enough for the max/min value labels -- a line with no y-axis numbers at all
   // reads as a shape with no scale.
-  const yTick = (v: number) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const yTick = (v: number) => Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 1 });
   const padL = 34, padR = 4, padT = 8, padB = 18;
   const innerW = width - padL - padR, innerH = height - padT - padB;
   const step = n > 1 ? innerW / (n - 1) : 0;
@@ -550,182 +538,12 @@ export function MultiLine({ series, height = 160, width = 760, xLabels }: { seri
   );
 }
 
-// ─────────── ParetoLine -- "Top N of M <things> = X% of <total>" (PLAN.md 6.3) ───────────
-export function ParetoLine({ entries, unitLabel, threshold = 0.6 }: { entries: { value: number }[] | null | undefined; unitLabel?: React.ReactNode; threshold?: number }) {
-  if (!entries || !entries.length) return null;
-  const sorted = [...entries].sort((a, b) => b.value - a.value);
-  const total = sorted.reduce((s, e) => s + e.value, 0) || 1;
-  let acc = 0, n = 0;
-  const cum: number[] = [];
-  for (const e of sorted) {
-    acc += e.value;
-    n += 1;
-    cum.push((acc / total) * 100);
-    if (acc / total >= threshold) break;
-  }
-  const pct = cum[cum.length - 1];
-  const sparkSeries = cum.length > 1 ? [0, ...cum] : [0, cum[0], cum[0]];
-  return (
-    <div className="pareto-line">
-      <div className="pareto-text">
-        Top <span className="mono">{n}</span> of <span className="mono">{sorted.length}</span> {unitLabel}
-        {" = "}<span className="mono">{pct.toFixed(1)}%</span> of net credits
-      </div>
-      <Sparkline data={sparkSeries} color="var(--c1)" height={26} fill={false} />
-    </div>
-  );
-}
-
 // ─────────── Donut ───────────
 export interface DonutSegment { value: number; label?: string; color?: string; display?: React.ReactNode }
-export function Donut({ segments, centerLabel, centerSub, size = 108, thickness = 14 }: { segments: DonutSegment[]; centerLabel?: React.ReactNode; centerSub?: React.ReactNode; size?: number; thickness?: number }) {
-  // Fewer than 2 non-zero slices isn't a breakdown -- a wheel that is all one colour, or empty,
-  // reads as a chart with nothing to compare; one plain line says the same fact in fewer pixels.
-  const nonZero = (segments || []).filter((s) => s && s.value > 0);
-  if (nonZero.length < 2) {
-    if (!nonZero.length) return <EmptyChart text="Nothing to show." />;
-    const only = nonZero[0];
-    const display = only.display != null ? only.display : only.value.toFixed(1);
-    return <div className="chart-note-oneline">{`All ${display} in ${only.label}`}</div>;
-  }
-  const r = size / 2 - thickness / 2 - 1;
-  const cx = size / 2, cy = size / 2;
-  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-  const circ = 2 * Math.PI * r;
-  let acc = 0;
-  return (
-    <div className="donut-wrap">
-      <svg className="donut-svg" viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--panel-2)" strokeWidth={thickness} />
-        {segments.map((seg, i) => {
-          const pct = seg.value / total;
-          const dash = pct * circ;
-          const offset = -acc * circ;
-          acc += pct;
-          return (
-            <circle
-              key={i} cx={cx} cy={cy} r={r} fill="none"
-              stroke={seg.color || paletteColor(i)} strokeWidth={thickness}
-              strokeDasharray={`${dash} ${circ - dash}`} strokeDashoffset={offset}
-              transform={`rotate(-90 ${cx} ${cy})`}
-            />
-          );
-        })}
-        {centerLabel && (
-          <>
-            <text className="donut-center" x={cx} y={centerSub ? cy - 6 : cy + 2} textAnchor="middle" dominantBaseline="middle">{centerLabel}</text>
-            {centerSub && <text className="donut-center-sub" x={cx} y={cy + 14} textAnchor="middle">{centerSub}</text>}
-          </>
-        )}
-      </svg>
-      <div className="donut-legend">
-        {segments.map((seg, i) => (
-          <div className="row" key={i} style={{ gap: 6 }}>
-            <span className="sw" style={{ background: seg.color || paletteColor(i) }}></span>
-            <span className="lab">{seg.label}</span>
-            <span className="v mono">{seg.display != null ? seg.display : seg.value.toFixed(1)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ─────────── Treemap (squarified) ───────────
 export interface TreemapItem { name?: React.ReactNode; value: number; color?: string; [key: string]: any }
 export type TreemapCell = TreemapItem & { area: number; x: number; y: number; w: number; h: number };
-export function squarifiedTreemap(items: TreemapItem[], x0: number, y0: number, w: number, h: number): TreemapCell[] {
-  const data = [...items].sort((a, b) => b.value - a.value).filter((d) => d.value > 0);
-  if (!data.length) return [];
-  const total = data.reduce((s, x) => s + x.value, 0);
-  let remaining = data.map((d) => ({ ...d, area: (d.value / total) * w * h }));
-  let X = x0, Y = y0, W = w, H = h;
-  const out: TreemapCell[] = [];
-  function worst(row: { area: number }[], w_: number) {
-    const s = row.reduce((s, r) => s + r.area, 0);
-    const max = Math.max(...row.map((r) => r.area));
-    const min = Math.min(...row.map((r) => r.area));
-    return Math.max((w_ * w_ * max) / (s * s), (s * s) / (w_ * w_ * min));
-  }
-  function layoutRow(row: (TreemapItem & { area: number })[], w_: number, horizontal: boolean) {
-    const s = row.reduce((s, r) => s + r.area, 0);
-    const thick = s / w_;
-    let pos = 0;
-    for (const r of row) {
-      const along = r.area / thick;
-      if (horizontal) out.push({ ...r, x: X + pos, y: Y, w: along, h: thick });
-      else out.push({ ...r, x: X, y: Y + pos, w: thick, h: along });
-      pos += along;
-    }
-    if (horizontal) { Y += thick; H -= thick; } else { X += thick; W -= thick; }
-  }
-  while (remaining.length) {
-    const horizontal = W >= H;
-    const w_ = horizontal ? W : H;
-    let row = [remaining[0]];
-    let i = 1;
-    while (i < remaining.length) {
-      const tryRow = row.concat(remaining[i]);
-      if (worst(tryRow, w_) <= worst(row, w_)) { row = tryRow; i++; } else break;
-    }
-    layoutRow(row, w_, horizontal);
-    remaining = remaining.slice(row.length);
-  }
-  return out;
-}
-
-export function Treemap({ items, width = 760, height = 260, getLabel }: { items: TreemapItem[] | null | undefined; width?: number; height?: number; getLabel?: (c: TreemapCell) => React.ReactNode }) {
-  // Review round 1: ThemeToggle flips data-theme without a React re-render, so inkForFill below
-  // (reads the fill's CSS variable AT RENDER TIME) kept the pre-toggle ink until something else
-  // happened to re-render this tree. Subscribing here re-renders once right after a toggle.
-  useThemeVersion();
-  if (!items || !items.length) {
-    return <div className="chart-note ok"><div className="chart-note-text">Nothing to show -- every value is zero or absent at this window/filters.</div></div>;
-  }
-  const withColor = items.map((it, i) => ({ ...it, color: it.color || paletteColor(i) }));
-  const cells = squarifiedTreemap(withColor, 0, 0, width, height);
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: "100%", height, display: "block" }}>
-      {cells.map((c, i) => {
-        const small = c.w < 110 || c.h < 44;
-        const tiny = c.w < 55 || c.h < 28;
-        // section 5: "Treemap label ink follows the fill's luminance" -- was a fixed near-black
-        // that failed on the theme's own darker fills (--c3 leather, --seq-4/5, dark-mode fills).
-        const ink = inkForFill(c.color);
-        const inkFaint = ink === INK_DARK ? "rgba(23,21,17,.72)" : "rgba(251,250,247,.82)";
-        return (
-          <g key={i}>
-            <rect x={c.x + 1} y={c.y + 1} width={Math.max(0, c.w - 2)} height={Math.max(0, c.h - 2)} fill={c.color} rx="4" ry="4" />
-            {/* Review round 1: fontSize 10/11.5/9 were all under the spec's 12px floor -- "small"
-                now hides the value line (drops information) rather than shrinking the text past
-                that floor; the name line is always 12px. */}
-            {!tiny && (
-              <foreignObject x={c.x + 8} y={c.y + 6} width={Math.max(0, c.w - 16)} height={Math.max(0, c.h - 12)}>
-                <div style={{
-                  height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between",
-                  color: ink, fontFamily: "var(--f-sans)", overflow: "hidden",
-                }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.name}
-                  </div>
-                  {!small && (
-                    <div style={{ color: inkFaint, fontFamily: "var(--f-mono)", fontSize: 12 }}>
-                      {getLabel ? getLabel(c) : c.value.toFixed(1)}
-                    </div>
-                  )}
-                </div>
-              </foreignObject>
-            )}
-            {tiny && c.w > 16 && c.h > 14 && (
-              <text x={c.x + 5} y={c.y + 15} fill={inkFaint} fontSize="12" fontFamily="var(--f-mono)">{c.value.toFixed(0)}</text>
-            )}
-            <title>{c.name}: {getLabel ? getLabel(c) : c.value.toFixed(1)}</title>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
 
 // ─────────── MiniBar (inline gauge / table-cell bar) ───────────
 export function MiniBar({ value, max = 100, color = "amber", suffix = "%", width = 70, decimals }: { value: number; max?: number; color?: string; suffix?: string; width?: number | string; decimals?: number | null }) {
@@ -743,30 +561,6 @@ export function MiniBar({ value, max = 100, color = "amber", suffix = "%", width
 
 // ─────────── HBar (stacked horizontal bar) ───────────
 export interface HBarSegment { value: number; label?: string; color?: string; display?: React.ReactNode }
-export function HBar({ segments, height = 28 }: { segments: HBarSegment[]; height?: number }) {
-  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-  return (
-    <div className="hbar" style={{ height }}>
-      {segments.map((s, i) => {
-        const pct = (s.value / total) * 100;
-        if (pct <= 0) return null;
-        const fill = s.color || paletteColor(i);
-        return (
-          <div
-            key={i} className="hbar-seg"
-            // Review round 1: .hbar-seg{color:#16130c} was a fixed near-black, 3.0:1 on --c3 and
-            // 4.2:1 on --c1 in light, 3.5:1 on --c2 in dark -- all under the 4.5:1 text floor.
-            // inkForFill picks whichever of light/dark ink actually reads on THIS segment's fill.
-            style={{ background: fill, color: inkForFill(fill), width: pct + "%" }}
-            title={`${s.label}: ${s.display || s.value}`}
-          >
-            {pct > 9 ? s.label : ""}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // ─────────── HBarList -- a ranked list of horizontal bars (one row per item), for "top N" panels ───────────
 export interface HBarListItem { name?: string; value: number | null; color?: string; [key: string]: any }
@@ -786,30 +580,6 @@ export function HBarList({ items, max, valueFmt }: { items: HBarListItem[] | nul
           <div className="hbar-list-value mono">{valueFmt ? valueFmt(it.value, it) : it.value}</div>
         </div>
       ))}
-    </div>
-  );
-}
-
-// ─────────── SubTabNav -- the second-level pill row inside Cost/Compute/Jobs (PLAN.md 6.3) ───────────
-export function SubTabNav({ subtabs, active, onSelect }: { subtabs: { key: string; label: React.ReactNode }[]; active?: string | null; onSelect: (key: string) => void }) {
-  return (
-    <div className="subtabs">
-      {subtabs.map((s) => (
-        <button key={s.key} className={active === s.key ? "active" : ""} onClick={() => onSelect(s.key)}>
-          {s.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ─────────── AccountWideNote: one explanatory line per sub-tab naming the checks that carry no
-// account id, so the Account filter does not narrow them. ───────────
-export function AccountWideNote({ ids }: { ids?: string[] | null }) {
-  if (!ids || !ids.length) return null;
-  return (
-    <div className="account-wide-note">
-      Account-wide (no account id, ignores the Account filter): <span className="mono">{ids.join(", ")}</span>
     </div>
   );
 }

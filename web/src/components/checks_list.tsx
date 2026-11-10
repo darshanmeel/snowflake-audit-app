@@ -9,7 +9,7 @@ import { getCheckLabel } from "./labels";
 import { moneyKindOf } from "./waste_total";
 import { downloadChecksCsv } from "./findings_table";
 import { DrawerBus } from "./drawer";
-import { MONEY_KIND_WORD, upToWord } from "../tabs/tab_area";
+import { upToWord } from "../tabs/tab_area";
 import type { Filters, Finding, GoToFn, Meta } from "../types";
 import { GuideHelp } from "./guide_links";
 
@@ -17,27 +17,6 @@ const LIST_RANK: Record<string, number> = { CRITICAL: 0, WARN: 1, NOT_ASSESSED: 
 
 function notRunReason(f: Finding) {
   return (f.not_assessed && f.not_assessed.label) || "did not run";
-}
-
-/** The mono fact of one check: "3 of 56 warehouses · $1,204 possible waste", or "–" and why. */
-export function checkFact(f: Finding, band: string): string {
-  if (band === "NOT_ASSESSED" || band === "ERROR") return `– ${notRunReason(f)}`;
-  if (band === "EMPTY_WINDOW") return "no data in this window";
-  if (band === "EMPTY_FILTERS") return "excluded by the filters";
-  const parts: string[] = [];
-  const a = f.affected;
-  if (a) {
-    parts.push(`${fmtInt(a.flagged)} of ${fmtInt(a.total)} ${a.noun}`);
-    // a flagged remainder row ("(no warehouse)") is not one of the noun: say it, so Critical never reads 0 of N alone
-    if (a.flagged_other > 0) parts.push(`+ ${fmtInt(a.flagged_other)} other flagged row${a.flagged_other === 1 ? "" : "s"}`);
-  } else if (f.row_count != null) parts.push(`${fmtInt(f.row_count)} rows`);
-  const m = f.money;
-  const kind = moneyKindOf(f);
-  if (m && f.money_reason === "unpriced") parts.push("not priced");
-  else if (m && m.mixed_currency) parts.push("more than one currency");
-  // A figure over every row, next to a flagged count, says so: it is not the flagged rows' $.
-  else if (m && m.usd != null && Number.isFinite(Number(m.usd))) parts.push(`${upToWord(f)}${fmtMoneyOf(m, m.usd, 0)} ${MONEY_KIND_WORD[kind as string] || ""}${m.basis === "all" && a && a.flagged < a.total ? ` across all ${fmtInt(a.total)}` : ""}`.trim());
-  return parts.join(" · ");
 }
 
 export interface ChecksListProps {
@@ -233,11 +212,6 @@ export function ChecksList({ findings, refIds, filters, meta, goTo, openId, titl
       </div>
     </div>
   );
-}
-
-/** Kept for callers: its counts and not-judged reasons now sit inside the checks list card. */
-export function NotJudgedStrip(_props: { findings: Finding[]; goTo?: GoToFn | null }) {
-  return null;
 }
 
 /** Shown only when the role cannot see part of what this tab reads: what is missing, the GRANT, Coverage. */

@@ -7,11 +7,6 @@ import { HealthBadge, NameId } from "./blocks_2";
 import type { Health, RunCell } from "./blocks_2";
 import { fmtShare } from "./blocks";
 
-/** The page wrapper that scopes this group's look (cx_e.css). */
-export function CxPage({ children }: { children?: React.ReactNode }) {
-  return <div className="cx-e">{children}</div>;
-}
-
 /** A small uppercase label above a block of rows. */
 export function CxEyebrow({ children }: { children?: React.ReactNode }) {
   return <div className="cx-eyebrow">{children}</div>;

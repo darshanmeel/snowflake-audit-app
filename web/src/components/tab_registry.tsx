@@ -45,17 +45,6 @@ export interface QueryHome {
   subtab: string | null;
 }
 
-export const DOMAIN_LABELS: Record<string, string> = {
-  cost: "Cost",
-  compute: "Warehouses",
-  jobs_pipelines: "Tasks & loading",
-  performance: "Query performance",
-  governance_access: "Access & governance",
-  storage: "Storage",
-  serving_ai: "AI & apps",
-};
-export const DOMAIN_ORDER = ["cost", "compute", "jobs_pipelines", "performance", "governance_access", "storage", "serving_ai"];
-
 // One scope line for every money page: credits are what Snowflake bills; dollars are credits times
 // the account's effective $ per credit (read from the organization billing view when the role can
 // see it, else the price passed to the export).
@@ -401,8 +390,6 @@ export const LINEAGE_SUBTABS: SubtabDef[] = [
     refIds: [],
   },
 ];
-export const LINEAGE_IDS = LINEAGE_SUBTABS.flatMap((s) => s.ids);
-export const LINEAGE_REF_IDS = LINEAGE_SUBTABS.flatMap((s) => s.refIds);
 
 // ─────────── Activity ─── what is used: databases, schemas, tables, when each was last active, users and roles, and the other
 // objects. Unused tables and clones stay on Storage, where they carry a $ figure.

@@ -25,6 +25,7 @@ import type { CxBarItem } from "../components/cx_a";
 import { IssueTile, fmtShare, pctOf } from "../components/blocks";
 import { withoutTotalRows } from "./tab_area";
 import { DoTheseFirst, rankActions, useActions } from "./tab_actions";
+import { wasteMissingReason } from "../components/waste_total";
 import { FinopsOverviewContent, GovOverviewContent } from "./tab_landing";
 import type { Dims, FetchState, Filters, Finding, GoToFn, Meta, Row } from "../types";
 
@@ -51,7 +52,6 @@ export function tagAccountOnly(s: FetchState | null | undefined) {
   const chain = (s.data && s.data.scope && s.data.scope.tag && s.data.scope.tag.chain) || [];
   return chain.length === 1 && chain[0] === "account";
 }
-export const TAG_ACCOUNT_ONLY_TEXT = "Not filtered by tag: an account-level total";
 
 export function pickNum(row: Row | null | undefined, names: string[]) {
   for (let i = 0; i < names.length; i += 1) {
@@ -129,9 +129,6 @@ export const SEC_ROWS: ScoreRow[] = [
   { tab: "audit", label: "Audit" },
   { tab: "sharing", label: "Sharing & org" },
 ];
-const SC_PARTS: { key: "crit" | "warn" | "ok" | "ref" | "na"; word: string }[] = [
-  { key: "crit", word: "critical" }, { key: "warn", word: "warning" }, { key: "ok", word: "ok" }, { key: "ref", word: "reference" }, { key: "na", word: "not run" },
-];
 function scoreOf(byId: Record<string, Finding>, ids: string[], refIds: string[]) {
   const c = { crit: 0, warn: 0, ok: 0, ref: 0, na: 0 };
   [...ids, ...refIds].forEach((id) => {
@@ -145,39 +142,6 @@ function scoreOf(byId: Record<string, Finding>, ids: string[], refIds: string[])
     else c.ok += 1;
   });
   return c;
-}
-export function SecurityScorecard({ byId, goTo, areas = SEC_ROWS }: { byId: Record<string, Finding>; goTo: GoToFn; areas?: ScoreRow[] }) {
-  const rows = areas.map((r) => {
-    const area = AREA_REGISTRY[r.tab];
-    const subs = (area ? area.subtabs : []).filter((s: { key: string }) => !r.subtab || s.key === r.subtab);
-    const ids = subs.flatMap((s: { ids?: string[] }) => s.ids || []);
-    const refIds = subs.flatMap((s: { refIds?: string[] }) => s.refIds || []);
-    return { ...r, c: scoreOf(byId, ids, refIds) };
-  }).filter((r) => SC_PARTS.some((p) => r.c[p.key] > 0));
-  if (!rows.length) return <div className="chart-note-oneline">No security check in this export.</div>;
-  return (
-    <div className="sc-list">
-      {rows.map((r) => {
-        const n = SC_PARTS.reduce((s, p) => s + r.c[p.key], 0);
-        const text = [r.c.crit ? `${fmtInt(r.c.crit)} crit` : null, r.c.warn ? `${fmtInt(r.c.warn)} warn` : null, r.c.ok ? `${fmtInt(r.c.ok)} ok` : null,
-          r.c.ref ? `${fmtInt(r.c.ref)} ref` : null].filter(Boolean).join(" · ") || "none ran";
-        return (
-          <button type="button" key={r.label} className="sc-row" onClick={() => goTo({ tab: r.tab, subtab: r.subtab || null })}>
-            <span className="sc-label">{r.label}</span>
-            <span className="sc-bar" role="img" aria-label={`${r.label}: ${text} of ${n}`}>
-              {SC_PARTS.map((p) => (r.c[p.key] > 0
-                ? <span key={p.key} className={`sc-seg s-${p.key}`} style={{ flexBasis: `${(100 * r.c[p.key]) / n}%` }} title={`${fmtInt(r.c[p.key])} ${p.word}`} />
-                : null))}
-            </span>
-            <span className="sc-val">{`${text} of ${fmtInt(n)}${r.c.na ? ` · ${fmtInt(r.c.na)} not run` : ""}`}</span>
-          </button>
-        );
-      })}
-      <div className="b2-legend">
-        {SC_PARTS.map((p) => <span key={p.key} className="b2-legend-item"><span className={`sc-sw s-${p.key}`} />{p.word}</span>)}
-      </div>
-    </div>
-  );
 }
 
 /** Security checks per area on fixed columns (CRIT | WARN | REF | ALL), most critical first; bar length = checks in the area. */
@@ -353,7 +317,7 @@ export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas
       <KpiRow>
         <IssueTile label="Cost" loading={!findingsReady || dayKindAgg.phase === "loading"} status={sev.cost}
           headline={wastePct != null ? fmtShare(wastePct) : null} unit="of spend is possible waste"
-          missingReason={wt.waste.usd == null ? "none of the waste checks ran" : notAssessedText(dayKindAgg.data)}
+          missingReason={wt.waste.usd == null ? wasteMissingReason(wt.waste) : notAssessedText(dayKindAgg.data)}
           base={wt.waste.usd != null && spend != null ? `${fmtMoney(wt.waste.usd, 0)} of ${fmtMoney(spend, 0)}, flagged by ${fmtInt(wt.waste.flagged)} of ${fmtInt(wt.waste.ran)} checks.` : null}
           cause={topWaste ? `Largest: ${topWaste.title}, ${fmtMoney(topWaste.usd, 0)}${topWaste.affected ? ` on ${fmtInt(topWaste.affected.flagged)} of ${fmtInt(topWaste.affected.total)} ${topWaste.affected.noun}` : ""}.` : null}
           onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />

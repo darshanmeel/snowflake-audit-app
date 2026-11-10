@@ -13,7 +13,7 @@ import { fmtCredits, fmtDayShort, fmtInt, fmtMoney, fmtMoneyShort } from "../for
 import { acctPhrase, resolveName, useNames } from "../components/names";
 import { SPIKE_PCT, buildMonthBars, fmtChangePct, aggTotal, numOrZero, sumBy, totalSpikeDays, useFindingAgg, useFindingData } from "../components/hooks";
 import { COST_MONEY_COL } from "../components/tab_registry";
-import { Card, Facts, PatternCard, bandOf, noDataText } from "../components/primitives";
+import { Card, PatternCard, bandOf, noDataText } from "../components/primitives";
 import { AreaContent } from "../area_content";
 import { ChartNote, paletteColor } from "../components/charts";
 import { CxBars, SmallMultiples } from "../components/cx_a";
@@ -31,7 +31,6 @@ import { NO_PRICE_LEDE, NO_PRICE_READING, isUnpricedAgg, notAssessedText } from 
 import { KpiRow, scrollToAnchor, windowShortLabel, windowSpan } from "../components/overview_tile";
 import { DAY_KINDS, dayKindOf, fillGaps, sumPick } from "./tab_overview";
 import { withoutTotalRows } from "./tab_area";
-import type { FactItems } from "../components/primitives";
 import type { FetchState, Filters, Finding, GoToFn, Meta, Row } from "../types";
 import "../styles/css/p_shared_tabs.css";
 import "../styles/css/p_cost_mlai.css";
@@ -39,22 +38,6 @@ import "../styles/css/p_cost_mlai.css";
 type MonthBar = ReturnType<typeof buildMonthBars>[number];
 type Grid = number[][];
 interface ForecastFigures { projected: number | null; lastMonth: number | null; monthToDate: number | null }
-
-export function MetricCard({ label, value, note, tone, facts }: { label: React.ReactNode; value: React.ReactNode; note?: React.ReactNode; tone?: string | null; facts?: FactItems }) {
-  return (
-    <div className={`metric-card${tone ? ` tone-${tone}` : ""}`}>
-      <div className="metric-label">{label}</div>
-      <div className="metric-value mono">{value}</div>
-      {facts ? <Facts items={facts} /> : (note && <div className="metric-note">{note}</div>)}
-    </div>
-  );
-}
-export function MetricGrid({ children }: { children?: React.ReactNode }) {
-  return <div className="metric-grid">{children}</div>;
-}
-export function CaveatNote({ children }: { children?: React.ReactNode }) {
-  return <div className="caveat-note">{children}</div>;
-}
 
 export function costGridMax(grid: Grid | null | undefined) {
   let m = 0;
@@ -724,8 +707,10 @@ export function CostTrendContent({ findings, filters, meta, maxCat, onVerdict, g
   const daily = dkReady ? chartDays.map((day) => ({ day, value: byDay.get(day) || 0 })) : null;
   const dayFmt = unpricedSpend ? fmtCr : (v: number) => fmtMoney(v, 0);
   const spend = dkReady ? aggTotal(dayKindAgg.data) : null;
-  const avg = daily && daily.length ? (spend ?? 0) / daily.length : null;
   const partialDay = (meta && meta.cost_cutoff && meta.cost_cutoff.partial_day) || null;
+  // The daily average is over full days only: today's partial day would pull it down.
+  const fullDays = daily ? daily.filter((d) => d.day !== partialDay) : null;
+  const avg = fullDays && fullDays.length ? fullDays.reduce((s, d) => s + d.value, 0) / fullDays.length : null;
 
   // Spike days: this audit's rule (on what the daily chart draws) or Snowflake's anomaly flag, one set.
   const anomalyRows = anomalyState.phase === "ready" && anomalyState.outcome === "ok_rows" ? withoutTotalRows(anomalyState.data.rows || []) : null;

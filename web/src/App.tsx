@@ -126,11 +126,6 @@ export function getStoredRole() {
 export function homeForRole(role: string) {
   return role === "cfo" ? "money" : "overview";
 }
-// `priority` first (in the order given), then the rest of `order` in its existing relative order.
-export function reorderPriority(order: string[], priority: string[]) {
-  const first = new Set(priority);
-  return [...priority, ...order.filter((k) => !first.has(k))];
-}
 // Every content area (AREA_ORDER) minus "overview" and "findings".
 export const CONTENT_AREAS = AREA_ORDER.filter((k) => k !== "overview" && k !== "findings");
 export const inAreaOrder = (list: string[]) => AREA_ORDER.filter((k) => list.includes(k));

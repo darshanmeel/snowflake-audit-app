@@ -56,9 +56,6 @@ export interface WasteEntry {
 }
 
 export const WASTE_DOLLAR_COLUMNS = ["est_wasted_usd_list", "total_est_wasted_usd_list", "wasted_usd", "est_idle_usd_list"];
-export function isWasteDollarColumn(col: string) {
-  return WASTE_DOLLAR_COLUMNS.includes(col);
-}
 
 // The unit an item's $ is in: "waste" (window), "saving" (window), "month", or null (flagged only).
 export function wasteUnitOf(item: WasteItem): "waste" | "saving" | "month" | null {
@@ -140,6 +137,11 @@ export function buildWasteWorklist(findingsById: Record<string, Finding> | null 
 // the checks that did not run. A total is null (not $0) when none of its checks ran.
 // `belowFloorById` (useBelowFloorWaste's result, optional) adds belowFloorUsd / belowFloorRows / floor:
 // the waste $ each check's materiality floor left OUT of the waste total. Shown as a note, never added.
+/** Why the waste $ reads "–": the same words on every page. */
+export function wasteMissingReason(w: { ran: number; noPrice?: boolean }): string {
+  return w.noPrice ? "no credit price in this export" : w.ran > 0 ? "flagged, not priced in this export" : "none of the waste checks ran";
+}
+
 export function wasteTotal(worklist: WasteEntry[] | null | undefined, belowFloorById?: Record<string, any> | null) {
   const list = worklist || [];
   const byUnit = (unit: string) => list.filter((w) => w.unit === unit);
@@ -172,8 +174,9 @@ export function wasteTotal(worklist: WasteEntry[] | null | undefined, belowFloor
       const st = belowFloorById[w.id];
       // Every item must have settled, or the figure would grow as requests land.
       if (!st || (st.phase !== "ready" && st.phase !== "error")) belowFloorPending = true;
+      // Nothing under the floor is a real 0 rows, not "still loading".
+      if (st && st.phase === "ready" && String(st.outcome || "").startsWith("ok_")) belowFloorReady = true;
       if (st && st.phase === "ready" && st.outcome === "ok_rows") {
-        belowFloorReady = true;
         belowFloorUsd += numOrZero(st.data.total_value) * (1 - numOrZero(st.data.discount_pct));
         belowFloorRows += numOrZero(st.data.matched_rows);
         if (!floor && st.data.floor) floor = st.data.floor;
@@ -181,7 +184,7 @@ export function wasteTotal(worklist: WasteEntry[] | null | undefined, belowFloor
     });
   }
   return {
-    belowFloorUsd: belowFloorReady && !belowFloorPending ? belowFloorUsd : null, belowFloorRows, floor,
+    belowFloorUsd: belowFloorReady && !belowFloorPending ? belowFloorUsd : null, belowFloorRows, floor, belowFloorPending,
     waste: sum(byUnit("waste")),
     saving: sum(byUnit("saving")),
     month: sum(byUnit("month")),

@@ -9,12 +9,12 @@
 import React from "react";
 import { AreaContent } from "../area_content";
 import { Api } from "../api";
-import { estLabel, fmtDayShort, fmtInt, fmtMoney } from "../format";
+import { estLabel, fmtDayShort, fmtInt } from "../format";
 import { IgnoredFilterTracker, useIgnoredFilterSummary } from "./hooks";
 import { AREA_REGISTRY, EST_SPEND_CAVEAT, countsForIds, visibleSubtabs } from "./tab_registry";
 import { getCheckLabel } from "./labels";
 import { TabScopeNote } from "./scope";
-import { ChecksList, CoverageStrip, NotJudgedStrip } from "./checks_list";
+import { ChecksList, CoverageStrip } from "./checks_list";
 import { CheckDrawer, DrawerBus, useDrawer } from "./drawer";
 import "./wh_idle_detail"; // registers the Idle drawer block
 import { windowRangeLabel } from "./overview_tile";
@@ -153,18 +153,6 @@ export function Tip({ text, children, placement }: { text?: React.ReactNode; chi
   );
 }
 
-// A thin proportional bar for "magnitude" (row_count scaled against the largest visible row --
-// see App.tsx's own note on why row_count, not a dollar figure, is this vertical slice's
-// magnitude signal).
-export function MagBar({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
-  return (
-    <div className="mag-bar-track">
-      <div className="mag-bar-fill" style={{ width: `${pct}%` }}></div>
-    </div>
-  );
-}
-
 // Facts: a labelled fact list under a KPI's big number, in place of a hand-written sentence once a
 // card has more than one number to carry. items: [{label, value, tone, detail, title}] -- tone
 // colours the value (crit/warn/ok/muted/money; money reads as plain neutral text, same as no tone);
@@ -198,14 +186,6 @@ export function Facts({ items }: { items?: FactItems }) {
       ))}
     </div>
   );
-}
-
-// PqgsNote: tab_query/tab_governance/tab_storage's KPI-card note slot had no shared component of
-// its own -- same facts option as the card primitives below, in place of its plain-sentence children.
-export function PqgsNote({ children, facts }: { children?: React.ReactNode; facts?: FactItems }) {
-  if (facts && facts.length) return <div className="pqgs-card-note"><Facts items={facts} /></div>;
-  if (children == null || children === "") return null;
-  return <div className="pqgs-card-note">{children}</div>;
 }
 
 // The outcome -> band classification every table row and the triage strip share, so the two can
@@ -267,17 +247,6 @@ export function ranCountsOf(meta?: Meta | null) {
 export function ranCountsText(meta?: Meta | null) {
   const c = ranCountsOf(meta);
   return c ? `${fmtInt(c.assessed)} of ${fmtInt(c.total)} ${c.unit} ran` : "…";
-}
-
-export function bandDotKind(band?: string | null) {
-  switch (band) {
-    case "CRITICAL": return "critical";
-    case "WARN": return "warn";
-    case "OK": return "ok";
-    case "NOT_ASSESSED": return "not_assessed";
-    case "RANKED": return "inventory";
-    default: return "inventory";
-  }
 }
 
 // bandOf() -> the StatusPill `kind` for that band (findings_table.tsx's own worst-band pill).
@@ -387,77 +356,6 @@ export function ChartCard({ title, subtitle, onToggleTable, showingTable, onOpen
 //   not_assessed   -- a gap, not a pass
 //   error          -- a local read failed
 export const STATE_NOTE_KINDS = ["loading", "ok_empty", "empty_window", "hidden_filters", "not_assessed", "error"];
-export function StateNote({ state, height = 120, rowCount, rangeLabel, reason, onReset, onRetry, onOpenGaps, gapHref = "Coverage & Gaps" }: {
-  state?: string | null; height?: number; rowCount?: number | null; rangeLabel?: string | null; reason?: React.ReactNode;
-  onReset?: (() => void) | null; onRetry?: (() => void) | null; onOpenGaps?: (() => void) | null; gapHref?: string | null;
-}) {
-  const kind = STATE_NOTE_KINDS.includes(state as string) ? state : "loading";
-  const style = { minHeight: height };
-  if (kind === "loading") {
-    return (
-      <div className="state-note state-note-loading" style={style} aria-busy="true">
-        <div className="state-note-text muted">Loading...</div>
-        <div className="state-note-skeleton" style={{ width: "88%" }} />
-        <div className="state-note-skeleton" style={{ width: "64%" }} />
-        <div className="state-note-skeleton" style={{ width: "42%" }} />
-      </div>
-    );
-  }
-  if (kind === "ok_empty") {
-    const n = rowCount != null ? fmtInt(rowCount) : null;
-    return (
-      <div className="state-note state-note-ok" style={style}>
-        <StatusIcon kind="ok" />
-        <div className="state-note-text">
-          {n != null ? `Nothing flagged in ${n} row${rowCount === 1 ? "" : "s"}` : "Nothing flagged"}
-          {rangeLabel ? `, ${rangeLabel}` : ""}.
-        </div>
-      </div>
-    );
-  }
-  if (kind === "empty_window") {
-    return (
-      <div className="state-note state-note-neutral" style={style}>
-        <div className="state-note-text">{"Not a verified zero."}{reason ? ` ${reason}` : ""}</div>
-      </div>
-    );
-  }
-  if (kind === "hidden_filters") {
-    return (
-      <div className="state-note state-note-neutral" style={style}>
-        <div className="state-note-text">Hidden by your filters.</div>
-        {onReset && <button type="button" className="state-note-action" onClick={onReset}>Reset filters</button>}
-      </div>
-    );
-  }
-  if (kind === "not_assessed") {
-    return (
-      <div className="state-note state-note-na" style={style}>
-        <StatusIcon kind="not_assessed" />
-        <div className="state-note-text">
-          {reason || "This could not be read."} This is a gap, not a pass.
-          {/* Review round 1: this rendered as a plain, non-clickable span even though it reads
-              exactly like a link ("Coverage & Gaps →"). A caller that wires up `onOpenGaps` gets a
-              real button; until one does, the words stay plain text rather than a fake link that
-              goes nowhere on click. */}
-          {gapHref && (onOpenGaps ? (
-            <button type="button" className="state-note-link" onClick={onOpenGaps}>{` ${gapHref} →`}</button>
-          ) : (
-            <span className="state-note-link-text">{` ${gapHref} →`}</span>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  // error
-  return (
-    <div className="state-note state-note-error" style={style}>
-      <StatusIcon kind="critical" />
-      <div className="state-note-text">{reason || "Could not read this table."}</div>
-      {onRetry && <button type="button" className="state-note-action" onClick={onRetry}>Try again</button>}
-    </div>
-  );
-}
 
 // ═══════════════════════ Redesign shared-base primitives (section 1-5 of the brief) ═══════════════════════
 
@@ -467,10 +365,6 @@ export function printWholePage() {
   document.body.classList.add("print-full");
   window.addEventListener("afterprint", () => document.body.classList.remove("print-full"), { once: true });
   window.print();
-}
-
-export function PrintPageButton() {
-  return <button type="button" className="copy-link-btn print-page-btn" onClick={printWholePage}>Save as PDF</button>;
 }
 
 // The page head's eyebrow: "CTO · Cost · last 30 days · <dates>", or the snapshot label instead.
@@ -584,47 +478,6 @@ export function noDataText(meta: Meta | null | undefined, windowDays: number) {
     ? windowRangeLabel(meta && meta.as_of_date, windowDays, meta && meta.snapshot_days)
     : null;
   return `No data for this in ${range || `the last ${fmtInt(windowDays)} days`}`;
-}
-
-export function EmptyState({ meta, windowDays }: { meta?: Meta | null; windowDays: number }) {
-  return <div className="muted">{noDataText(meta, windowDays)}</div>;
-}
-
-// NoDataBlock: one card for a tab/sub-tab whose sources are empty (never a grid of "-" tiles).
-// `sources` is [{name, unlocks}] or plain strings; `unlocks` is an optional flat list of check
-// names this data would turn on; `howToFill` is the plain-text command/instruction to close the
-// gap (Coverage & Gaps' own coverage payload is the source of truth for which sources are empty).
-// `meta`/`windowDays` are optional -- a caller that has them gets the real window dates
-// (noDataText); one that doesn't yet keeps the plain fallback line.
-export function NoDataBlock({ sources, unlocks, howToFill, meta, windowDays }: {
-  sources?: (string | { name: string; unlocks?: string | null })[] | null; unlocks?: string[] | null; howToFill?: React.ReactNode;
-  meta?: Meta | null; windowDays?: number | null;
-}) {
-  return (
-    <div className="card no-data-block">
-      <div className="h-title">{windowDays ? noDataText(meta, windowDays) : "No data for this in the current window"}</div>
-      {sources && sources.length > 0 && (
-        <ul className="no-data-source-list">
-          {sources.map((s) => {
-            const name = typeof s === "string" ? s : s.name;
-            const why = typeof s === "string" ? null : s.unlocks;
-            return (
-              <li key={name} className="no-data-source-row">
-                <span className="no-data-source-name">{name}</span>
-                {why && <span className="no-data-source-unlocks">{` -- unlocks ${why}`}</span>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {unlocks && unlocks.length > 0 && (
-        <div className="no-data-source-unlocks" style={{ marginTop: 8 }}>
-          {`Once filled, this would check: ${unlocks.join(", ")}.`}
-        </div>
-      )}
-      {howToFill && <div className="no-data-how">{howToFill}</div>}
-    </div>
-  );
 }
 
 // The price basis words next to a $ ("Effective $2.85 per credit, from your invoice"): the API's own
@@ -751,40 +604,6 @@ export function FilterReachNote() {
   ].filter(Boolean);
   if (!parts.length) return null;
   return <div className="scope-note">{parts.join(" ")}</div>;
-}
-
-// Where the dollars the tag filter keeps got their tag: the query, the object, the warehouse, the user or role, or the account.
-/** GET /api/tag_origins: where the tag filter's dollars got their tag, per selected key. */
-interface TagOrigins {
-  keys: { tag_key: string; values: string[]; origins: { label: string; usd: number | null }[] }[];
-  window_days: number;
-  usd: number | null;
-}
-
-export function TagOriginNote({ filters }: { filters: Filters }) {
-  const tagKey = Api.tagFilterKey();
-  const wsKey = JSON.stringify(filters.accountIds || []);
-  const [data, setData] = React.useState<TagOrigins | null>(null);
-  React.useEffect(() => {
-    setData(null);
-    if (!tagKey) return undefined;
-    let live = true;
-    Api.tagOrigins(filters.window, filters.accountIds)
-      .then((d: TagOrigins) => { if (live) setData(d); })
-      .catch(() => {});
-    return () => { live = false; };
-  }, [tagKey, wsKey, filters.window]);
-  if (!tagKey || !data || !data.keys || !data.keys.length) return null;
-  const groups = (filters.tag && filters.tag.groups) || [];
-  const lines = data.keys.map((k, i) => {
-    const g = groups[i] || {};
-    const vals = (g.values && g.values.length ? g.values : k.values).map((v: string) => (v === "__untagged__" ? "untagged" : v));
-    const who = `${g.display_key || g.key || k.tag_key}${vals.length ? ` = ${vals.join(" or ")}` : ""}`;
-    if (!k.origins.length) return `${who}: no spend in the last ${data.window_days} days.`;
-    const parts = k.origins.map((o) => `${o.label} ${fmtMoney(o.usd, 0)}`).join(" · ");
-    return `${who}: ${fmtMoney(data.usd, 0)} list price in the last ${data.window_days} days, by where the tag was set: ${parts}.`;
-  });
-  return <div className="scope-note">{lines.join(" ")}</div>;
 }
 
 // AreaPage: the generic frame every area uses (section 7) -- PageIntro + SubTabs (the active
@@ -951,7 +770,6 @@ export function AreaPage({
       <FallbackSourceNote findings={areaKey === "overview" || areaKey === "actions" ? (findings || []) : scopedFindings} />
       {(areaKey === "overview" || areaKey === "actions") && <FreshnessLine findingsById={allFindingsIndex} goTo={goTo} />}
       <FilterReachNote />
-      {areaKey === "cost" && <TagOriginNote filters={filters} />}
       {!summaryOnly && <TabScopeNote findings={scopedFindings} meta={meta} filters={filters} />}
       <div className={`dr-layout${drawerFinding ? " open" : ""}`}>
         <div className="dr-main">
@@ -961,7 +779,6 @@ export function AreaPage({
             <React.Fragment>
               <ChecksList key={`${areaKey}:${active ? active.key : ""}`} findings={scopedFindings} refIds={refIds}
                 filters={filters} meta={meta} goTo={goTo} openId={drawer ? drawer.id : null} />
-              <NotJudgedStrip findings={ownedFindings} goTo={goTo} />
             </React.Fragment>
           ) : (!Content && (
             <div className="card"><span className="muted">Nothing is placed on this screen yet.</span></div>

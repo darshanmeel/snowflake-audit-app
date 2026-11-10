@@ -20,19 +20,6 @@ export function readNavHash(validTabs: string[] | null | undefined) {
   };
 }
 
-export function writeNavHash(nav: Record<string, any> | null | undefined) {
-  let p;
-  try { p = new URLSearchParams((window.location.hash || "").replace(/^#/, "")); } catch (e) { p = new URLSearchParams(); }
-  NAV_HASH_KEYS.forEach(([field, key]) => {
-    const v = nav && nav[field];
-    if (v === null || v === undefined || v === "") p.delete(key); else p.set(key, String(v));
-  });
-  const next = "#" + p.toString();
-  if (window.location.hash !== next) {
-    try { window.history.replaceState(null, "", next); } catch (e) { /* file:// or a sandbox: skip */ }
-  }
-}
-
 // `patch` merges into the current hash; a key it does not name is left as-is, a null value deletes it.
 export function navHref(patch: Record<string, any> | null | undefined) {
   let p;

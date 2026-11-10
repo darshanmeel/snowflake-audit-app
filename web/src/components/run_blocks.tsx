@@ -6,8 +6,8 @@ import React from "react";
 import { fmtDayShort, fmtInt, fmtMoney } from "../format";
 import { fillDays, numOrZero, useFindingAgg } from "./hooks";
 import { aggNote, whNameId } from "./de_blocks";
-import { CompareToBaseline, StateBandList } from "./blocks_2";
-import type { BaselineRow, Health, RunCell, StateBandRow } from "./blocks_2";
+import { CompareToBaseline } from "./blocks_2";
+import type { BaselineRow, Health, RunCell } from "./blocks_2";
 import { CxRunGrid, CxRunLegend } from "./cx_e";
 import type { CxRunRow } from "./cx_e";
 import { registerDrawerBlock } from "./drawer_blocks";
@@ -121,40 +121,6 @@ export function TaskRunGrid({ load, meta, filters, n = 12, onTask }: {
         <span>{`${fmtInt(rows.length)} of ${fmtInt(hit.length)} tasks that failed or ran slow · ${fmtInt(d.list.length)} tasks ran${partial ? " · the last day is partial" : ""}`}</span>
         {(more > 0 || all) && hit.length > n && <button type="button" className="cx-linkbtn" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show ${fmtInt(more)} more`}</button>}
       </div>
-    </div>
-  );
-}
-
-/** One state line per task: each day ok, failing, slow or no run, the worst first. */
-export function TaskStateBands({ load, meta, filters, n = 6, onRow }: {
-  load: ReturnType<typeof useTaskRunDays>; meta: Meta | null; filters: Filters; n?: number; onRow?: (t: TaskRuns) => void;
-}) {
-  const note = aggNote(load.state, meta, filters.window);
-  if (note) return <div className="chart-note-oneline">{note}</div>;
-  const d = load.data!;
-  if (!d.list.length) return <div className="chart-note-oneline">{aggNote({ phase: "ready", outcome: "ok_empty_window", data: null, error: null }, meta, filters.window)}</div>;
-  const days = windowDayList(meta, filters.window, d.seen);
-  const partial = lastIsPartial(meta, days);
-  const word: Record<RunCell, StateBandRow["segments"][number]["state"]> = { ok: "ok", failed: "failing", slow: "slow", skipped: "ok", none: "none" };
-  const rows: StateBandRow[] = d.list.slice(0, n).map((t) => {
-    const segs: StateBandRow["segments"] = [];
-    days.forEach((day) => {
-      const st = word[cellOf(t.days.get(day))];
-      const last = segs[segs.length - 1];
-      // Runs of the same state merge into one segment.
-      if (last && last.state === st) { last.value += 1; last.title = `${last.title!.split(" – ")[0]} – ${fmtDayShort(day)}: ${st}`; }
-      else segs.push({ state: st, value: 1, title: `${fmtDayShort(day)}: ${st}` });
-    });
-    return {
-      key: t.name, name: shortTask(t.name), id: t.id, segments: segs, partialLast: partial,
-      onClick: onRow ? () => onRow(t) : undefined,
-      metrics: `${t.runs > 0 ? `${fmtShare(pctOf(t.failed, t.runs))} failed` : "no runs"} · ${fmtInt(t.runs)} runs`,
-    };
-  });
-  return (
-    <div>
-      <StateBandList rows={rows} legend={["ok", "failing", "slow", "none"]} ariaLabel="Task state by day" />
-      <div className="de-more">{`${fmtInt(rows.length)} of ${fmtInt(d.list.length)} tasks that ran · most failed runs first${partial ? " · the last day is partial" : ""}`}</div>
     </div>
   );
 }

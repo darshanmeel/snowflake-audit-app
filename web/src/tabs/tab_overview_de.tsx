@@ -54,8 +54,10 @@ export function DeOverview({ filters, meta, findingsById, goTo, role }: {
   const slowState = useFindingData("sf_task_duration_regression", win, acct, 5000);
   const trendState = useFindingData("overview_daily_credits_trend", win, acct, 5000);
   const spendState = useFindingData("overview_spend_estimate", win, acct, 500);
-  const curAgg = useFindingAgg("cost_period_over_period", win, acct, [], "sum", "est_current_usd_list");
-  const prevAgg = useFindingAgg("cost_period_over_period", win, acct, [], "sum", "est_previous_usd_list");
+  // Judged rows only, as the other pages' spend movers: a partly covered previous window is NOT_ASSESSED.
+  const judged = { statuses: ["OK", "WARN", "CRITICAL"] };
+  const curAgg = useFindingAgg("cost_period_over_period", win, acct, [], "sum", "est_current_usd_list", judged);
+  const prevAgg = useFindingAgg("cost_period_over_period", win, acct, [], "sum", "est_previous_usd_list", judged);
   const qDay = useFindingAgg("query_queuing_waits", win, acct, ["day"], "sum", "waiting_at_capacity_ms_sum");
   const load = useWarehouseLoad(filters);
   const taskDays = useTaskRunDays(filters);

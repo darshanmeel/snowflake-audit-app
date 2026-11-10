@@ -14,14 +14,13 @@ import { COST_MONEY_COL, WASTE_ITEMS } from "./tab_registry";
 import { buildWasteEntry, wasteTotal } from "./waste_total";
 import { DrillTable, SplitBar } from "./drill_table";
 import { CellBar, CxTable, EmptyStrip, HourLine, NameBars, NameIdText, SevWord } from "./cx_b";
-import { Columns } from "./charts_more";
 import { chartLabel } from "./charts";
 import { notAssessedText } from "./scope";
 import { REASON_INFO } from "./labels";
 import { partialBarKeys, scrollToAnchor, windowShortLabel } from "./overview_tile";
 import { rowLabelOf, withoutTotalRows } from "../tabs/tab_area";
 import { DrawerBus, useDrawer } from "./drawer";
-import { IssueTile, StackedShareBar, DayKindTimeline, statusBarColor, WeekHourHeatmap, WEEKDAYS_ISO, emptyWeekHourGrid, fmtShare, pctOf } from "./blocks";
+import { IssueTile, StackedShareBar, DayKindTimeline, statusBarColor, WeekHourHeatmap, emptyWeekHourGrid, fmtShare, pctOf } from "./blocks";
 import type { ShareItem, ShareSegment, StatusBarItem, WeekHourGrid } from "./blocks";
 import { ClusterDots } from "./blocks_2";
 import { SUSPEND_BANDS, TopOffenders, suspendText } from "./wh_idle_detail";
@@ -517,74 +516,6 @@ function BusyIdleBars({ items, skip = 0, n = 5, priced }: {
         </button>
       )}
     </div>
-  );
-}
-
-export function WhIdleDetail({ p, w, tune, onClose }: { p: ApPageProps; w: { name: string; rows: Row[] }; tune: Src; onClose: () => void }) {
-  const r0 = w.rows[0] || {};
-  const same = (r: Row) => String(r.account_id ?? "") === String(r0.account_id ?? "") && String(r.warehouse_id) === String(r0.warehouse_id);
-  const ID = "sf_cost_warehouse_idle_credits_daily";
-  // The idle check's rows are per warehouse hour, so they are read summed, never row by row.
-  const busyDay = useAgg(p, ID, ["warehouse_id", "usage_date"], "sum", "query_credits", { also: ["idle_credits"] });
-  const idleDay = busyDay;
-  const busyHour = useAgg(p, ID, ["warehouse_id", "day_of_week", "hour_of_day"], "sum", "query_credits", { also: ["idle_credits"] });
-  const idleHour = busyHour;
-  const mine = (g: { key: any[] }) => String(g.key[0]) === String(r0.warehouse_id);
-  const bd = groupsOf(busyDay), id = alsoGroups(idleDay, "idle_credits");
-  const dayMap = (gs: { key: any[]; value: number }[] | null) => {
-    const m = new Map<string, number>();
-    (gs || []).filter(mine).forEach((g) => { const d = String(g.key[1]).slice(0, 10); m.set(d, (m.get(d) || 0) + numOrZero(g.value)); });
-    return m;
-  };
-  const bMap = dayMap(bd), iMap = dayMap(id);
-  const days = [...new Set([...bMap.keys(), ...iMap.keys()])].sort();
-  const partial = partialBarKeys(days, false);
-  const bh = groupsOf(busyHour), ih = alsoGroups(idleHour, "idle_credits");
-  const hourOf = (gs: { key: any[]; value: number }[] | null) => {
-    const m = new Map<string, number>();
-    (gs || []).filter(mine).forEach((g) => { const k = `${Number(g.key[1])}|${Number(g.key[2])}`; m.set(k, (m.get(k) || 0) + numOrZero(g.value)); });
-    return m;
-  };
-  const bHour = hourOf(bh), iHour = hourOf(ih);
-  const grid = emptyWeekHourGrid();
-  new Set([...bHour.keys(), ...iHour.keys()]).forEach((k) => {
-    const [dw, h] = k.split("|").map(Number);
-    if (dw < 1 || dw > 7 || !(h >= 0 && h <= 23)) return;
-    const busy = bHour.get(k) || 0, idle = iHour.get(k) || 0;
-    grid[dw - 1][h] = busy + idle > 0 ? (pctOf(idle, busy + idle) ?? 0) : null;
-  });
-  const hourTip = (wd: string, h: number, v: number | null) => {
-    const k = `${WEEKDAYS_ISO.indexOf(wd) + 1}|${h}`;
-    const busy = bHour.get(k) || 0, idle = iHour.get(k) || 0;
-    return `${wd} ${String(h).padStart(2, "0")}:00 UTC: ${v == null ? "not billed" : `${fmtShare(v)} idle · ${fmtInt(Math.round(busy))} busy, ${fmtInt(Math.round(idle))} idle credits`}`;
-  };
-  const t = (rowsOf(tune) || []).find(same);
-  const tDisc = discOf(tune);
-  const setting = r0.auto_stop_minutes != null ? `${fmtInt(r0.auto_stop_minutes)} min` : (t && t.auto_suspend_s != null ? secFmt(numOrZero(t.auto_suspend_s)) : "off");
-  const facts = [
-    `Auto-suspend: ${setting}`,
-    t && t.est_saving_60s_usd_list != null ? `at 60 s saves ${fmtMoney(numOrZero(t.est_saving_60s_usd_list) * (1 - tDisc), 0)}` : null,
-    t && t.est_saving_300s_usd_list != null ? `at 5 min saves ${fmtMoney(numOrZero(t.est_saving_300s_usd_list) * (1 - tDisc), 0)}` : null,
-  ].filter(Boolean).join(" · ");
-  const hourNote = busyHour.f && busyHour.state.phase === "error" ? "– This export has no hour of day for this check: run the export again." : noteOf(busyHour, p);
-  return (
-    <ChartCard title={`${w.name}: busy and idle by day and hour`} subtitle={facts} onOpenCheck={onClose} takeaway={null}>
-      {(busyDay.f && busyDay.state.phase === "error" ? "– This export has no hour of day for this check: run the export again." : noteOf(busyDay, p)) || (days.length < 2
-        ? <div className="chart-note-oneline">{`No daily rows for ${w.name} in ${rangeOf(p) || "this window"}.`}</div>
-        : <Columns
-            days={days} partialDays={partial} unitLabel="credits" ariaLabel={`${w.name} busy and idle credits by day`}
-            series={[
-              { name: "Busy (ran queries)", values: days.map((d) => bMap.get(d) || 0) },
-              { name: "Idle", values: days.map((d) => iMap.get(d) || 0) },
-            ]}
-            valueFmt={(v: number) => `${fmtInt(Math.round(v))} credits`}
-            note={partial.length ? `The faded bar is today (${fmtDayShort(partial[0])}): partial.` : null} />)}
-      <div className="ac-sub-title">Idle share by weekday and hour (UTC) · darker is more idle</div>
-      {hourNote ? <div className="chart-note-oneline">{hourNote}</div>
-        : <WeekHourHeatmap grid={grid} ariaLabel={`${w.name} idle share by weekday and hour`} max={100}
-            legendLow="mostly busy" legendHigh="mostly idle" tip={hourTip} />}
-      <button type="button" className="ac-close" onClick={onClose}>Close</button>
-    </ChartCard>
   );
 }
 

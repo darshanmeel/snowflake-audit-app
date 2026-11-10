@@ -96,47 +96,6 @@ export function costServiceWords(code: any) {
     .map((w, i) => WORDS[w] || (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(" ");
 }
 
-// The change chip: 25% up is over the warning line, 50% is critical, a 15% drop reads good.
-export function DeltaChip({ cur, prev }: { cur: number; prev: number }) {
-  if (!(prev > 0)) return <span className="cost-delta tone-neutral">{cur > 0 ? "new" : "–"}</span>;
-  const pct = ((cur - prev) / prev) * 100;
-  const tone = pct >= 50 ? "crit" : pct >= 25 ? "warn" : pct <= -15 ? "good" : "neutral";
-  const sign = pct > 0 ? "+" : pct < 0 ? "−" : "";
-  return <span className={`cost-delta tone-${tone}`} title={`${usd0(cur)} vs ${usd0(prev)} the period before`}>{`${sign}${fmtShare(Math.abs(pct))}`}</span>;
-}
-
-// This period's bar over the previous one's track, with the change chip. The tail is counted, not folded.
-export function ThisVsPrevBars({ items, n = 8, valueFmt = usd0, onOpen }: { items: { key?: string; name: string; cur: number; prev: number }[]; n?: number; valueFmt?: (v: number) => string; onOpen?: ((key: string) => void) | null }) {
-  const sorted = [...items].sort((a, b) => b.cur - a.cur);
-  const shown = sorted.slice(0, n);
-  const max = Math.max(1, ...shown.map((it) => Math.max(it.cur, it.prev)));
-  return (
-    <div className="cost-tvp" role="list" aria-label="This period vs the previous period">
-      <div className="blk-legend">
-        <span className="blk-legend-item"><span className="blk-sw" style={{ background: "var(--c1)" }} />This period</span>
-        <span className="blk-legend-item"><span className="blk-sw cost-tvp-sw-prev" />Previous period</span>
-      </div>
-      {shown.map((it) => {
-        const body = (
-          <>
-            <span className="cost-tvp-name">{it.name}</span>
-            <span className="cost-tvp-bars">
-              <span className="cost-tvp-prev" style={{ width: `${(it.prev / max) * 100}%` }} />
-              <span className="cost-tvp-cur" style={{ width: `${(it.cur / max) * 100}%` }} />
-            </span>
-            <span className="cost-tvp-value mono">{valueFmt(it.cur)}</span>
-            <DeltaChip cur={it.cur} prev={it.prev} />
-          </>
-        );
-        return onOpen && it.key
-          ? <button type="button" key={it.name} className="cost-tvp-row blk-row-btn" title={`${it.name}: ${valueFmt(it.cur)} (previous ${valueFmt(it.prev)})`} onClick={() => onOpen(it.key!)}>{body}</button>
-          : <div key={it.name} className="cost-tvp-row" role="listitem" title={`${it.name}: ${valueFmt(it.cur)} (previous ${valueFmt(it.prev)})`}>{body}</div>;
-      })}
-      {sorted.length > shown.length && <div className="blk-more">{`+${fmtInt(sorted.length - shown.length)} more not shown`}</div>}
-    </div>
-  );
-}
-
 // "28.0×": this period as a multiple of the previous one.
 const multiple = (growthPct: number) => `${(1 + growthPct / 100).toFixed(1)}×`;
 

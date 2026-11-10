@@ -212,7 +212,3 @@ def test_ui_overview_no_longer_projects_a_monthly_waste_figure():
     assert "monthlyWaste" not in text and '"/mo"' not in text
 
 
-def test_ui_is_waste_dollar_column_is_defined_only_in_waste_total():
-    hits = [p.name for p in WEB.rglob("*.ts*")
-            if "function isWasteDollarColumn" in p.read_text(encoding="utf-8")]
-    assert hits == ["waste_total.tsx"]

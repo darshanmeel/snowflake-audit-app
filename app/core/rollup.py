@@ -507,6 +507,9 @@ def rollup(
     try:
         if not _tags_models_exist(con):
             return _not_assessed_body(area, norm_key, window_days, "tag_models_not_built: the tag rollup was not built; rebuild to see it", display_key=tag_key)
+        # No credit price: the cost units are empty on purpose, which must read "–", never $0.
+        if area == "cost" and app_core_data.price_basis()["credit_price_usd"] is None:
+            return _not_assessed_body(area, norm_key, window_days, "unpriced: no credit price in this export", display_key=tag_key)
 
         norm_key = _resolve_cost_center_alias(con, area, norm_key)
 

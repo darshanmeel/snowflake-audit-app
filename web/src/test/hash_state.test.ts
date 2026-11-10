@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { HashState } from "../components/hash_state";
-import { navHref, readNavHash, writeNavHash } from "../components/nav_hash";
+import { navHref, readNavHash } from "../components/nav_hash";
 
 const setHash = (h: string) => window.history.replaceState(null, "", "/" + h);
 
@@ -44,16 +44,6 @@ describe("nav hash", () => {
     const nav = readNavHash(["cost"]);
     expect(nav && nav.subtab).toBeNull();
     expect(nav && nav.view).toBeNull();
-  });
-
-  it("writes the nav keys and leaves the rest of the hash alone", () => {
-    setHash("#role=cto&w=7");
-    writeNavHash({ tab: "queries", subtab: "heavy", focusQueryId: null });
-    const p = new URLSearchParams(window.location.hash.slice(1));
-    expect(p.get("role")).toBe("cto");
-    expect(p.get("tab")).toBe("queries");
-    expect(p.get("subtab")).toBe("heavy");
-    expect(p.has("focus")).toBe(false);
   });
 
   it("navHref merges a patch spelled with either key name", () => {

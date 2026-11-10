@@ -11,7 +11,6 @@
 // `how` text is a change to make: settings a person can run, never below what Snowflake allows
 // (auto-suspend below 60 s is not offered).
 import React from "react";
-import { Api } from "../api";
 import { fmtDayShort, fmtInt, fmtMoney, fmtMoneyOf } from "../format";
 import { useNames } from "../components/names";
 import { FLAGGED_STATUSES, aggTotal, numOrZero, useFindingAgg, useFindingData } from "../components/hooks";
@@ -190,8 +189,6 @@ export function buildActions(templates: ActionTemplate[], index: Record<string, 
     };
   }).filter(Boolean) as Action[];
 }
-
-export const IMPACT_SUB: Record<string, (w: number) => string> = { waste: (w) => `possible waste, last ${w} days`, saving: (w) => `possible saving, last ${w} days`, month: () => "per month" };
 
 export function actionImpact(a: Action) {
   if (a.impactText) return { text: a.impactText, tone: "none" };
@@ -589,21 +586,6 @@ export interface FixFirstState {
   error?: string;
 }
 
-export function useFixFirst(filters: Filters, limit?: number) {
-  const key = JSON.stringify([filters.window, filters.accountIds || [], limit || 10, Api.tagFilterKey(), Api.ownerFilterKey(), Api.dimFilterKey()]);
-  const [state, setState] = React.useState<FixFirstState>({ phase: "loading", data: null });
-  React.useEffect(() => {
-    let live = true;
-    setState({ phase: "loading", data: null });
-    Api.fixFirst(filters.window, filters.accountIds, limit || 10)
-      .then((d: FixFirstData) => { if (live) setState({ phase: "ready", data: d }); })
-      .catch((e: any) => { if (live) setState({ phase: "error", data: null, error: e.message || String(e) }); });
-    return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  return state;
-}
-
 // Coverage-only ids (data lag) and areas the role cannot open are left out of the lists.
 export function fixFirstVisible(items: FixFirstItem[] | null | undefined, allowedAreas?: Set<string> | null) {
   return (items || []).filter((it) => {
@@ -622,12 +604,6 @@ export function fixFirstAffected(item: FixFirstItem) {
   if (!a || a.flagged == null || a.total == null) return null;
   return `${fmtInt(a.flagged)} of ${fmtInt(a.total)} ${a.noun}`;
 }
-
-export const FIX_FIRST_GROUPS: { key: string; title: (w: number) => string; sub: string }[] = [
-  { key: "priced_window", title: (w) => `Priced, last ${w} days`, sub: "possible waste, saving or gap in the window" },
-  { key: "priced_month", title: () => "Priced, per month", sub: "storage that could be freed each month" },
-  { key: "critical_no_usd", title: () => "Critical, not priced", sub: "critical checks with no $ figure, by area" },
-];
 
 // The money kinds "Fix these first" groups by, in order. Each group is its own unit: never added.
 export const FIX_KIND_GROUPS: { kind: string; title: (w: number) => string; per: string }[] = [
@@ -687,83 +663,6 @@ export function CriticalByArea({ items, index, goTo }: { items: FixFirstItem[]; 
   return (
     <StatusBars items={bars} n={12} unitLabel="critical checks with no $" ariaLabel="Critical checks with no dollar figure, by area"
       onBarClick={(b) => openFixItem(b.first as FixFirstItem, index, goTo)} emptyText="No critical check without a $ figure." />
-  );
-}
-
-export function FixFirstGroups({ filters, index, goTo, allowedAreas, perGroup = 5 }: {
-  filters: Filters; index: Record<string, Finding>; goTo: GoToFn; allowedAreas: Set<string>; perGroup?: number;
-}) {
-  // Every item comes back, so the counts follow the role's areas; a few per kind are shown.
-  const state = useFixFirst(filters, 500);
-  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
-  if (state.phase === "loading") return <div className="card"><div className="card-title">Fix these first</div><div className="muted">…</div></div>;
-  if (state.phase === "error") return <div className="card"><div className="card-title">Fix these first</div><div className="chart-note-oneline">{`Could not load: ${state.error}`}</div></div>;
-  const d = state.data!;
-  const items = fixFirstVisible(d.items, allowedAreas);
-  const priced = items.filter((it) => it.group !== "critical_no_usd");
-  const critical = items.filter((it) => it.group === "critical_no_usd");
-  const groups = FIX_KIND_GROUPS.map((g) => ({ ...g, all: priced.filter((it) => fixKindOf(it) === g.kind) })).filter((g) => g.all.length);
-  return (
-    <div className="card ff-card">
-      <div className="card-head">
-        <div>
-          <div className="card-title">Fix these first</div>
-          <div className="metric-note">{[d.price_basis && d.price_basis.label, d.discount && d.discount.ignored ? d.discount.reason : null].filter(Boolean).join(". ") || "Largest first, by kind of $. Kinds are never added."}</div>
-        </div>
-      </div>
-      {groups.length === 0 && critical.length === 0 && <div className="muted">Nothing flagged in the checks that ran.</div>}
-      <div className="ff-cols">
-        {groups.length > 0 && (
-          <div className="ff-priced">
-            {groups.map((g) => {
-              const open = !!expanded[g.kind];
-              const shown = open ? g.all : g.all.slice(0, perGroup);
-              const max = Math.max(0, ...g.all.map((it) => Number(it.usd) || 0));
-              return (
-                <div key={g.kind} className="ff-kind">
-                  <div className="ff-kind-head"><span>{g.title(filters.window)}</span><span className="faint">{`${fmtInt(g.all.length)} check${g.all.length === 1 ? "" : "s"}`}</span></div>
-                  {shown.map((it, i) => <FixItemRow key={it.query_id} item={it} rank={i + 1} max={max} per={g.per} onOpen={() => openFixItem(it, index, goTo)} />)}
-                  {g.all.length > perGroup && (
-                    <button type="button" className="ov-link-btn ff-more" onClick={() => setExpanded({ ...expanded, [g.kind]: !open })}>
-                      {open ? "Show fewer" : `${fmtInt(g.all.length - perGroup)} more`}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {critical.length > 0 && (
-          <div className="ff-crit">
-            <div className="ff-kind-head"><span>Critical, not priced</span><span className="faint">{`${fmtInt(critical.length)} check${critical.length === 1 ? "" : "s"}`}</span></div>
-            <CriticalByArea items={critical} index={index} goTo={goTo} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// The CTO's "Do these 3 first": the largest priced fixes in the window, then storage, then the
-// critical checks with no $.
-export function FixTopThree({ filters, index, goTo }: { filters: Filters; index: Record<string, Finding>; goTo: GoToFn }) {
-  const state = useFixFirst(filters, 500);
-  if (state.phase !== "ready") {
-    return <div className="card ff-card"><div className="card-title">Do these 3 first</div><div className="muted">{state.phase === "error" ? `Could not load: ${state.error}` : "…"}</div></div>;
-  }
-  const items = fixFirstVisible(state.data!.items);
-  const inWindow = items.filter((it) => it.group === "priced_window").sort((a, b) => (Number(b.usd) || 0) - (Number(a.usd) || 0));
-  const top = [...inWindow, ...items.filter((it) => it.group === "priced_month"), ...items.filter((it) => it.group === "critical_no_usd")].slice(0, 3);
-  const max = Math.max(0, ...top.map((it) => (it.group === "priced_window" ? Number(it.usd) || 0 : 0)));
-  return (
-    <div className="card ff-card">
-      <div className="card-title">Do these 3 first</div>
-      {top.length === 0 ? <div className="muted">Nothing flagged in the checks that ran.</div>
-        : top.map((it, i) => (
-          <FixItemRow key={it.query_id} item={it} rank={i + 1} max={it.group === "priced_window" ? max : 0}
-            per={it.group === "priced_month" ? "/mo" : ""} onOpen={() => openFixItem(it, index, goTo)} />
-        ))}
-    </div>
   );
 }
 
@@ -851,13 +750,13 @@ export function ActionsPanel({ filters, dims, allFindingsIndex, goTo, roleAreas,
   const notRun = (fig: { ran: number }) => (fig.ran > 0 ? "flagged, not priced in this export" : "none of these checks ran");
   const checksWord = (n: number) => `${fmtInt(n)} check${n === 1 ? "" : "s"}`;
   const wasteTile = (
-    <IssueTile key="waste" label="Possible waste" loading={!ready}
+    <IssueTile key="waste" label="Possible waste" loading={!ready || spendAgg.phase === "loading"}
       headline={wt.waste.usd != null ? fmtMoney(wt.waste.usd, 0) : null} unit={`last ${filters.window} days`} missingReason={notRun(wt.waste)}
       base={wt.waste.usd != null ? (spend ? `${fmtShare(pctOf(wt.waste.usd, spend))} of spend, across ${checksWord(wt.waste.flagged)}.` : `Across ${checksWord(wt.waste.flagged)}.`) : null}
       onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
   );
   const savingTile = (
-    <IssueTile key="saving" label="Possible saving" loading={!ready}
+    <IssueTile key="saving" label="Possible saving" loading={!ready || spendAgg.phase === "loading"}
       headline={wt.saving.usd != null ? fmtMoney(wt.saving.usd, 0) : null} missingReason={notRun(wt.saving)}
       unit={wt.saving.usd != null && spend ? `${fmtShare(pctOf(wt.saving.usd, spend))} of spend` : undefined}
       base={wt.saving.usd != null ? `From resizing, across ${checksWord(wt.saving.flagged)}. Counted apart from waste.` : null}

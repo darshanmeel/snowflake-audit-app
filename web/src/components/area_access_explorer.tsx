@@ -448,9 +448,11 @@ export function ApAccessExplorer(p: ApPageProps) {
   const acct = p.filters.accountIds && p.filters.accountIds.length === 1 ? p.filters.accountIds[0] : undefined;
 
   React.useEffect(() => {
+    let live = true;   // an answer for the last account must not land under a new one
     getJson("/api/access/names", acct ? { account_id: acct } : undefined)
-      .then((d) => { setNames(d); setErr(null); setSel((s) => (s.name ? s : { kind: "user", name: (d.users.find((u: any) => !u.is_disabled && u.roles > 1) || d.users[0] || {}).name || "" })); })
-      .catch((e) => setErr(String(e.message || e)));
+      .then((d) => { if (!live) return; setNames(d); setErr(null); setSel((s) => (s.name ? s : { kind: "user", name: (d.users.find((u: any) => !u.is_disabled && u.roles > 1) || d.users[0] || {}).name || "" })); })
+      .catch((e) => { if (live) setErr(String(e.message || e)); });
+    return () => { live = false; };
   }, [acct]);
   React.useEffect(() => {
     setRes(null);   // never show the last result under a new kind or name
@@ -584,7 +586,7 @@ export function ApAccessExplorer(p: ApPageProps) {
     : l > 0 ? (l === 1 ? (sel.kind === "user" ? "Granted" : "Inherits") : `${l} steps down`)
     : l === -1 ? (sel.kind === "object" ? "Granted on it" : "Granted to") : `${-l} steps up`);
 
-  useLede(p, !names && !err, names ? `${plural(names.users.length, "user")}, ${plural(names.roles.length, "role")} and ${plural(names.objects.length, "object")} with grants. Pick one to see every path from a user to an object.` : null);
+  useLede(p, !names && !err, names ? `${plural(names.users.length, "user")}, ${plural(names.roles.length, "role")} and ${plural(names.objects.length, "object")} with grants.${names.truncated ? " The export hit its row cap, so some role-to-object grants are missing." : ""} Pick one to see every path from a user to an object.` : null);
 
   const tiles = res && sel.kind !== "object" ? (
     <SummaryTileRow compact>

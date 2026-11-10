@@ -13,8 +13,7 @@
 import React from "react";
 import { Api, excludedNoAccount, scopeHasAccount } from "../api";
 import { fmtInt, fmtMoney, fmtPct } from "../format";
-import { CHART_OTHER_COLOR } from "./charts";
-import type { Dims, FetchState, Finding, Row } from "../types";
+import type { Dims, FetchState, Row } from "../types";
 
 type AccountIds = string[] | null | undefined;
 type IgnoredEntry = { account: boolean; tag: boolean; acctTag: boolean };
@@ -158,17 +157,6 @@ export function useFindingAgg(queryId: string | null | undefined, windowDays: nu
   return state;
 }
 
-// Turn an aggregate response's `groups` (plus its `other` bucket, when present) into the plain
-// [{name, value}] shape charts.tsx's primitives (HBarList/Treemap/Donut/groupSum's own output)
-// already expect. `keyFmt(keyArray)` names a group ("(unlabeled)" fallbacks belong to the caller,
-// same as groupSum's own keyFn); `otherLabel` names the folded tail, defaulting to "Other".
-export function groupsToEntries(data: Row | null | undefined, keyFmt: (key: any[]) => any, otherLabel?: string): ChartEntry[] {
-  if (!data) return [];
-  const entries: ChartEntry[] = (data.groups || []).map((g: Row) => ({ name: keyFmt(g.key), value: numOrZero(g.value) }));
-  if (data.other) entries.push({ name: otherLabel || "Other", value: numOrZero(data.other.value), color: CHART_OTHER_COLOR });
-  return entries;
-}
-
 // One row-like object per aggregate group: its key columns, its `also` sums, its `pick` values and
 // the aggregate under `valueCol`, so code written for rows reads a grouped response unchanged.
 export function groupsToRows(data: Row | null | undefined, group: string[], valueCol: string | null): Row[] {
@@ -178,42 +166,6 @@ export function groupsToRows(data: Row | null | undefined, group: string[], valu
     if (valueCol) r[valueCol] = g.value;
     return r;
   });
-}
-
-// Collapse a 2-group-column aggregate response onto ONE of its key columns, re-summing across the
-// other -- one server round trip covers two chart breakdowns that share a source table (e.g.
-// cost_usage_policy_coverage grouped by [policy_coverage, tag_coverage] in one call, then this
-// reduces it to a policy-only cut and, separately, a tag-only cut). `idx` is which key position to
-// keep (0 or 1); `fallback` names a null/missing key value (defaults "unknown").
-export function regroupByKeyIndex(data: Row | null | undefined, idx: number, fallback?: string): ChartEntry[] {
-  const order: any[] = [];
-  const totals = new Map<any, number>();
-  ((data && data.groups) || []).forEach((g: Row) => {
-    const raw = g.key && g.key[idx];
-    const k = raw != null ? raw : (fallback || "unknown");
-    if (!totals.has(k)) { totals.set(k, 0); order.push(k); }
-    totals.set(k, totals.get(k)! + numOrZero(g.value));
-  });
-  if (data && data.other) {
-    // The folded tail (past `top`) has no per-group key -- it can only be attributed to `fallback`,
-    // never split across real key values. Callers that need an exact per-key cut should omit `top`
-    // on a 2-column group-by (cardinality here is bounded by the dimension, not the row grain, so
-    // omitting it is normally safe -- see the callers of this helper).
-    const k = fallback || "unknown";
-    if (!totals.has(k)) { totals.set(k, 0); order.push(k); }
-    totals.set(k, totals.get(k)! + numOrZero(data.other.value));
-  }
-  return order.map((k) => ({ name: k, value: totals.get(k)! }));
-}
-
-// data.rows_total / data.returned (a plain finding fetch) says a raw-row view is showing fewer
-// rows than exist -- the "make every remaining capped view say it is capped" half of T-68, for any
-// chart/tile that still reads `.rows` directly instead of going through useFindingAgg. null when
-// nothing was cut (the common case, once useFindingAgg has replaced the views that can realistically
-// exceed the cap).
-export function cappedRowsNote(data: Row | null | undefined, noun?: string) {
-  if (!data || !(data.rows_total > data.returned)) return null;
-  return `showing ${fmtInt(data.returned)} of ${fmtInt(data.rows_total)} ${noun || "rows"}`;
 }
 
 // A spike day is judged on the day's total (the bar on the chart): at least SPIKE_PCT above the
@@ -247,9 +199,15 @@ export function useMultiFindingData(queryIds: string[] | null | undefined, windo
     let cancelled = false;
     setState({ phase: "loading", byId: {} });
     if (!ids.length) { setState({ phase: "ready", byId: {} }); return undefined; }
+    const accountActive = !!(accountIds && accountIds.length > 0);
+    const tagActive = Api.tagFilterKey() !== "";
     Promise.all(ids.map((id) =>
       Api.finding(id, windowDays, accountIds, lim, 0, undefined, statuses)
-        .then((d) => [id, { phase: "ready", outcome: d.outcome, data: d, error: null }] as [string, FetchState])
+        .then((d) => {
+          // Same as useFindingData: a check a filter can't narrow is named under the page.
+          if (!cancelled) reportIgnoredFilters(id, accountActive, tagActive, d.scope);
+          return [id, { phase: "ready", outcome: d.outcome, data: d, error: null }] as [string, FetchState];
+        })
         .catch((e) => [id, { phase: "error", outcome: null, data: null, error: e.message || String(e) }] as [string, FetchState])
     )).then((pairs) => {
       if (cancelled) return;
@@ -337,54 +295,6 @@ export function groupSum(rows: Row[] | null | undefined, keyFn: (r: Row) => any,
     totals.set(k, totals.get(k)! + numOrZero(r[valKey]));
   });
   return order.map((k) => ({ name: k, value: totals.get(k)! }));
-}
-
-// Top N entries by value desc, the rest folded into one "Other" bucket (omitted if nothing
-// remains). Mirrors config.ui.max_chart_categories -- callers pass meta.max_chart_categories.
-export function topNWithOther(entries: ChartEntry[] | null | undefined, n: number, otherLabel?: string): ChartEntry[] {
-  const sorted = [...(entries || [])].sort((a, b) => b.value - a.value);
-  if (sorted.length <= n) return sorted;
-  const head = sorted.slice(0, n);
-  const restTotal = sorted.slice(n).reduce((s, e) => s + e.value, 0);
-  if (restTotal > 0) head.push({ name: otherLabel || "Other", value: restTotal, color: CHART_OTHER_COLOR });
-  return head;
-}
-
-// Count rows by keyFn(row) -> [{name, value}], insertion order (the categorical-distribution
-// twin of groupSum, for columns with no numeric magnitude to sum -- e.g. a status/reason code).
-export function countBy(rows: Row[] | null | undefined, keyFn: (r: Row) => any): ChartEntry[] {
-  const order: any[] = [];
-  const counts = new Map<any, number>();
-  (rows || []).forEach((r) => {
-    const k = keyFn(r);
-    if (!counts.has(k)) { counts.set(k, 0); order.push(k); }
-    counts.set(k, counts.get(k)! + 1);
-  });
-  return order.map((k) => ({ name: k, value: counts.get(k)! }));
-}
-
-// Group rows by day (a date/timestamp column already ISO-formatted by the API) and sum valKey,
-// sorted ascending by day -- the shape MultiLine/Sparkline want for a trend.
-export function dailySeries(rows: Row[] | null | undefined, dayKey: string, valKey: string) {
-  const totals = new Map<string, number>();
-  (rows || []).forEach((r) => {
-    const d = r[dayKey];
-    if (!d) return;
-    const day = String(d).slice(0, 10);
-    totals.set(day, (totals.get(day) || 0) + numOrZero(r[valKey]));
-  });
-  const days = [...totals.keys()].sort();
-  return { days, values: days.map((d) => totals.get(d)!) };
-}
-
-// Pull the curated rows for a tab out of the already-loaded full findings list, in the order
-// `ids` names them (falls back to whatever order `findings` is in for any id not found --
-// should not happen for a curated id, but never crashes if the registry and a stale ids list
-// disagree).
-export function filterByIds(findings: Finding[] | null | undefined, ids: string[] | null | undefined): Finding[] {
-  const idx: Record<string, Finding> = {};
-  (findings || []).forEach((f) => { idx[f.query_id] = f; });
-  return (ids || []).map((id) => idx[id]).filter(Boolean);
 }
 
 // fillDays -- one {day, value} per calendar day (UTC) from as_of minus min(windowDays,
