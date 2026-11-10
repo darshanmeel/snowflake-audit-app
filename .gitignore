@@ -1,5 +1,6 @@
 # Planning notes, local paths and exports stay out of the repo.
 tasks/
+reviews/
 data/
 .env
 config/settings.local.yml
