@@ -24,7 +24,6 @@
 {"kind": "edge", "from": "cli:lint_headers", "to": "function:tools/lint_headers.py:main", "type": "triggers", "evidence": "tools/lint_headers.py:184", "status": "extracted"}
 {"kind": "node", "id": "cli:dump_live_catalog", "type": "cli_command", "name": "dump_live_catalog", "path": "tools/dump_live_catalog.py", "line": 85, "line_end": 97, "summary": "python tools/dump_live_catalog.py (no flags; live sign-in)", "status": "extracted"}
 {"kind": "edge", "from": "cli:dump_live_catalog", "to": "function:tools/dump_live_catalog.py:main", "type": "triggers", "evidence": "tools/dump_live_catalog.py:85", "status": "extracted"}
-{"kind": "node", "id": "cli:fake_fingerprint", "type": "cli_command", "name": "fake_fingerprint", "path": "tools/fake_fingerprint.py", "line": 1, "line_end": 30, "summary": "python tools/fake_fingerprint.py (no flags)", "status": "extracted"}
 {"kind": "node", "id": "secret_ref:SNOWFLAKE_ACCOUNT", "type": "secret_ref", "name": "SNOWFLAKE_ACCOUNT", "path": "tools/export_results.py", "line": 48, "line_end": 52, "summary": "Sign-in key read from the environment or .env (name only; value never stored). Template: .env.example.", "status": "extracted"}
 {"kind": "edge", "from": "secret_ref:SNOWFLAKE_ACCOUNT", "to": "function:tools/export_results.py:connect", "type": "configures", "evidence": "tools/export_results.py:672", "status": "extracted"}
 {"kind": "edge", "from": "secret_ref:SNOWFLAKE_ACCOUNT", "to": "function:tools/export_kit/run_export.py:connect", "type": "configures", "evidence": "tools/export_kit/run_export.py:853", "status": "extracted"}
@@ -176,4 +175,3 @@
 {"kind": "edge", "from": "document:kg/modules/tools.md", "to": "cli:check_registry_ids", "type": "documents", "evidence": "snowflake-audit-app-knowledge-graph/modules/tools.md:1", "status": "extracted"}
 {"kind": "edge", "from": "document:kg/modules/tools.md", "to": "cli:lint_headers", "type": "documents", "evidence": "snowflake-audit-app-knowledge-graph/modules/tools.md:1", "status": "extracted"}
 {"kind": "edge", "from": "document:kg/modules/tools.md", "to": "cli:dump_live_catalog", "type": "documents", "evidence": "snowflake-audit-app-knowledge-graph/modules/tools.md:1", "status": "extracted"}
-{"kind": "edge", "from": "document:kg/modules/tools.md", "to": "cli:fake_fingerprint", "type": "documents", "evidence": "snowflake-audit-app-knowledge-graph/modules/tools.md:1", "status": "extracted"}

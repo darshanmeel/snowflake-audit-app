@@ -1,12 +1,12 @@
 """Mechanical extraction: files, Python functions/imports/calls, FastAPI routes, SQL checks and
 includes, views read, TS imports/exports, config files, tests. Writes graph/nodes.jsonl, edges.jsonl, meta.json.
 Run from the repo root: python snowflake-audit-app-knowledge-graph/_scripts/extract.py"""
-import ast, hashlib, json, re, subprocess
+import ast, hashlib, json, os, re, subprocess
 from pathlib import Path
 
 ROOT = Path.cwd()
 OUT = ROOT / "snowflake-audit-app-knowledge-graph"
-SKIP = ("app/web/dist/", "tools/export_kit/queries/", "web/src/styles/fonts/")
+SKIP = ("app/web/dist/", "tools/export_kit/queries/", "web/src/styles/fonts/", "snowflake-audit-app-knowledge-graph/")
 nodes, edges, seen = {}, [], set()
 
 
@@ -165,7 +165,7 @@ edges[:] = [e for e in edges if e["to"] in nodes or e["type"] != "depends_on"]
 
 # ---- TS / TSX
 ts = [f for f in files if f.startswith("web/") and f.endswith((".ts", ".tsx"))]
-IMP = re.compile(r"""^import .* from ['"](\.[^'"]+)['"]""", re.M)
+IMP = re.compile(r"""^import (?:[^;'"]*? from )?['"](\.[^'"]+)['"]""", re.M | re.S)  # multi-line and side-effect imports
 EXP = re.compile(r"^export (?:default )?(?:async )?(?:function|const|class) ([A-Za-z0-9_]+)", re.M)
 API = re.compile(r"""['"`](/api/[a-z0-9_\-/]+)""")
 tsset = set(ts)
@@ -175,7 +175,7 @@ for f in ts:
     edge(f"file:{f}", mid, "contains", f"{f}:1")
     for m in IMP.finditer(src):
         ln = src[:m.start()].count("\n") + 1
-        base = str((Path(f).parent / m.group(1))).replace("\\", "/")
+        base = os.path.normpath(str(Path(f).parent / m.group(1))).replace("\\", "/")
         for ext in (".tsx", ".ts", "/index.ts", ""):
             if base + ext in tsset:
                 edge(mid, f"module:{base + ext}", "imports", f"{f}:{ln}")

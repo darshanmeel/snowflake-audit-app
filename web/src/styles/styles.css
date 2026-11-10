@@ -1019,12 +1019,6 @@ table.data td.status-NOT_ASSESSED { color: var(--st-na-ink); font-weight: 600; }
    Overview wraps its own normal content in it so only PrintSummary's own markup prints. "Save as
    PDF" is the browser's own print-dialog option, nothing extra to build for that part. */
 .print-only { display: none; }
-.print-trigger-row { display: flex; justify-content: flex-end; margin-bottom: 10px; }
-.print-summary-btn {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  color: var(--text); font-size: var(--fs-xs); padding: 6px 14px; cursor: pointer;
-}
-.print-summary-btn:hover { border-color: var(--amber); }
 
 @media print {
   .no-print, .topbar, .side-nav, .page-footer, .footer-note, .scope-banner { display: none !important; }

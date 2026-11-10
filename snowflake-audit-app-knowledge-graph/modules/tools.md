@@ -93,5 +93,3 @@ flowchart LR
 ### dump_live_catalog.py — refresh tests/fake_snowflake/live_catalog.json from a live account
 - Column names and types only, from `SNOWFLAKE.INFORMATION_SCHEMA.COLUMNS` and `DESCRIBE RESULT` of each SHOW; keeps old entries the role cannot see (tools/dump_live_catalog.py:1-8). No flags. Needs a live sign-in.
 
-### fake_fingerprint.py — fingerprint of the base fake account
-- Must not change when demo code is added (tools/fake_fingerprint.py:1-4). No flags. STATUS.md: no value is pinned.

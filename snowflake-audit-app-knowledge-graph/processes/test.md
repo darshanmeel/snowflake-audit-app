@@ -43,7 +43,6 @@ flowchart TD
 - Code, not a file: `tests/fake_snowflake/schema.py` defines fake `SNOWFLAKE.*` views and SHOW outputs as DuckDB tables (tests/fake_snowflake/schema.py docstring; README.md:878-879).
 - Base account used by tests: `data.py` (deterministic, fixed seed and as-of), `gap_*.py`, `new_checks_data.py`, `batch3_data.py`; do not change them, tests depend on them (STATUS.md:26).
   - Fake identity: locator `FAKE01`, name `FAKE_ACCOUNT`, org `FAKE_ORG` (tests/fake_snowflake/data.py:25-28). The Streamlit deploy refuses any DB carrying `FAKE%` (tools/streamlit_deploy/deploy.py:43-57).
-  - `tools/fake_fingerprint.py` prints a fingerprint of the base rows; no value is pinned (STATUS.md:26).
 - Demo layers `demo_*.py`: 57 warehouses across 8 teams, ~120 users, tasks, pipes, AI, policies, partial tags, 90 days (README.md:880-881). One module per area: billing, compute, entities, gov_fit, lifecycle, pipe_fit, pipelines, platform, queries, review_fit, security, storage, tags, wh_fit, ai_perf, worst_case (module docstrings in tests/fake_snowflake/).
 - `live_catalog.json` holds live column names and types; refresh it with `python tools/dump_live_catalog.py` against a live account. It reads names and types only (`INFORMATION_SCHEMA.COLUMNS`, `DESCRIBE RESULT` of each SHOW); views the role can't see keep their old entry (tools/dump_live_catalog.py:1-8).
 
