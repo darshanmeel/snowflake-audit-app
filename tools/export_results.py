@@ -1083,6 +1083,8 @@ def load_sources() -> None:
     try:
         _SOURCES = app_config.load_settings().get("sources")
     except app_config.ConfigError as exc:  # a broken settings file must not block the export
+        if getattr(exc, "key", None) == "sources":  # a bad copy name would quietly read the SNOWFLAKE views
+            raise ExportConfigError(f"config/settings.yml: {exc}") from exc
         print(f"warning: config/settings.yml: {exc}; reading the SNOWFLAKE views themselves", file=sys.stderr)
         _SOURCES = None
     if _SOURCES:

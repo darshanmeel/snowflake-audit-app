@@ -18,7 +18,7 @@
 --   over the window. spilled_gb is local plus remote spill of the queries that read the table, from
 --   QUERY_HISTORY by statement shape and warehouse: each shape's spill per run times its runs on the table.
 --   exec_rank, scan_rank, full_scan_rank and spill_rank order the tables by each measure (1 = heaviest,
---   NULL = none of it).
+--   NULL = none of it, or not in that measure's top_n).
 -- healthy: status is always OK: this ranks tables, it does not flag them.
 -- investigate_if: never flags. Start from a table high on full scans or spill and read its top shapes in
 --   sf_use_top_query_shapes; the cost of full scans is in sf_query_full_scans.
@@ -65,11 +65,12 @@ per AS (
   GROUP BY t.table_id
 ),
 ranked AS (
+  -- NULLS LAST: Snowflake sorts NULL first on DESC, which would push real tables out of the top_n
   SELECT p.*,
-         IFF(exec_s > 0, ROW_NUMBER() OVER (ORDER BY exec_s DESC, table_id), NULL) AS exec_rank,
-         IFF(partitions_scanned > 0, ROW_NUMBER() OVER (ORDER BY partitions_scanned DESC, table_id), NULL) AS scan_rank,
-         IFF(full_scan_queries > 0, ROW_NUMBER() OVER (ORDER BY full_scan_queries DESC, table_id), NULL) AS full_scan_rank,
-         IFF(spilled_gb > 0, ROW_NUMBER() OVER (ORDER BY spilled_gb DESC NULLS LAST, table_id), NULL) AS spill_rank
+         IFF(exec_s > 0, ROW_NUMBER() OVER (ORDER BY exec_s DESC NULLS LAST, table_id), NULL) AS r_exec,
+         IFF(partitions_scanned > 0, ROW_NUMBER() OVER (ORDER BY partitions_scanned DESC NULLS LAST, table_id), NULL) AS r_scan,
+         IFF(full_scan_queries > 0, ROW_NUMBER() OVER (ORDER BY full_scan_queries DESC NULLS LAST, table_id), NULL) AS r_full,
+         IFF(spilled_gb > 0, ROW_NUMBER() OVER (ORDER BY spilled_gb DESC NULLS LAST, table_id), NULL) AS r_spill
   FROM per p
 )
 SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id,
@@ -78,9 +79,11 @@ SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id,
        COALESCE(database_name || '.' || schema_name || '.' || table_name, 'table (' || table_id || ')') AS table_fqn,
        queries, exec_s, exec_s / NULLIF(queries, 0) AS avg_exec_s,
        partitions_scanned, rows_scanned, full_scan_queries, spilled_gb,
-       exec_rank, scan_rank, full_scan_rank, spill_rank,
+       -- a rank past top_n is blanked, so each ranking lists only its own top_n
+       IFF(r_exec <= :top_n, r_exec, NULL) AS exec_rank, IFF(r_scan <= :top_n, r_scan, NULL) AS scan_rank,
+       IFF(r_full <= :top_n, r_full, NULL) AS full_scan_rank, IFF(r_spill <= :top_n, r_spill, NULL) AS spill_rank,
        CAST(NULL AS VARCHAR) AS not_assessed_reason,
        'OK' AS status
 FROM ranked
-WHERE exec_rank <= :top_n OR scan_rank <= :top_n OR full_scan_rank <= :top_n OR spill_rank <= :top_n
-ORDER BY COALESCE(exec_rank, 1e9), table_id
+WHERE r_exec <= :top_n OR r_scan <= :top_n OR r_full <= :top_n OR r_spill <= :top_n
+ORDER BY COALESCE(r_exec, 1e9), table_id

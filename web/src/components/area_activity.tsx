@@ -372,7 +372,8 @@ export function ApActivityTables(p: ApPageProps) {
                 </div>
                 {items.length ? <div className="cx-block"><RankedAbove key={heavyBy} items={items} noun="tables" ariaLabel={`Heaviest tables by ${word}`} />
                   <div className="cx-foot">{HEAVY_FOOT[heavyBy]}</div></div>
-                  : okNote(heavyBy === "full" ? "No query read most of a large table in the window." : heavyBy === "spill" ? "No query that read these tables spilled in the window." : "No query read a table in the window.")}
+                  : okNote(db ? `No table in ${db} is among the heaviest by ${word.toLowerCase()} in the window.`
+                    : heavyBy === "full" ? "No query read most of a large table in the window." : heavyBy === "spill" ? "No query that read these tables spilled in the window." : "No query read a table in the window.")}
               </div>
             );
           }}

@@ -641,7 +641,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     troubles: [
       { see: "Every Activity check reads not assessed", why: "Access history is empty: Standard edition, or the role cannot read it.", doit: "Use an Enterprise account and a role with IMPORTED PRIVILEGES on SNOWFLAKE." },
       { see: "A table reads \"not among the tables\" under How it ran", why: "sf_use_table_perf_daily keeps the 50 tables with the most queries and the 20 with the most clustering credits.", doit: "Raise top_n or top_clustering in the export." },
-      { see: "Heaviest tables shows no spill", why: "Spill comes from query history by statement shape; shapes with no spill, or not in query history, add none.", doit: "Nothing to fix; check Queries › Spill for the warehouse view." },
+      { see: "Heaviest tables shows no spill", why: "Spill comes from query history by statement shape; shapes with no spill, or not in query history, add none.", doit: "Nothing to fix; check Queries › Efficiency for the warehouse view." },
       { see: "A table or user has no query figures", why: "Only the 25 tables and 25 users with the most queries are profiled.", doit: "Raise top_n of sf_use_query_profile and sf_use_top_query_shapes in the export." },
       { see: "A query lists no WHERE or JOIN columns", why: "Snowflake records them only for queries that scanned micro-partitions, and never GROUP BY.", doit: "Nothing to fix; open the slowest run in Snowsight's query profile." },
       { see: "A used table reads idle", why: "It is read only through a share or outside the window.", doit: "Confirm before you drop it." },
