@@ -630,7 +630,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     screen: [
       { sub: "databases", d: "Reads, writes, DDL and users per database, with storage." },
       { sub: "schemas", d: "The busiest and never-used schemas, with storage per month. Pick a database to see only its schemas." },
-      { sub: "tables", d: "Tables by use (active, cooling, written never read, idle), the busiest tables by reads, writes, rows changed or DDL, and one table day by day: what happened to it and how it ran (time per query, waiting, partitions skipped, clustering credits), how its queries run (queries a day, time, partitions, spill), its top 10 users, its top 10 queries by runs, time, partitions or spill with the tables and columns each uses, and the columns it is filtered and joined on. Pick a database to see only its tables." },
+      { sub: "tables", d: "Tables by use (active, cooling, written never read, idle), the busiest tables by reads, writes, rows changed or DDL, the heaviest tables by query time, partitions read, full scans or spill, and one table day by day: what happened to it and how it ran (time per query, waiting, partitions skipped, clustering credits), how its queries run (queries a day, time, partitions, spill), its top 10 users, its top 10 queries by runs, time, partitions or spill with the tables and columns each uses, and the columns it is filtered and joined on. Pick a database to see only its tables." },
       { sub: "users", d: "The most active users and roles; one user's queries (how they run, their top 10 tables and top 10 queries with lineage); who uses which tables; and users who hold roles but run nothing." },
       { sub: "lastactive", d: "Every table (hybrid and external tables aren't listed), and separately every view, stage, function, procedure, pipe and task, by time since it was last active: under 30, 30–90, 90–180, 180–360 and over 360 days. Pick a bar to see which ones, oldest first, with the last read and write, what depends on it, and a CSV. Sizes are not priced here; the cost of unread tables is on Storage. On an account with less than a year of access history, longer gaps read as nothing seen in that history." },
       { sub: "objects", d: "Stages, views, functions, procedures, pipes and tasks in use, and views never read." },
@@ -641,6 +641,7 @@ export const GUIDE_TABS: Record<string, GuideTabInfo> = {
     troubles: [
       { see: "Every Activity check reads not assessed", why: "Access history is empty: Standard edition, or the role cannot read it.", doit: "Use an Enterprise account and a role with IMPORTED PRIVILEGES on SNOWFLAKE." },
       { see: "A table reads \"not among the tables\" under How it ran", why: "sf_use_table_perf_daily keeps the 50 tables with the most queries and the 20 with the most clustering credits.", doit: "Raise top_n or top_clustering in the export." },
+      { see: "Heaviest tables shows no spill", why: "Spill comes from query history by statement shape; shapes with no spill, or not in query history, add none.", doit: "Nothing to fix; check Queries › Spill for the warehouse view." },
       { see: "A table or user has no query figures", why: "Only the 25 tables and 25 users with the most queries are profiled.", doit: "Raise top_n of sf_use_query_profile and sf_use_top_query_shapes in the export." },
       { see: "A query lists no WHERE or JOIN columns", why: "Snowflake records them only for queries that scanned micro-partitions, and never GROUP BY.", doit: "Nothing to fix; open the slowest run in Snowsight's query profile." },
       { see: "A used table reads idle", why: "It is read only through a share or outside the window.", doit: "Confirm before you drop it." },
@@ -2196,6 +2197,7 @@ export const GRANT_SCHEMAS = [
   { s: "MONITOR on warehouses", d: "SHOW WAREHOUSES lists only warehouses the role can see" },
   { s: "MONITOR EXECUTION", d: "SHOW TASKS and SHOW PIPES list only what the role can monitor" },
   { s: "MONITOR USAGE", d: "Account-level usage and billing in the metering views" },
+  { s: "Your own copies of the views", d: "No IMPORTED PRIVILEGES? Point sources: in config/settings.yml (or the kit's --source) at copies with the same columns; the role needs SELECT on them" },
 ];
 
 export function GuideTroubleshooting({ guideIndex }: { guideIndex: GuideIndex }) {
