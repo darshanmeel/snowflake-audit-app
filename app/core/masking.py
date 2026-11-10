@@ -37,8 +37,8 @@ _PREFIX = {"warehouse": "wh", "database": "db", "schema": "sch", "object": "obj"
 # Columns whose whole value is one name of a kind.
 _KIND_COLUMNS = {
     "warehouse": {"warehouse_name", "warehouse", "main_warehouse_name", "query_warehouse"},
-    "database": {"database_name", "table_catalog", "view_catalog", "tag_database", "db_name"},
-    "schema": {"schema_name", "table_schema", "view_schema", "tag_schema", "source_schema"},
+    "database": {"database_name", "table_catalog", "view_catalog", "tag_database", "db_name", "object_database"},
+    "schema": {"schema_name", "table_schema", "view_schema", "tag_schema", "source_schema", "object_schema"},
     "object": {"table_name", "view_name", "source_table", "target_table", "source_view", "mv_name",
                "dt_name", "stream_name", "stage_name", "pipe_name", "function_name", "alert_name",
                "notebook_name"},
@@ -65,10 +65,14 @@ _LIST_COLUMNS = {
 
 # Fixed words the checks write, never names: free-text masking would turn a value into a token when
 # a customer's table happens to be called TASK or VIEW, and the page could no longer read the row.
-_FIXED_WORDS = {"row_level", "object_kind", "object_domain", "object_subtype", "active_band", "use_pattern", "status"}
-# Name columns shared by every kind of object: these say which kind each row is, so a task gets a task token.
-_ROW_KIND_COLUMNS = ("object_kind", "object_domain")
-_NAMES_BY_ROW_KIND = {"object_name", "object_fqn"}
+_FIXED_WORDS = {"row_level", "object_kind", "object_domain", "domain", "object_subtype", "active_band", "use_pattern",
+                "status"}
+# Name columns shared by every kind of object: these say which kind each row is, so a warehouse named
+# in object_name gets the same wh_ token as in warehouse_name (tags join on it).
+_ROW_KIND_COLUMNS = ("object_kind", "object_domain", "domain")
+_NAMES_BY_ROW_KIND = {"object_name", "object_fqn", "sample_objects"}
+_ROW_MASK_KIND = {"WAREHOUSE": "warehouse", "USER": "user", "ROLE": "role", "DATABASE_ROLE": "role",
+                  "DATABASE": "database", "SCHEMA": "schema", "TASK": "task", "ACCOUNT": "account"}
 
 # Full names, masked part by part: (database, schema, last part's kind).
 _FQN_LAST_KIND = {"task_full_name": "task", "root_task_full_name": "task", "job_id": "task",
@@ -227,6 +231,14 @@ class Masker:
             return self.token(gk, value) if gk else self.text(value)
         return self.text(value)
 
+    def _row_kind_cell(self, handler: str, kind, value, row_kind):
+        """A name column whose row says the kind: warehouse, user, role, database and account names are one
+        name each (a user name may hold dots), the rest are full names."""
+        mk = _ROW_MASK_KIND.get(str(row_kind).upper())
+        if mk in ("warehouse", "user", "role", "database", "account") and isinstance(value, str):
+            return ", ".join(self.token(mk, v) for v in value.split(", "))
+        return self.cell(handler, mk or kind, value)
+
     # -- free text ----------------------------------------------------------------------------
     def freeze(self) -> None:
         """Build the free-text matcher from every name collected so far."""
@@ -290,7 +302,7 @@ class Masker:
             if handler == "grantee":
                 masked = [self.cell(handler, kind, v, t) for v, t in zip(values, row_types or [None] * len(values))]
             elif row_kinds and field.name.lower() in _NAMES_BY_ROW_KIND:
-                masked = [self.cell(handler, "task" if str(k).upper() == "TASK" else kind, v) for v, k in zip(values, row_kinds)]
+                masked = [self._row_kind_cell(handler, kind, v, k) for v, k in zip(values, row_kinds)]
             else:
                 cache: dict = {}
                 masked = []

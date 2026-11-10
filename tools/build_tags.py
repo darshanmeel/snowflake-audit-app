@@ -66,6 +66,16 @@ def parse_query_tag(text) -> list[tuple[str, str]]:
     return []
 
 
+def _make_wh_tag(con) -> None:
+    """One tag row per warehouse and key: two tags that normalise to one key (the same name in two schemas,
+    CostCenter and COST_CENTER) would otherwise count the warehouse's $ once per row."""
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE _wh_tag AS
+        SELECT tag_key, raw_key, tag_value, source, entity_id FROM tags.tag_entity
+        WHERE entity_type = 'warehouse'
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY entity_id, tag_key ORDER BY raw_key, tag_value, source) = 1""")
+
+
 def _exists(con, schema: str, table: str) -> bool:
     return bool(con.execute("SELECT count(*) FROM information_schema.tables WHERE table_catalog = current_database() "
                             "AND table_schema = ? AND table_name = ?", [schema, table]).fetchone()[0])
@@ -176,6 +186,7 @@ def build(con: duckdb.DuckDBPyConnection, *, credit_price: float | None, share_f
                TRUE AS is_allocating, source, CAST(NULL AS DOUBLE) AS share, CAST(NULL AS DOUBLE) AS coverage,
                CAST(NULL AS VARCHAR) AS reason
         FROM _ent""")
+    _make_wh_tag(con)
 
     # ---- what each unit cost, and how many statements it ran --------------------------------------------------------
     win = _windows(con, aliases or {})
@@ -227,8 +238,7 @@ def build(con: duckdb.DuckDBPyConnection, *, credit_price: float | None, share_f
                 INSERT INTO tags.cost_unit_tag
                 SELECT u.window_days, u.unit_id, 'compute', e.tag_key, e.raw_key, e.tag_value, e.source, u.credits, u.usd
                 FROM tags.cost_unit u
-                JOIN (SELECT DISTINCT tag_key, raw_key, tag_value, source, entity_id FROM tags.tag_entity
-                      WHERE entity_type = 'warehouse') e ON e.entity_id = u.compute_id
+                JOIN _wh_tag e ON e.entity_id = u.compute_id
                 WHERE u.compute_kind = 'warehouse'""")
             if _exists(con, "tags_src", "query_tag_credits"):
                 con.execute(f"""
@@ -271,8 +281,7 @@ def build(con: duckdb.DuckDBPyConnection, *, credit_price: float | None, share_f
             INSERT INTO tags.perf_unit_tag
             SELECT u.window_days, u.unit_id, 'compute', e.tag_key, e.raw_key, e.tag_value, e.source, NULL, NULL, NULL, NULL, NULL
             FROM tags.perf_unit u
-            JOIN (SELECT DISTINCT tag_key, raw_key, tag_value, source, entity_id FROM tags.tag_entity
-                  WHERE entity_type = 'warehouse') e ON e.entity_id = u.compute_id
+            JOIN _wh_tag e ON e.entity_id = u.compute_id
             WHERE u.compute_kind = 'warehouse'""")
         con.execute("""
             INSERT INTO tags.perf_unit_tag
@@ -304,8 +313,7 @@ def build(con: duckdb.DuckDBPyConnection, *, credit_price: float | None, share_f
             CREATE OR REPLACE TEMP TABLE _inferred AS
             WITH wh_total AS (SELECT compute_id AS warehouse_id, SUM(credits) AS credits FROM _units
                               WHERE window_days = ? AND compute_kind = 'warehouse' GROUP BY compute_id),
-            wtag AS (SELECT DISTINCT entity_id AS warehouse_id, tag_key, tag_value, raw_key FROM tags.tag_entity
-                     WHERE entity_type = 'warehouse'),
+            wtag AS (SELECT entity_id AS warehouse_id, tag_key, tag_value, raw_key FROM _wh_tag),
             comp AS (SELECT w.tag_key, w.tag_value, w.raw_key,
                             GREATEST(t.credits - COALESCE((SELECT SUM(k.credits) FROM _work k
                                                            WHERE k.warehouse_id = w.warehouse_id AND k.tag_key = w.tag_key), 0), 0) AS credits

@@ -608,7 +608,16 @@ def data_stamp() -> tuple | None:
             stamp.append((str(path), None))
     if stamp[0][1] is None:
         return None
-    return (tuple(stamp), repr(app_config.load_settings()))
+    # Floors, thresholds and tag aliases change responses too, and a page refresh must pick them up.
+    conf = []
+    for path in (app_config.materiality_path(), app_config.materiality_path().with_name("thresholds.yml"),
+                 app_config.materiality_path().with_name("tag_aliases.yml")):
+        try:
+            st = path.stat()
+            conf.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            conf.append(None)
+    return (tuple(stamp), tuple(conf), repr(app_config.load_settings()))
 
 
 def list_findings(*args, **kwargs) -> list[FindingRow]:
@@ -837,7 +846,7 @@ def _mark_storage_overlap(rows, window_days, account_ids, env, attributes, tag, 
                 acc = overlap.setdefault(qid, [0.0, 0])
                 acc[0] += v
                 acc[1] += 1
-    disc = discount_pct()
+    disc = app_core_data.effective_discount_pct()
     for row in priced:
         usd, n = overlap.get(row.query_id, (0.0, 0))
         row.money["overlap_usd"] = round(usd * (1 - disc), 2)

@@ -17,6 +17,7 @@ import { columnMeta, planColumns } from "./columns";
 import { actionTier } from "./overview_tile";
 import { wasteUnitOf } from "./waste_total";
 import { rowLabelOf } from "../tabs/tab_area";
+import { notAssessedText } from "./scope";
 import { ACTION_TEMPLATES } from "../tabs/tab_actions";
 import { navHref } from "./nav_hash";
 import { ROLES, ROLE_AREAS, ROLE_LABEL, fmtSnapshotWhen } from "../App";
@@ -2432,6 +2433,11 @@ export function ExampleRow({ f, filters }: { f: GuideCheck; filters: Filters }) 
   const st = useFindingData(f.query_id, filters.window, filters.accountIds, 1, statuses);
   if (st.phase === "loading") return <p className="muted">Loading a row...</p>;
   const rows = (st.data && st.data.rows) || [];
+  // A check that did not run or failed never reads clean.
+  if (st.phase === "error") return <p className="muted">{`– ${st.error || "the check could not be read"}`}</p>;
+  if (st.outcome === "not_assessed") return <p className="muted">{`– ${notAssessedText(st.data)}`}</p>;
+  if (st.outcome === "error") return <p className="muted">– The check failed in this export.</p>;
+  if (st.outcome === "ok_empty_window") return <p className="muted">Nothing in this window (not a verified zero).</p>;
   if (st.phase !== "ready" || rows.length === 0) {
     return <p className="muted">{f.is_finding ? "No flagged row in this export for the current filters." : "No row in this export for the current filters."}</p>;
   }

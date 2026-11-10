@@ -315,6 +315,9 @@ export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas
   const broad = byId.access_broad_grants;
   const aff = (f: Finding | undefined) => (f && f.affected && f.affected.total ? f.affected : null);
   const naReason = (f: Finding | undefined) => (f ? ((f.not_assessed && f.not_assessed.label) || "did not run") : (findingsReady ? "not in this export" : undefined));
+  // A check that ran and found nothing reads as an empty window, never "did not run".
+  const emptyReason = (f: Finding | undefined, s: FetchState) => (!f || f.not_assessed ? naReason(f)
+    : s.phase === "ready" && s.outcome === "ok_empty_window" ? noDataText(meta, filters.window) : naReason(f));
 
   const sev = {
     cost: wt.waste.usd == null ? "not_assessed" as Sev : wt.waste.flagged > 0 ? "warn" as Sev : "ok" as Sev,
@@ -356,14 +359,14 @@ export function CtoOverview({ filters, meta, findingsById, goTo, role, roleAreas
           onOpen={() => goTo({ tab: "waste" })} openLabel="Waste & savings →" />
         <IssueTile label="Reliability" loading={!findingsReady || failState.phase === "loading"} status={sev.rel}
           headline={runs > 0 ? fmtShare(pctOf(failed, runs)) : null} unit="of task runs failed"
-          missingReason={naReason(tf) || notAssessedText(failState.data)}
+          missingReason={emptyReason(tf, failState) || notAssessedText(failState.data)}
           base={runs > 0 ? `${fmtInt(failed)} of ${fmtInt(runs)} runs${tfAff ? `, across ${fmtInt(tfAff.flagged)} of ${fmtInt(tfAff.total)} ${tfAff.noun}` : ""}.` : null}
           cause={[topErr ? `Error ${topErr[0]} causes ${fmtShare(pctOf(topErr[1], failed))} of the failures.` : null,
             aff(silent) ? `${fmtInt(aff(silent)!.flagged)} of ${fmtInt(aff(silent)!.total)} ${aff(silent)!.noun} alert no one.` : null].filter(Boolean).join(" ") || null}
           onOpen={() => goTo({ tab: "tasks", subtab: "failures" })} openLabel="Tasks & pipelines →" />
         <IssueTile label="Performance" loading={!findingsReady || slotAgg.phase === "loading"} status={sev.perf}
           headline={slotTotal != null ? fmtDuration(slotTotal) : null} unit="queries waited for a slot"
-          missingReason={naReason(qw) || notAssessedText(slotAgg.data)}
+          missingReason={emptyReason(qw, slotAgg) || notAssessedText(slotAgg.data)}
           base={slotTop && slotTotal ? `${whLabel(slotTop.id)} is ${fmtDuration(slotTop.s)} of it, ${fmtShare(pctOf(slotTop.s, slotTotal))}.` : null}
           cause={aff(sd) ? `${fmtInt(aff(sd)!.flagged)} of ${fmtInt(aff(sd)!.total)} ${aff(sd)!.noun} ran slower than the period before.` : null}
           onOpen={() => goTo({ tab: "queries", subtab: "waiting" })} openLabel="Queries →" />

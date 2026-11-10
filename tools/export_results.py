@@ -912,7 +912,7 @@ WHERE account_locator = {_literal(account_locator)} AND currency = 'USD'
   AND LOWER(billing_type) = 'consumption'
   AND COALESCE(is_adjustment, FALSE) = FALSE
   AND COALESCE(LOWER(balance_source), '') <> 'overage'
-  AND (LOWER(rating_type) = 'ai_compute' OR NOT REGEXP_LIKE(COALESCE(service_type, ''), '(^|_)(AI|CORTEX)(_|$)'))
+  AND (LOWER(rating_type) = 'ai_compute' OR NOT REGEXP_LIKE(COALESCE(service_type, ''), '(^|.*_)(AI|CORTEX|COCO|COWORK)(_.*|$)'))
 GROUP BY 1
 """
 

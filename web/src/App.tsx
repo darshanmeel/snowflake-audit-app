@@ -247,7 +247,7 @@ export function SnapshotStatus({ meta }: { meta: Meta | null }) {
   const direct = meta.direct_export;
   const source = direct ? "Snowflake" : null;
   const when = direct ? fmtSnapshotWhen(direct.as_of) : null;
-  const m = meta.models || {};
+  const m = meta.checks || {};
   // The one checks-that-ran count comes from the API (meta.checks_ran), never worked out here.
   const checksText = ranCountsOf(meta) ? ranCountsText(meta) : null;
   const dotCls = !source ? "unknown" : (m.failed > 0 || m.not_built > 0) ? "stale" : "";

@@ -12,7 +12,8 @@ FROM (
   SELECT service_type, usage_date, credits_used_compute, credits_used_cloud_services,
          credits_used_compute + credits_used_cloud_services AS credits_used,
          SUM(credits_used_cloud_services) OVER (PARTITION BY usage_date) AS day_cloud,
-         SUM(credits_used_compute) OVER (PARTITION BY usage_date) AS day_compute
+         -- the 10% allowance is on warehouse compute only, not serverless
+         SUM(IFF(service_type = 'WAREHOUSE_METERING', credits_used_compute, 0)) OVER (PARTITION BY usage_date) AS day_compute
   FROM (
     SELECT service_type, CAST(start_time AS DATE) AS usage_date,
            SUM(CAST(compute AS NUMBER(38, 9))) AS credits_used_compute,

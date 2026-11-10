@@ -109,6 +109,8 @@ function CriticalWaste({ index, allowed, goTo }: { index: Record<string, Finding
   const crit = buildWasteWorklist(index).filter((w) => w.band === "CRITICAL" && w.unit === "waste" && allowed.has(homeForQuery({ query_id: w.id }).tab));
   const priced = crit.filter((w) => w.usd != null && (w.usd as number) > 0).sort((a, b) => (b.usd as number) - (a.usd as number));
   if (!crit.length) return <div className="chart-note-oneline">No critical check carries a possible-waste figure.</div>;
+  // Never "$0": critical checks with no price read "–" and why, as on the other pages.
+  if (!priced.length) return <div className="chart-note-oneline">{`– ${crit.some((w) => w.unpriced) ? "no credit price in this export" : "flagged, not priced in this export"}`}</div>;
   const total = priced.reduce((s, w) => s + (w.usd as number), 0);
   const top = priced[0];
   return (
