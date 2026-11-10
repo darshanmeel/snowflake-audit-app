@@ -5056,6 +5056,21 @@
    },
    "needs_enterprise": false
   },
+  "sf_use_table_heaviest": {
+   "domain": "performance",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TABLE_QUERY_PRUNING_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY"
+   ],
+   "params": {
+    "top_n": 50,
+    "min_partitions": 1000,
+    "scan_pct": 80
+   },
+   "needs_enterprise": false
+  },
   "sf_use_table_perf_daily": {
    "domain": "performance",
    "windowed": true,

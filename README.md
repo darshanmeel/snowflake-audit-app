@@ -3,7 +3,7 @@
 A read-only audit of a Snowflake account. It shows where the credits and dollars go, what looks
 wasted, and how warehouses, queries, tasks, loading, storage, AI and access are set up.
 
-It runs 297 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
+It runs 298 SQL checks on `SNOWFLAKE.ACCOUNT_USAGE` (and `ORGANIZATION_USAGE`, where you can read
 it) through one small warehouse. The results are saved in a local DuckDB file, and a web app on
 your own machine shows them. The audit writes nothing to Snowflake: the checks are `SELECT`, `WITH`
 and `SHOW` only. Only the export (and Refresh in the app) queries Snowflake; browsing the app does
@@ -151,7 +151,7 @@ GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 -- The ACCOUNT_USAGE views: all of them.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AUDIT_ROLE;
 -- Or, when IMPORTED PRIVILEGES is hard to get approved, these four read-only database roles instead.
--- They open 248 of the 297 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
+-- They open 249 of the 298 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
 -- TASK_VERSIONS, which none of the four opens).
 --   GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER      TO ROLE AUDIT_ROLE;  -- cost and usage
 --   GRANT DATABASE ROLE SNOWFLAKE.OBJECT_VIEWER     TO ROLE AUDIT_ROLE;  -- tables and objects
@@ -203,13 +203,13 @@ GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
 A check reads one or more sources. If the role cannot read any one of them, the check is skipped.
 In the app it reads "–, the role can't see it", with the view or SHOW command it needed. It never
 shows $0 or "nothing found". The role counts come from the check headers and Snowflake's table of
-roles per view, at 297 checks. A check can need more than one grant, so they overlap.
+roles per view, at 298 checks. A check can need more than one grant, so they overlap.
 
 | Grant | What it opens | Without it you won't see |
 |---|---|---|
 | `USAGE` on a warehouse | Runs the export | Nothing: no statement can run. |
 | `IMPORTED PRIVILEGES` on the `SNOWFLAKE` database | Every `ACCOUNT_USAGE` view, plus the reader-account and listing views | Almost everything. Only 24 checks read nothing from the `SNOWFLAKE` database (they use SHOW, the organization views or the Trust Center). |
-| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 268 of the 297 checks (248 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
+| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 269 of the 298 checks (249 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
 | `SNOWFLAKE.USAGE_VIEWER` | 172 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
 | `SNOWFLAKE.GOVERNANCE_VIEWER` | 135 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Activity, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
 | `SNOWFLAKE.SECURITY_VIEWER` | 85 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |
@@ -334,7 +334,7 @@ faster on the big history views. A few checks always read their own period, such
 active, which scans up to a year of `ACCESS_HISTORY`; on a busy account it can time out, and then reads
 as timed out.
 
-The export prints one line per check (`[12/297] check_id: ok, 34 rows, 1.2s`), so a long run never
+The export prints one line per check (`[12/298] check_id: ok, 34 rows, 1.2s`), so a long run never
 looks hung. Every statement has a time limit (15 minutes; `--statement-timeout SECONDS` on
 `tools/export_results.py` changes it): a statement that hits it is recorded as timed out and the
 export goes on.
@@ -456,6 +456,23 @@ billing views by up to 72 hours), so the last hours before a run can be missing.
 `include_today: false` the windows end at the last complete day: now minus 8 hours (the lag of the
 query attribution view), so the day before yesterday when you run just after midnight UTC. The
 manifest records the export date, that last complete day and the lag.
+
+### Your own copies of the views
+
+Some companies won't grant `IMPORTED PRIVILEGES`, but already copy the `ACCOUNT_USAGE` views into a
+database of their own. The export can read those copies instead, in `config/settings.yml`:
+
+```yaml
+sources:
+  ACCOUNT_USAGE: MY_DB.ACCOUNT_USAGE_COPY            # every view, by the same name
+  ACCOUNT_USAGE.QUERY_HISTORY: MY_DB.AUDIT.QH        # one view elsewhere; this line wins
+```
+
+- Each copy needs the same columns as the view. A missing column fails that check only.
+- The audit role needs `SELECT` on the copies, and the export says at the start which it reads.
+  `report.md` and `manifest.json` list them too.
+- A copy is only as fresh as its last refresh, and keeps only as many days as you load into it.
+- The export kit takes the same as `--source ACCOUNT_USAGE=MY_DB.ACCOUNT_USAGE_COPY` (repeat it).
 
 ### Where the files go
 
@@ -657,7 +674,7 @@ read.
 
 ## What it checks
 
-297 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
+298 checks, each a SQL file in `app/queries/checks` with a header the app and How it works read:
 
 | Area | Checks |
 |---|---|
@@ -697,6 +714,7 @@ These live in `config/settings.yml`:
 | `tag_share_floor`, `tag_coverage_floor` | Below these, an account's tag value reads `mixed` (0.6) or `untagged` (0.5). |
 | `load.memory_limit`, `load.threads` | DuckDB memory (`1GB`, or e.g. `1500MB`) and threads (4, 1-64) for the load and the app. Above the memory cap the load spills to a `.tmp` folder next to the database file. Lower both on a busy laptop. |
 | `load.response_cache_mb` | Memory the app keeps for pages already read (64; 0 turns it off). |
+| `sources` | Read `SNOWFLAKE` views from your own copies. See "Your own copies of the views". |
 
 **Your own overrides** go in `config/settings.local.yml`, which is git-ignored. The app's Settings
 panel writes there too.

@@ -69,3 +69,9 @@ load:
   memory_limit: 1GB
   threads: 4
   response_cache_mb: 64
+# Read SNOWFLAKE views from your own copies, with the same columns, when the audit role may not read
+# the SNOWFLAKE database. A schema maps to db.schema (each view by the same name), a view to
+# db.schema.view; a view's own line wins. Left out, the SNOWFLAKE views. Next export.
+# sources:
+#   ACCOUNT_USAGE: MY_DB.ACCOUNT_USAGE_COPY
+#   ACCOUNT_USAGE.QUERY_HISTORY: MY_DB.AUDIT.QUERY_HISTORY

@@ -90,6 +90,10 @@ written (also `schema`, `object`, `role`, `task`, `account`, or `all`). The same
 token in every file, so the results still add up. The tokens are salted at random on each run;
 `--mask-salt TEXT` keeps them the same across runs.
 
+`--source ACCOUNT_USAGE=MY_DB.AU_COPY` reads the `ACCOUNT_USAGE` views from your own copies, with
+the same columns, when the role may not read the `SNOWFLAKE` database. `--source
+ACCOUNT_USAGE.QUERY_HISTORY=MY_DB.AUDIT.QH` moves one view; repeat the flag for more.
+
 Other options: `--only <check ids>` runs just those checks, `--statement-timeout SECONDS` (default
 900) stops a slow statement, and `--out <folder>` writes somewhere else.
 

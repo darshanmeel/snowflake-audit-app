@@ -7,7 +7,7 @@ Query text, secrets and policy bodies are never read.
 What is in this folder:
 
 - `run_export.py`: the export. The only Python file.
-- `queries/`: every statement it runs (297 checks, plus the dims and tag sources), as plain `.sql`.
+- `queries/`: every statement it runs (298 checks, plus the dims and tag sources), as plain `.sql`.
   `queries/index.json` holds each check's parameters. Read them before running if you like.
 - `grants.sql`: the role and the grants it needs (see "Roles and privileges" below).
 - `verify/`: test queries, one file per app section, to paste into a worksheet and compare with what
@@ -60,6 +60,10 @@ days run faster.
 written (also `schema`, `object`, `role`, `task`, `account`, or `all`). The same name gets the same
 token in every file, so the results still add up. The tokens are salted at random on each run;
 `--mask-salt TEXT` keeps them the same across runs.
+
+`--source ACCOUNT_USAGE=MY_DB.AU_COPY` reads the `ACCOUNT_USAGE` views from your own copies, with
+the same columns, when the role may not read the `SNOWFLAKE` database. `--source
+ACCOUNT_USAGE.QUERY_HISTORY=MY_DB.AUDIT.QH` moves one view; repeat the flag for more.
 
 Other options: `--only <check ids>` runs just those checks, `--statement-timeout SECONDS` (default
 900) stops a slow statement, and `--out <folder>` writes somewhere else.
@@ -120,7 +124,7 @@ GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 -- The ACCOUNT_USAGE views: all of them.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AUDIT_ROLE;
 -- Or, when IMPORTED PRIVILEGES is hard to get approved, these four read-only database roles instead.
--- They open 248 of the 297 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
+-- They open 249 of the 298 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
 -- TASK_VERSIONS, which none of the four opens).
 --   GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER      TO ROLE AUDIT_ROLE;  -- cost and usage
 --   GRANT DATABASE ROLE SNOWFLAKE.OBJECT_VIEWER     TO ROLE AUDIT_ROLE;  -- tables and objects
@@ -172,13 +176,13 @@ GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
 A check reads one or more sources. If the role cannot read any one of them, the check is skipped.
 In the app it reads "–, the role can't see it", with the view or SHOW command it needed. It never
 shows $0 or "nothing found". The role counts come from the check headers and Snowflake's table of
-roles per view, at 297 checks. A check can need more than one grant, so they overlap.
+roles per view, at 298 checks. A check can need more than one grant, so they overlap.
 
 | Grant | What it opens | Without it you won't see |
 |---|---|---|
 | `USAGE` on a warehouse | Runs the export | Nothing: no statement can run. |
 | `IMPORTED PRIVILEGES` on the `SNOWFLAKE` database | Every `ACCOUNT_USAGE` view, plus the reader-account and listing views | Almost everything. Only 24 checks read nothing from the `SNOWFLAKE` database (they use SHOW, the organization views or the Trust Center). |
-| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 268 of the 297 checks (248 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
+| **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 269 of the 298 checks (249 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
 | `SNOWFLAKE.USAGE_VIEWER` | 172 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
 | `SNOWFLAKE.GOVERNANCE_VIEWER` | 135 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Activity, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
 | `SNOWFLAKE.SECURITY_VIEWER` | 85 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |

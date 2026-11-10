@@ -245,6 +245,19 @@ const RANK_BY: [string, string, (r: Row) => number, string, string][] = [
   ["write", "Writes", (r) => numOrZero(r.write_queries), "write", "writes"], ["dml", "Rows changed", (r) => numOrZero(r.dml_rows), "row changed", "rows changed"],
   ["ddl", "DDL", (r) => numOrZero(r.ddl_queries), "DDL", "DDL"],
 ];
+// Heaviest tables by one measure: [key, button, value, its rank column, value as text].
+const HEAVY_BY: [string, string, (r: Row) => number, string, (r: Row) => string][] = [
+  ["time", "Query time", (r) => numOrZero(r.exec_s), "exec_rank", (r) => fmtDuration(r.exec_s)],
+  ["scan", "Partitions read", (r) => numOrZero(r.partitions_scanned), "scan_rank", (r) => plural(numOrZero(r.partitions_scanned), "partition")],
+  ["full", "Full scans", (r) => numOrZero(r.full_scan_queries), "full_scan_rank", (r) => plural(numOrZero(r.full_scan_queries), "full scan")],
+  ["spill", "Spill", (r) => numOrZero(r.spilled_gb), "spill_rank", (r) => `${fmtSize(numOrZero(r.spilled_gb))} spilled`],
+];
+const HEAVY_FOOT: Record<string, string> = {
+  time: "Execution time of the queries that read the table (TABLE_QUERY_PRUNING_HISTORY). A join counts in full on each table it reads.",
+  scan: "Micro-partitions read from the table itself, after pruning.",
+  full: "Runs of statement shapes that read most of a large table's partitions: pruning did little. Their cost is under Queries.",
+  spill: "Spill of the queries that read the table, by statement shape (QUERY_HISTORY). A join counts in full on each table it reads.",
+};
 
 export function ApActivityTables(p: ApPageProps) {
   const ta = useCheck(p, "sf_use_table_activity");
@@ -255,6 +268,8 @@ export function ApActivityTables(p: ApPageProps) {
   const qs = useCheck(p, "sf_use_top_query_shapes");
   // 70 tables over 90 days pass one page, and the rows past it would drop from the $ and the picker.
   const tp = useCheck(p, "sf_use_table_perf_daily", true);
+  const th = useCheck(p, "sf_use_table_heaviest");
+  const [heavyBy, setHeavyBy] = React.useState("time");
   const allTables = levelRows(ta.rows, "table");
   const dbOf = (fqn: any) => String(fqn || "").split(".")[0];
   const dbs = React.useMemo(() => [...new Set(allTables.map((r) => String(r.database_name || dbOf(r.table_fqn))))].filter(Boolean).sort(), [ta.rows]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -337,6 +352,27 @@ export function ApActivityTables(p: ApPageProps) {
                   <div className="cx-foot">{rankBy === "dml" ? "Rows inserted, updated and deleted (TABLE_DML_HISTORY)." : TOUCH_FOOT}
                     {rankBy === "dml" || rankBy === "ddl" ? " Ranked among the tables the export kept: the most active and the largest." : ""}</div></div>
                   : okNote(`No table had ${many} in the window.`)}
+              </div>
+            );
+          }}
+        </Slot>
+        <Slot c={th} title="Heaviest tables" subtitle="Most query time, partitions read, full scans or spill in the window · select one for its days">
+          {(rows) => {
+            const [, word, val, rankCol, text] = HEAVY_BY.find((x) => x[0] === heavyBy) || HEAVY_BY[0];
+            const items: CxRankItem[] = rows.filter((r) => inDb(r.table_fqn) && r[rankCol] != null && val(r) > 0)
+              .sort((a, b) => numOrZero(a[rankCol]) - numOrZero(b[rankCol])).map((r) => ({
+                key: String(r.table_fqn), label: <CxObjName full={String(r.table_fqn)} id={r.table_id} />, value: val(r),
+                strong: text(r), rest: `${plural(numOrZero(r.queries), "query", "queries")} · ${fmtDuration(r.avg_exec_s)} each`,
+                onClick: dailyTables.includes(String(r.table_fqn)) ? pick(String(r.table_fqn)) : drawerBy("sf_use_table_heaviest", "table_fqn", r.table_fqn, String(r.table_fqn)),
+              }));
+            return (
+              <div>
+                <div className="cx-seg" role="group" aria-label="Heaviest by">
+                  {HEAVY_BY.map(([k, w]) => <button key={k} type="button" className={heavyBy === k ? "on" : ""} aria-pressed={heavyBy === k} onClick={() => setHeavyBy(k)}>{w}</button>)}
+                </div>
+                {items.length ? <div className="cx-block"><RankedAbove key={heavyBy} items={items} noun="tables" ariaLabel={`Heaviest tables by ${word}`} />
+                  <div className="cx-foot">{HEAVY_FOOT[heavyBy]}</div></div>
+                  : okNote(heavyBy === "full" ? "No query read most of a large table in the window." : heavyBy === "spill" ? "No query that read these tables spilled in the window." : "No query read a table in the window.")}
               </div>
             );
           }}

@@ -53,6 +53,54 @@ UPPER_CASE_COLUMNS = {"access_grants_inventory": {"grantee": "GRANTEE"}}
 _PARAM_RE = re.compile(r"(?<![:\w]):([a-z_][a-z0-9_]*)")
 _COMMENT_RE = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
 _READ_ONLY_RE = re.compile(r"^\s*(SELECT|WITH|SHOW)\b", re.I)
+# --source: SNOWFLAKE views read from your own copies; set by run_export.
+_SOURCES = None
+
+# The same as app/core/config.py's parse_sources and apply_sources.
+_IDENT = r'(?:[A-Za-z_][A-Za-z0-9_$]*|"[^"]+")'
+_SOURCE_KEY = re.compile(r"(?:SNOWFLAKE\.)?([A-Z_]+)(?:\.([A-Z0-9_]+))?", re.I)
+
+
+def parse_sources(raw) -> dict[str, str] | None:
+    """settings `sources:` as {"ACCOUNT_USAGE.QUERY_HISTORY": "DB.SCH.QH", "ACCOUNT_USAGE": "DB.SCH"}.
+    A key names one view (copy is db.schema.view) or a whole schema (copy is db.schema). The names are
+    spliced into SQL, so only plain or double-quoted identifiers pass."""
+    if raw is None or raw == {}:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("must map a SNOWFLAKE view or schema to your copy, e.g. ACCOUNT_USAGE: MY_DB.AU_COPY")
+    out = {}
+    for key, copy in raw.items():
+        m = _SOURCE_KEY.fullmatch(str(key).strip())
+        if not m:
+            raise ValueError(f"{key!r} is not a view or schema such as ACCOUNT_USAGE.QUERY_HISTORY")
+        parts = 3 if m.group(2) else 2
+        target = str(copy or "").strip()
+        if not re.fullmatch(rf"{_IDENT}(?:\.{_IDENT}){{{parts - 1}}}", target):
+            want = "db.schema" if parts == 2 else "db.schema.view"
+            raise ValueError(f"{key}: the copy must be a {want} name, not {copy!r}")
+        out[m.group(1).upper() + (f".{m.group(2).upper()}" if m.group(2) else "")] = target
+    return out
+
+
+_SNOWFLAKE_VIEW = re.compile(r"\bSNOWFLAKE\.([A-Z_]+)\.([A-Z0-9_]+)\b", re.I)
+
+
+def apply_sources(sql: str, sources: dict[str, str] | None) -> str:
+    """Swap each SNOWFLAKE.<schema>.<view> that `sources` maps for the copy: a view's own entry
+    first, then its schema's."""
+    if not sources:
+        return sql
+
+    def swap(m: re.Match) -> str:
+        schema, view = m.group(1).upper(), m.group(2).upper()
+        if f"{schema}.{view}" in sources:
+            return sources[f"{schema}.{view}"]
+        if schema in sources:
+            return f"{sources[schema]}.{view}"
+        return m.group(0)
+    return _SNOWFLAKE_VIEW.sub(swap, sql)
+
 _WASTE_COLUMN_RE = re.compile(r"^(est_)?(wasted|saving)|^(total_)?est_(wasted|saving)|^est_idle_usd", re.I)
 
 
@@ -756,7 +804,7 @@ def render(text: str, *, days: int, params: dict, ctx: dict) -> str:
     leftover = _PARAM_RE.findall(_COMMENT_RE.sub("", sql))
     if leftover:
         raise StopExport(f"unresolved parameter(s): {sorted(set(leftover))}")
-    return sql.strip().rstrip(";")
+    return apply_sources(sql, _SOURCES).strip().rstrip(";")
 
 
 def assert_read_only(sql: str) -> None:
@@ -845,6 +893,7 @@ def run_show(cur, sql: str) -> None:
 
 
 def run_sql(cur, sql: str, name: str = "") -> pa.Table:
+    sql = apply_sources(sql, _SOURCES)
     assert_read_only(sql)
     cur.execute(sql)
     table = cur.fetch_arrow_all()
@@ -1049,7 +1098,7 @@ def probe_visibility(cur, checks: dict, *, as_of: dt.date) -> dict:
     out = {"probed": len(views) + len(shows), "unreadable": {}, "failed_pre": {}, "warehouses": None}
     for src in views:
         try:
-            cur.execute(f"SELECT 1 FROM SNOWFLAKE.{src} LIMIT 0")
+            cur.execute(apply_sources(f"SELECT 1 FROM SNOWFLAKE.{src} LIMIT 0", _SOURCES))
         except Exception as exc:  # noqa: BLE001 -- any error means the check cannot read it
             code = error_code(exc)
             out["unreadable"][src] = f"{short(exc)} (error {code})" if code else short(exc)
@@ -1169,13 +1218,19 @@ def render_report(manifest: dict) -> str:
 def run_export(out_dir: Path, *, windows: int = 30, max_rows: int | None = None, credit_price=None,
                storage_price=None, ai_credit_price=None, use_fallbacks: bool = False, only=None, include_today: bool | None = None, timeout_s: int = 900,
                connect_fn=None, now: dt.datetime | None = None, queries: Path = QUERIES,
-               mask=None, mask_salt: str | None = None) -> dict:
+               mask=None, mask_salt: str | None = None, sources=None) -> dict:
     """Run every check, tag source and dim into out_dir; one failure is recorded and the rest go on.
-    `mask` lists the kinds of names to replace with tokens before the manifest and report are written."""
+    `mask` lists the kinds of names to replace with tokens before the manifest and report are written.
+    `sources` maps SNOWFLAKE views or schemas to your copies ({"ACCOUNT_USAGE": "MY_DB.AU_COPY"})."""
+    global _SOURCES
     try:
         mask = parse_kinds(mask)
+        _SOURCES = parse_sources(sources)
     except ValueError as exc:
         raise StopExport(str(exc)) from exc
+    if _SOURCES:
+        print("reading from your copies: " + ", ".join(f"SNOWFLAKE.{k} -> {v}" for k, v in _SOURCES.items()),
+              file=sys.stderr)
     index = json.loads((queries / "index.json").read_text(encoding="utf-8"))
     defaults = index["defaults"]
     max_rows = int(max_rows or defaults["max_rows"])
@@ -1356,6 +1411,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int | None = None,
         "includes_today": bool(include_today), "mode": "query",
         "last_complete_day": ((now - dt.timedelta(hours=LAG_HOURS)).date() - dt.timedelta(days=1)).isoformat(),
         "export_date": now.date().isoformat(), "lag_hours": LAG_HOURS, "visibility": visibility,
+        "sources": _SOURCES or {},
         "edition": edition, "statement_timeout_s": int(timeout_s),
         "monitor_usage": ctx.get("monitor_usage"),
         "manage_grants": bool({"ACCOUNTADMIN", "MANAGE GRANTS"} & (ctx.get("account_privileges") or set())),
@@ -1399,13 +1455,21 @@ def main(argv=None) -> int:
     p.add_argument("--mask", metavar="KINDS", help="replace these kinds of names with tokens, comma-separated: "
                    + ", ".join(MASK_KINDS) + " or all")
     p.add_argument("--mask-salt", metavar="TEXT", help="salt for the tokens, to keep them the same across runs")
+    p.add_argument("--source", action="append", default=[], metavar="VIEW=COPY",
+                   help="read a SNOWFLAKE view or schema from your copy, e.g. ACCOUNT_USAGE=MY_DB.AU_COPY "
+                        "or ACCOUNT_USAGE.QUERY_HISTORY=MY_DB.AU_COPY.QH (repeat for more)")
     args = p.parse_args(argv)
+    bad = [x for x in args.source if "=" not in x]
+    if bad:
+        print(f"error: --source needs VIEW=COPY, not {bad[0]!r}", file=sys.stderr)
+        return 1
     try:
         manifest = run_export(args.out, windows=args.windows, max_rows=args.max_rows,
                               credit_price=args.credit_price, storage_price=args.storage_price,
                               ai_credit_price=args.ai_credit_price, use_fallbacks=args.use_fallbacks,
                               only=args.only, timeout_s=max(args.statement_timeout, 1),
-                              mask=args.mask, mask_salt=args.mask_salt)
+                              mask=args.mask, mask_salt=args.mask_salt,
+                              sources=dict(x.split("=", 1) for x in args.source))
     except StopExport as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

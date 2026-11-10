@@ -60,6 +60,8 @@ _PARAM_RE = re.compile(r"(?<![:\w]):([a-z_][a-z0-9_]*)")
 _INCLUDE_RE = re.compile(r"__INCLUDE_([a-z0-9_]+)__")
 _COMMENT_RE = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
 _READ_ONLY_RE = re.compile(r"^\s*(SELECT|WITH|SHOW)\b", re.I)
+# settings `sources:`: SNOWFLAKE views read from the customer's own copies; set by run_export.
+_SOURCES: dict[str, str] | None = None
 
 
 class ExportConfigError(RuntimeError):
@@ -634,7 +636,7 @@ def render(text: str, *, days: int, params: dict, ctx: dict, sql_dir: Path = SQL
     leftover = _PARAM_RE.findall(_COMMENT_RE.sub("", sql))
     if leftover:
         raise ExportConfigError(f"unresolved parameter(s): {sorted(set(leftover))}")
-    return sql.strip().rstrip(";")
+    return app_config.apply_sources(sql, _SOURCES).strip().rstrip(";")
 
 
 def assert_read_only(sql: str) -> None:
@@ -720,6 +722,7 @@ def pin_result_scans(sql: str, show_ids: list[str | None]) -> str:
 
 
 def run_sql(cur, sql: str, qid: str | None = None) -> pa.Table:
+    sql = app_config.apply_sources(sql, _SOURCES)
     assert_read_only(sql)
     cur.execute(sql)
     table = cur.fetch_arrow_all()
@@ -946,7 +949,7 @@ def probe_visibility(cur, specs, *, as_of: dt.date) -> dict:
     out: dict = {"probed": len(views) + len(shows), "unreadable": {}, "failed_pre": {}, "warehouses": None}
     for sch, name in views:
         try:
-            cur.execute(f"SELECT 1 FROM SNOWFLAKE.{sch}.{name} LIMIT 0")
+            cur.execute(app_config.apply_sources(f"SELECT 1 FROM SNOWFLAKE.{sch}.{name} LIMIT 0", _SOURCES))
         except Exception as exc:  # noqa: BLE001 -- any error means the check cannot read it
             code = error_code(exc)
             out["unreadable"][f"{sch}.{name}"] = (f"{_short(exc)} (error {code})" if code else _short(exc))
@@ -1074,6 +1077,19 @@ def _price_line(manifest: dict) -> str:
     return f"price: {credit}  edition: {edition}  statement timeout: {manifest.get('statement_timeout_s')} s"
 
 
+def load_sources() -> None:
+    """Read settings `sources:` into _SOURCES before any statement runs, and say so."""
+    global _SOURCES
+    try:
+        _SOURCES = app_config.load_settings().get("sources")
+    except app_config.ConfigError as exc:  # a broken settings file must not block the export
+        print(f"warning: config/settings.yml: {exc}; reading the SNOWFLAKE views themselves", file=sys.stderr)
+        _SOURCES = None
+    if _SOURCES:
+        print("reading from your copies: " + ", ".join(f"SNOWFLAKE.{k} -> {v}" for k, v in _SOURCES.items()),
+              file=sys.stderr)
+
+
 def render_report(manifest: dict, started: str, finished: str) -> str:
     """report.md: one row per check, failed first, then not assessed, then the rest."""
     def rank(item):
@@ -1095,6 +1111,8 @@ def render_report(manifest: dict, started: str, finished: str) -> str:
         f"({'today partial' if manifest['includes_today'] else 'complete days only'})",
         f"started: {started}  finished: {finished}", "",
         _price_line(manifest), "",
+    ] + (["read from your copies: " + ", ".join(f"SNOWFLAKE.{k} -> {v}" for k, v in manifest["sources"].items()), ""]
+         if manifest.get("sources") else []) + [
         f"**{len(entries)} checks** -- " + ", ".join(f"{k}: {v}" for k, v in sorted(by_status.items())), "",
     ] + _visibility_lines(manifest.get("visibility")) + [
         "| check | domain | status | rows | not assessed rows | seconds | error |",
@@ -1124,6 +1142,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
     as_of = _cutoff(now, include_today)
     if datasource.inside_repo(out_dir):
         raise ExportConfigError(f"{out_dir} is inside the repository; choose a folder outside it")
+    load_sources()
     checks = load_checks(sql_dir)
     if only:
         unknown = sorted(set(only) - set(checks))
@@ -1315,6 +1334,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
         # The last day the windows fully cover, and the lag that set the cut-off.
         "last_complete_day": ((now - dt.timedelta(hours=LAG_HOURS)).date() - dt.timedelta(days=1)).isoformat(),
         "export_date": now.date().isoformat(), "lag_hours": LAG_HOURS, "visibility": visibility,
+        "sources": _SOURCES or {},
         "edition": edition, "statement_timeout_s": int(_statement_timeout_s),
         "monitor_usage": ctx.get("monitor_usage"),
         "manage_grants": bool({"ACCOUNTADMIN", "MANAGE GRANTS"} & (ctx.get("account_privileges") or set())),
@@ -1369,6 +1389,7 @@ def run_validate(out_dir: Path, *, windows: int = 7, only: list[str] | None = No
     as_of = _cutoff(now, include_today)
     if datasource.inside_repo(out_dir):
         raise ExportConfigError(f"{out_dir} is inside the repository; choose a folder outside it")
+    load_sources()
     checks = load_checks(sql_dir)
     if only:
         unknown = sorted(set(only) - set(checks))

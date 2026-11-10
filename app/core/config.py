@@ -23,6 +23,7 @@ directory, then os.replace().
                                            # the export's price when the org billing view is unreadable
     required_tag_keys: list[str]           # tags every object should carry; [] = show tag coverage only
     env_patterns: {prod, uat, dev: [word]} # word lists that classify an account name into an env
+    sources: {SCHEMA[.VIEW]: DB.SCHEMA[.VIEW]} | None  # read SNOWFLAKE.* views from your own copies
 
   config/settings.local.yml: the keys the running app saved; merged over settings.yml.
   Unknown keys and wrong types raise SettingsError with `.key` and `.line` when known.
@@ -132,6 +133,7 @@ SETTINGS_KEYS = {
     "required_tag_keys",  # tag names every object should carry (tag compliance)
     "env_patterns",  # word lists that classify an account name into prod / uat / dev
     "load",  # DuckDB memory and threads for the load and the app, and the app's response cache
+    "sources",  # SNOWFLAKE.ACCOUNT_USAGE (or other SNOWFLAKE schema) views read from the customer's copies
 }
 ENV_BUCKETS = ("prod", "uat", "dev")
 UI_KEYS = {"max_rows", "max_chart_categories"}
@@ -170,6 +172,7 @@ DEFAULT_SETTINGS: dict = {
         "dev": ["dev", "devel"],
     },
     "load": {"memory_limit": "1GB", "threads": 4, "response_cache_mb": 64},
+    "sources": None,  # None = the SNOWFLAKE views themselves
 }
 
 
@@ -348,7 +351,56 @@ def _validate_settings(settings: dict) -> dict:
         if not isinstance(v, int) or isinstance(v, bool) or not (low <= v <= top):
             raise SettingsError(f"load.{key} must be a whole number from {low} to {top}", key=f"load.{key}")
     out["load"] = merged_load
+    try:
+        out["sources"] = parse_sources(out["sources"])
+    except ValueError as exc:
+        raise SettingsError(f"sources: {exc}", key="sources") from exc
     return out
+
+
+_IDENT = r'(?:[A-Za-z_][A-Za-z0-9_$]*|"[^"]+")'
+_SOURCE_KEY = re.compile(r"(?:SNOWFLAKE\.)?([A-Z_]+)(?:\.([A-Z0-9_]+))?", re.I)
+
+
+def parse_sources(raw) -> dict[str, str] | None:
+    """settings `sources:` as {"ACCOUNT_USAGE.QUERY_HISTORY": "DB.SCH.QH", "ACCOUNT_USAGE": "DB.SCH"}.
+    A key names one view (copy is db.schema.view) or a whole schema (copy is db.schema). The names are
+    spliced into SQL, so only plain or double-quoted identifiers pass."""
+    if raw is None or raw == {}:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("must map a SNOWFLAKE view or schema to your copy, e.g. ACCOUNT_USAGE: MY_DB.AU_COPY")
+    out = {}
+    for key, copy in raw.items():
+        m = _SOURCE_KEY.fullmatch(str(key).strip())
+        if not m:
+            raise ValueError(f"{key!r} is not a view or schema such as ACCOUNT_USAGE.QUERY_HISTORY")
+        parts = 3 if m.group(2) else 2
+        target = str(copy or "").strip()
+        if not re.fullmatch(rf"{_IDENT}(?:\.{_IDENT}){{{parts - 1}}}", target):
+            want = "db.schema" if parts == 2 else "db.schema.view"
+            raise ValueError(f"{key}: the copy must be a {want} name, not {copy!r}")
+        out[m.group(1).upper() + (f".{m.group(2).upper()}" if m.group(2) else "")] = target
+    return out
+
+
+_SNOWFLAKE_VIEW = re.compile(r"\bSNOWFLAKE\.([A-Z_]+)\.([A-Z0-9_]+)\b", re.I)
+
+
+def apply_sources(sql: str, sources: dict[str, str] | None) -> str:
+    """Swap each SNOWFLAKE.<schema>.<view> that `sources` maps for the copy: a view's own entry
+    first, then its schema's."""
+    if not sources:
+        return sql
+
+    def swap(m: re.Match) -> str:
+        schema, view = m.group(1).upper(), m.group(2).upper()
+        if f"{schema}.{view}" in sources:
+            return sources[f"{schema}.{view}"]
+        if schema in sources:
+            return f"{sources[schema]}.{view}"
+        return m.group(0)
+    return _SNOWFLAKE_VIEW.sub(swap, sql)
 
 
 LOCAL_SETTINGS_FILENAME = "settings.local.yml"
