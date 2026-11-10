@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snowflake audit app: overview</title>
+<style>
+:root{--bg:#F6F6F3;--card:#fff;--line:#D9DBDF;--ink:#17191D;--mute:#5B6068;--accent:#1F5FBF;--green:#1E6B43;--amber:#FFF1CC;--amberline:#D9A400;--grey:#EEF0F2;--red:#B3261E}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:28px 20px 48px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-size:12.5px}
+h1{font-size:26px;margin:0 0 4px}
+h2{font-size:18px;margin:30px 0 10px;padding-top:6px}
+.eyebrow{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.lead{font-size:16px;margin:6px 0 0}
+nav.toc{margin:16px 0 0;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}
+nav.toc a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--line)}
+ul{margin:6px 0;padding-left:20px}
+li{margin:3px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.key{font-size:12.5px;color:var(--mute);margin:6px 0 0}
+.cap{font-size:13px;margin:4px 0 10px}
+table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line);font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{background:var(--grey);font-size:12.5px}
+.tag{display:inline-block;font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-size:11px;padding:1px 7px;border-radius:10px;border:1px solid var(--line);background:var(--grey);margin-right:4px}
+.chip{display:inline-block;font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-size:12px;padding:1px 7px;border-radius:4px;background:var(--grey);white-space:nowrap}
+.chip.amber{background:var(--amber);border:1px solid var(--amberline)}
+.in{color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:0 6px;font-size:11px;font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;margin-right:6px}
+.out{background:var(--green);color:#fff;border-radius:4px;padding:0 6px;font-size:11px;font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;margin-right:6px}
+.src{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-size:11px;color:var(--mute)}
+.card h3{margin:0 0 6px;font-size:14px}
+.card p{margin:4px 0}
+svg{display:block;width:100%;height:auto;max-width:960px}
+svg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
+@media(max-width:600px){table{display:block;overflow-x:auto}main{padding:20px 16px 40px}}
+@media print{body{background:#fff}main{padding:0}h2{break-after:avoid}.card,table,svg{break-inside:avoid}}
+</style>
+</head>
+<body>
+<main>
+
+<div class="eyebrow">Overview &middot; for business and newcomers</div>
+<h1>Snowflake audit app</h1>
+<p class="lead">A read-only check-up of a Snowflake account: where the credits and dollars go, what looks wasted, and how things are set up.</p>
+<nav class="toc" aria-label="Contents">
+  <a href="#how">How it works</a><a href="#get">What you get</a><a href="#value">Value</a><a href="#needs">What it needs</a><a href="#risks">Risks</a><a href="#status">Status</a>
+</nav>
+
+<h2 id="what">What it is and who uses it</h2>
+<div class="grid">
+  <div class="card">
+    <h3>What it does</h3>
+    <ul>
+      <li>Runs 298 checks on your Snowflake usage records.</li>
+      <li>Shows spend, possible waste and set-up gaps in one place.</li>
+      <li>Never changes anything in your account.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Who uses it</h3>
+    <ul>
+      <li>Platform owners: sizing, idle machines, failing jobs.</li>
+      <li>FinOps (cloud cost owners): spend, budgets, chargeback.</li>
+      <li>Security and governance: access, sensitive data, audit trail.</li>
+      <li>Data engineering leads: tasks, loading, slow queries.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Why it exists</h3>
+    <ul>
+      <li>Snowflake bills by usage, so waste is easy to miss.</li>
+      <li>The answers sit in many separate usage views.</li>
+      <li>This app collects them and ranks what to fix first.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="how">How it works</h2>
+<svg viewBox="0 0 960 230" role="img" aria-label="Your Snowflake account to a read-only export to a file on your machine to the audit app in your browser; optional run inside Snowflake">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#17191D"/></marker>
+    <marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#5B6068"/></marker>
+  </defs>
+  <!-- boxes -->
+  <rect x="10" y="40" width="190" height="84" rx="8" fill="#EEF0F2" stroke="#D9DBDF"/>
+  <text x="105" y="70" text-anchor="middle" font-size="14" font-weight="600">Your Snowflake account</text>
+  <text x="105" y="90" text-anchor="middle" font-size="12.5" fill="#5B6068">usage records</text>
+  <text x="105" y="108" text-anchor="middle" font-size="12.5" fill="#5B6068">stay where they are</text>
+  <text x="105" y="30" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace" fill="#5B6068">DATA</text>
+
+  <rect x="262" y="40" width="190" height="84" rx="8" fill="#fff" stroke="#17191D" stroke-width="1.5"/>
+  <text x="357" y="70" text-anchor="middle" font-size="14" font-weight="600">Read-only export</text>
+  <text x="357" y="90" text-anchor="middle" font-size="12.5" fill="#5B6068">run by your admin</text>
+  <text x="357" y="108" text-anchor="middle" font-size="12.5" fill="#5B6068">reads only, 7 days</text>
+  <text x="357" y="30" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace" fill="#5B6068">ENTRY</text>
+
+  <rect x="514" y="40" width="190" height="84" rx="8" fill="#EEF0F2" stroke="#D9DBDF"/>
+  <text x="609" y="70" text-anchor="middle" font-size="14" font-weight="600">A file on your machine</text>
+  <text x="609" y="90" text-anchor="middle" font-size="12.5" fill="#5B6068">results only</text>
+  <text x="609" y="108" text-anchor="middle" font-size="12.5" fill="#5B6068">no query text</text>
+  <text x="609" y="30" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace" fill="#5B6068">DATA</text>
+
+  <rect x="766" y="40" width="184" height="84" rx="8" fill="#fff" stroke="#1F5FBF" stroke-width="1.5"/>
+  <text x="858" y="70" text-anchor="middle" font-size="14" font-weight="600">Audit app</text>
+  <text x="858" y="90" text-anchor="middle" font-size="12.5" fill="#5B6068">in your browser</text>
+  <text x="858" y="108" text-anchor="middle" font-size="12.5" fill="#5B6068">on the same machine</text>
+
+  <!-- arrows with numbers -->
+  <line x1="202" y1="82" x2="260" y2="82" stroke="#17191D" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="454" y1="82" x2="512" y2="82" stroke="#17191D" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+  <line x1="706" y1="82" x2="764" y2="82" stroke="#17191D" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+  <g font-size="12" font-weight="600" text-anchor="middle">
+    <circle cx="231" cy="62" r="10" fill="#1F5FBF"/><text x="231" y="66.5" fill="#fff">1</text>
+    <circle cx="483" cy="62" r="10" fill="#1F5FBF"/><text x="483" y="66.5" fill="#fff">2</text>
+    <circle cx="735" cy="62" r="10" fill="#1F5FBF"/><text x="735" y="66.5" fill="#fff">3</text>
+  </g>
+
+  <!-- optional -->
+  <rect x="514" y="162" width="436" height="48" rx="8" fill="#fff" stroke="#5B6068" stroke-dasharray="6 4"/>
+  <text x="732" y="183" text-anchor="middle" font-size="13" font-weight="600">Option: run the app inside Snowflake</text>
+  <text x="732" y="201" text-anchor="middle" font-size="12" fill="#5B6068">not yet run in a real account</text>
+  <line x1="858" y1="160" x2="858" y2="126" stroke="#5B6068" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ahd)"/>
+  <text x="10" y="196" font-size="12.5" fill="#17191D" font-weight="600">Nothing leaves your machine</text>
+  <text x="10" y="214" font-size="12.5" fill="#5B6068">unless you pick the option.</text>
+</svg>
+<p class="key"><b>Key:</b> solid arrow = request to Snowflake &middot; dashed = data moves &middot; grey box = data &middot; dashed grey box = option.</p>
+<p class="cap">Notice: the only contact with Snowflake is step 1, and it only reads.</p>
+<table>
+  <thead><tr><th>#</th><th>Step</th><th>In</th><th>Out</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Admin starts the export; one command, sign-in once</td><td><span class="chip">usage records</span></td><td><span class="chip">298 check results</span></td></tr>
+    <tr><td>2</td><td>Results are saved as files on the same machine</td><td><span class="chip">check results</span></td><td><span class="chip">one local file</span></td></tr>
+    <tr><td>3</td><td>The app opens that file and shows it</td><td><span class="chip">local file</span></td><td><span class="chip">pages and charts</span></td></tr>
+  </tbody>
+</table>
+<ul>
+  <li>Any statement that is not a plain read is refused.</li>
+  <li>Data never sits in the code repository; the app refuses an output folder inside it.</li>
+  <li>If admins prefer, they run the SQL themselves and send back a zip (the "export kit").</li>
+</ul>
+
+<h2 id="get">What you get</h2>
+<p>19 top-level tabs. Money, waste and change are always shown apart and never added together.</p>
+<table>
+  <thead><tr><th>Group</th><th>Answers</th></tr></thead>
+  <tbody>
+    <tr><td><b>Overview, Actions</b></td><td>Where did the dollars go? What should we fix first?</td></tr>
+    <tr><td><b>Cost, Waste &amp; savings</b></td><td>Spend by service and team; possible waste; who is untagged.</td></tr>
+    <tr><td><b>Warehouses, Serverless features, Queries</b></td><td>Idle or oversized machines; heavy, slow and failing queries.</td></tr>
+    <tr><td><b>Tasks &amp; pipelines, Data loading, Storage, AI &amp; apps</b></td><td>Failing jobs; data loading; storage growth; AI usage cost.</td></tr>
+    <tr><td><b>Access, PII &amp; policies, Lineage, Activity, Audit, Sharing &amp; org</b></td><td>Who can reach what; unprotected sensitive data; the audit trail.</td></tr>
+    <tr><td><b>All findings, Coverage &amp; Gaps</b></td><td>Every check in one list; what the audit could not look at, and why.</td></tr>
+  </tbody>
+</table>
+<p class="key">Plus a Guide, "How it works": plain-words help for every check, with links to Snowflake's documentation.</p>
+<ul>
+  <li>Five "View as" lenses reorder the menu for CTO, CFO, FinOps, data engineer or governance. They are views, not permissions.</li>
+  <li>A check that could not run shows a dash and the reason (edition too low, no access, view missing). It never reads as clean or $0.</li>
+</ul>
+
+<div class="grid" style="margin-top:12px">
+  <div class="card">
+    <h3>Typical: a check ran</h3>
+    <p><span class="in">IN</span>compute 100 credits, cloud services 15</p>
+    <p><span class="out">OUT</span>billed 105 credits (10% adjustment taken off)</p>
+  </div>
+  <div class="card">
+    <h3>Edge: a check could not run</h3>
+    <p><span class="in">IN</span>role cannot read a usage view</p>
+    <p><span class="out">OUT</span><span class="chip amber">&ndash;</span> with the reason, not $0</p>
+  </div>
+  <div class="card">
+    <h3>Edge: no price known</h3>
+    <p><span class="in">IN</span>no rate sheet, no invoice, no setting</p>
+    <p><span class="out">OUT</span>shown as unpriced, never $0</p>
+  </div>
+</div>
+
+<h2 id="value">Value: a real-world scenario <span class="tag">illustrative</span></h2>
+<div class="card">
+  <ul>
+    <li>Monday: a platform owner runs the export and opens the app. It takes minutes, not a week of report writing.</li>
+    <li>Overview shows a warehouse that stays on all night with no queries: about 7 hours idle each day.</li>
+    <li>The money pages show three separate numbers, never one blended total.</li>
+  </ul>
+  <table style="margin-top:8px">
+    <thead><tr><th>Number</th><th>Example</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Spend, last 7 days</td><td><span class="chip">$18,400</span></td><td>what was used</td></tr>
+      <tr><td>Possible waste</td><td><span class="chip amber">$2,100</span></td><td>estimate, only items above a size floor</td></tr>
+      <tr><td>Change vs the week before</td><td><span class="chip">+6%</span></td><td>trend, not a saving</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Outcome: shorten the auto-stop time on that warehouse and re-run next week to see the change.</li>
+  </ul>
+</div>
+
+<h2 id="needs">What it needs</h2>
+<ul>
+  <li>A Snowflake role that can read the usage views, granted once by an administrator.</li>
+  <li>A normal laptop or server with Python and a browser. No other service.</li>
+  <li>Without full access, 85 checks fall back to narrower sources. Others show a dash with the reason.</li>
+</ul>
+
+<h2 id="risks">Risks</h2>
+<table>
+  <thead><tr><th>Risk</th><th>Impact</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td><b>1. Numbers lag</b></td><td>Snowflake publishes usage with delays of hours; billing views lag up to 72 hours. Today is shown as partial.</td><td>Read the last full days; re-run to refresh.</td></tr>
+    <tr><td><b>2. Some checks need more</b></td><td>Higher Snowflake edition or extra privileges are needed for some areas; those show a dash, so the picture can be incomplete.</td><td>Check the coverage count: "checks that ran" out of 298.</td></tr>
+    <tr><td><b>3. Prices are estimates</b></td><td>Dollars come from the contract rate sheet if readable, else the last 90 days of invoices, else a default ($3.00 per credit). Defaults can be off.</td><td>Make the rate sheet readable, or set your real price.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="status">Status</h2>
+<ul>
+  <li>Proof of concept, feature-complete on the main branch.</li>
+  <li>Run on one small live account (3 days of data) plus demo accounts. The Snowflake-hosted option has not run in Snowflake.</li>
+</ul>
+
+</main>
+</body>
+</html>

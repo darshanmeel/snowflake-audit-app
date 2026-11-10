@@ -1,6 +1,6 @@
 # Status
 
-Last updated 6 Nov 2026.
+Last updated 10 Nov 2026.
 
 ## Where it stands
 The POC is feature-complete and on `main`. It has run on one small live trial account (3 days of use) and on the fake and demo accounts.
@@ -26,6 +26,7 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
   - Base account used by the tests: `data.py`, `gap_*.py`, `new_checks_data.py`, `batch3_data.py`. Avoid changing these: tests depend on them. `new_checks_data.py` gained a full-scan statement and a redundant grant so two checks have something to find; `tools/fake_fingerprint.py` prints a fingerprint but no value is pinned.
   - Demo layers: `demo_*.py`.
   - Build the demo DB with `python tools/build_demo_db.py` (about 4 min, about 2.3 GB of memory, one at a time) into `data/demo/` (git-ignored). `--list` shows the other kinds of account, `--scenario <name>` builds one, `--scenario all` builds all nine and `data/demo/coverage_report.md`. `worst_case` is the account in trouble: CRITICAL and WARN results no other account reaches. Run the app on it with `AUDIT_DB=data/demo/db_audit_demo.duckdb python -m app.api`.
+- **Docs and graph:** `docs/overview.html` (business) and `docs/technical.html` (engineers), built from the knowledge graph in `snowflake-audit-app-knowledge-graph/` (start at its `index.md`; built at commit 556a877). Both are kept in step with the code (CLAUDE.md, How we work).
 - **History:** squashed to one commit on 15 Oct 2026.
 
 ## Working preferences
