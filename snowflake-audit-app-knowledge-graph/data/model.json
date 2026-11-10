@@ -1,0 +1,2061 @@
+{
+ "entities": [
+  {
+   "name": "findings.f_<query_id>",
+   "type": "table_family",
+   "schema": "findings",
+   "grain": "one row per check-defined entity per window_days (the read_this line of each check header)",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "INTEGER",
+     "nullable": false,
+     "key": "part_pk",
+     "desc": "0 = point-in-time; 7/30/90 = window label. Required, values {0,7,30,90} (tools/load_results.py:171-178). In 296/296 test tables.",
+     "pii": false
+    },
+    {
+     "name": "account_id",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": "fk",
+     "desc": "Account locator (app/core/data.py:13-14); in 287/296 test tables. Joins dims.dim_account.",
+     "pii": false
+    },
+    {
+     "name": "status",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "OK|WARN|CRITICAL|NOT_ASSESSED only (tools/lint_headers.py:43); 271/296 tables. Read as effective status, raw kept as status_raw (app/core/data.py:258-281).",
+     "pii": false
+    },
+    {
+     "name": "not_assessed_reason",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "Code from the header's not_assessed_reasons (tools/header_schema.py:35-36); 261/296 tables.",
+     "pii": false
+    },
+    {
+     "name": "price_basis",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "How the $ was priced; 131/296 tables (meaning inferred from name).",
+     "pii": false
+    },
+    {
+     "name": "reasons",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "Plain-words why; 104/296 tables (inferred).",
+     "pii": false
+    },
+    {
+     "name": "warehouse_id",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": "fk",
+     "desc": "-> dims.dim_warehouse.warehouse_id (app/core/finding_columns.py:75).",
+     "pii": false
+    },
+    {
+     "name": "warehouse_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "Warehouse filter column (app/core/data.py:389).",
+     "pii": false
+    },
+    {
+     "name": "task_full_name | job_id",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": "fk",
+     "desc": "DB.SCHEMA.TASK -> dims.dim_task.task_full_name (app/core/finding_columns.py:73-74, 86).",
+     "pii": false
+    },
+    {
+     "name": "database_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": "fk",
+     "desc": "-> dims.dim_database.database_name, count base (app/core/finding_columns.py:81, 92).",
+     "pii": false
+    },
+    {
+     "name": "user_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": "fk",
+     "desc": "-> dims.dim_user.user_name, count base; masked when privacy.mask_user_identities is on (tests/test_load_results.py:371-386).",
+     "pii": true
+    },
+    {
+     "name": "schema_name, table_name, role_name, pipe_name, dynamic_table_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "Entity columns with no dim (app/core/finding_columns.py:72-84).",
+     "pii": false
+    },
+    {
+     "name": "<money column>",
+     "type": "DOUBLE",
+     "nullable": true,
+     "key": null,
+     "desc": "Headline $ named by the header money: or MONEY_COLUMN_KIND; kinds never added together (app/core/finding_columns.py:15-56, 135-152).",
+     "pii": false
+    },
+    {
+     "name": "is_total_row",
+     "type": "BOOLEAN",
+     "nullable": true,
+     "key": null,
+     "desc": "Total/reconciliation row: never summed, never counted (app/core/finding_columns.py:61-63).",
+     "pii": false
+    },
+    {
+     "name": "is_alt_basis",
+     "type": "BOOLEAN",
+     "nullable": true,
+     "key": null,
+     "desc": "Same credits under a second basis: kept, left out of the $ sum (app/core/finding_columns.py:65-68).",
+     "pii": false
+    },
+    {
+     "name": "status_raw, below_floor",
+     "type": "VARCHAR, BOOLEAN",
+     "nullable": true,
+     "key": null,
+     "desc": "Added at read time, not stored (app/core/data.py:258-281).",
+     "pii": false
+    }
+   ],
+   "pk": "logical: window_days + entity columns (+ account_id); not enforced",
+   "versioning": "full replace per load (CREATE OR REPLACE, tools/load_results.py:567)",
+   "partition": "window_days (alias windows are copies, tools/load_results.py:570-578)"
+  },
+  {
+   "name": "dims.dim_account",
+   "type": "table",
+   "schema": "dims",
+   "grain": "one row per account (an export covers one account)",
+   "columns": [
+    {
+     "name": "account_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": "pk",
+     "desc": "__ACCOUNT_ID__ (app/queries/dims/dim_account.sql:3)",
+     "pii": false
+    },
+    {
+     "name": "name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "CURRENT_ACCOUNT_NAME() (app/queries/dims/dim_account.sql:3)",
+     "pii": false
+    },
+    {
+     "name": "url",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "always NULL (app/queries/dims/dim_account.sql:4)",
+     "pii": false
+    },
+    {
+     "name": "env",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "env word list match or unknown (tools/load_results.py:104-124)",
+     "pii": false
+    },
+    {
+     "name": "env_source",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "name | none",
+     "pii": false
+    },
+    {
+     "name": "env_reason",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "plain-words reason",
+     "pii": false
+    },
+    {
+     "name": "<tag_key>, <tag_key>_share, <tag_key>_coverage, <tag_key>_reason",
+     "type": "VARCHAR/DOUBLE",
+     "nullable": true,
+     "key": null,
+     "desc": "one set per canonical key in config/tag_aliases.yml; not_tagged when none (tools/load_results.py:353-380)",
+     "pii": false
+    }
+   ],
+   "pk": "logical (not enforced): account_id",
+   "versioning": "snapshot per export; empty stub when not exported (tools/load_results.py:42-58, 613-614)",
+   "partition": null,
+   "source_sql": "app/queries/dims/dim_account.sql"
+  },
+  {
+   "name": "dims.dim_warehouse",
+   "type": "table",
+   "schema": "dims",
+   "grain": "one row per warehouse_id that metered in the last 400 days",
+   "columns": [
+    {
+     "name": "account_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "warehouse_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": "pk",
+     "desc": "TO_VARCHAR(warehouse_id) (app/queries/dims/dim_warehouse.sql:2)",
+     "pii": false
+    },
+    {
+     "name": "warehouse_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "latest name: MAX_BY(warehouse_name, start_time) (app/queries/dims/dim_warehouse.sql:3)",
+     "pii": false
+    }
+   ],
+   "pk": "logical (not enforced): warehouse_id",
+   "versioning": "snapshot per export; empty stub when not exported (tools/load_results.py:42-58, 613-614)",
+   "partition": null,
+   "source_sql": "app/queries/dims/dim_warehouse.sql"
+  },
+  {
+   "name": "dims.dim_task",
+   "type": "table",
+   "schema": "dims",
+   "grain": "one row per task (latest graph version); dropped tasks kept",
+   "columns": [
+    {
+     "name": "account_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "task_full_name",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": "pk",
+     "desc": "database.schema.name (app/queries/dims/dim_task.sql:4)",
+     "pii": false
+    },
+    {
+     "name": "task_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "database_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "schema_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "owner_role",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "owner = run-as role (app/queries/dims/dim_task.sql:2, 5)",
+     "pii": false
+    },
+    {
+     "name": "task_id",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "root_task_id",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": "fk",
+     "desc": "graph root (app/queries/dims/dim_task.sql:6)",
+     "pii": false
+    },
+    {
+     "name": "root_task_full_name",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "(app/queries/dims/dim_task.sql:7-8)",
+     "pii": false
+    }
+   ],
+   "pk": "logical (not enforced): task_full_name",
+   "versioning": "snapshot per export; empty stub when not exported (tools/load_results.py:42-58, 613-614)",
+   "partition": null,
+   "source_sql": "app/queries/dims/dim_task.sql"
+  },
+  {
+   "name": "dims.dim_user",
+   "type": "table",
+   "schema": "dims",
+   "grain": "one row per live user (deleted_on IS NULL)",
+   "columns": [
+    {
+     "name": "account_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "user_name",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": "pk",
+     "desc": "",
+     "pii": true
+    },
+    {
+     "name": "user_id",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": "logical (not enforced): user_name",
+   "versioning": "snapshot per export; empty stub when not exported (tools/load_results.py:42-58, 613-614)",
+   "partition": null,
+   "source_sql": "app/queries/dims/dim_user.sql"
+  },
+  {
+   "name": "dims.dim_database",
+   "type": "table",
+   "schema": "dims",
+   "grain": "one row per live database (deleted IS NULL)",
+   "columns": [
+    {
+     "name": "account_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "database_name",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": "pk",
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "database_id",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": "logical (not enforced): database_name",
+   "versioning": "snapshot per export; empty stub when not exported (tools/load_results.py:42-58, 613-614)",
+   "partition": null,
+   "source_sql": "app/queries/dims/dim_database.sql"
+  },
+  {
+   "name": "summary.finding_counts",
+   "type": "table",
+   "schema": "summary",
+   "grain": "query_id x window_days x raw status",
+   "columns": [
+    {
+     "name": "query_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": "pk",
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "window_days",
+     "type": "INTEGER",
+     "nullable": false,
+     "key": "pk",
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "status",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": "pk",
+     "desc": "raw status, NULL when the table has no status column",
+     "pii": false
+    },
+    {
+     "name": "n",
+     "type": "BIGINT",
+     "nullable": false,
+     "key": null,
+     "desc": "rows",
+     "pii": false
+    }
+   ],
+   "pk": "logical: query_id, window_days, status",
+   "versioning": "rebuilt per load (tools/load_results.py:426-446)",
+   "partition": null
+  },
+  {
+   "name": "summary.finding_tables",
+   "type": "table",
+   "schema": "summary",
+   "grain": "one row per loaded findings table that has window_days",
+   "columns": [
+    {
+     "name": "query_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": "pk",
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "n_rows",
+     "type": "BIGINT",
+     "nullable": false,
+     "key": null,
+     "desc": "row total; must equal sum(finding_counts.n) (tools/load_results.py:447-453)",
+     "pii": false
+    }
+   ],
+   "pk": "logical: query_id",
+   "versioning": "rebuilt per load",
+   "partition": null
+  },
+  {
+   "name": "main.direct_export_meta",
+   "type": "table",
+   "schema": "main",
+   "grain": "exactly one row per db",
+   "columns": [
+    {
+     "name": "as_of",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "git_commit",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tool_version",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "max_rows",
+     "type": "BIGINT",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "windows",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "window_coverage",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "window_aliases",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "as_of_date",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "includes_today",
+     "type": "BOOLEAN",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "account",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "pricing",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "last_complete_day",
+     "type": "VARCHAR",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "lag_hours",
+     "type": "BIGINT",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "visibility",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "edition",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "masked",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_sources_cut",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load (tools/load_results.py:632-656)",
+   "partition": null
+  },
+  {
+   "name": "main.direct_export_findings_meta",
+   "type": "table",
+   "schema": "main",
+   "grain": "one row per loaded check",
+   "columns": [
+    {
+     "name": "query_id",
+     "type": "VARCHAR",
+     "nullable": false,
+     "key": "pk",
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "truncated",
+     "type": "BOOLEAN",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "max_rows",
+     "type": "BIGINT",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "truncated_windows",
+     "type": "VARCHAR(JSON list)",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "source",
+     "type": "VARCHAR(JSON)",
+     "nullable": true,
+     "key": null,
+     "desc": "INFORMATION_SCHEMA fallback {source, reads, note}, else NULL",
+     "pii": false
+    }
+   ],
+   "pk": "logical: query_id",
+   "versioning": "rebuilt per load (tools/load_results.py:658-670)",
+   "partition": null
+  },
+  {
+   "name": "tags_src.tag_refs",
+   "type": "staging_table",
+   "schema": "tags_src",
+   "grain": "object x tag (direct assignment); deleted objects out",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "account_id",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "domain",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "object_database",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "object_schema",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "object_name",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_name",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_value",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "apply_method",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "temporary: dropped after tags.* is built (tools/load_results.py:422)",
+   "partition": "window_days",
+   "source_sql": "app/queries/tag_sources/tag_refs.sql:5-11"
+  },
+  {
+   "name": "tags_src.query_tag_credits",
+   "type": "staging_table",
+   "schema": "tags_src",
+   "grain": "window x warehouse x non-empty query_tag",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "warehouse_id",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "query_tag",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "credits",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "statements",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "temporary: dropped after tags.* is built (tools/load_results.py:422)",
+   "partition": "window_days",
+   "source_sql": "app/queries/tag_sources/query_tag_credits.sql:4-9"
+  },
+  {
+   "name": "tags_src.query_tag_perf",
+   "type": "staging_table",
+   "schema": "tags_src",
+   "grain": "window x warehouse x query_tag (NULL = untagged)",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "warehouse_id",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "warehouse_name",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "query_tag",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "statements",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "failed_statements",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "duration_ms",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "queue_ms",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "spill_bytes",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "temporary: dropped after tags.* is built (tools/load_results.py:422)",
+   "partition": "window_days",
+   "source_sql": "app/queries/tag_sources/query_tag_perf.sql:4-13"
+  },
+  {
+   "name": "tags_src.warehouse_cost",
+   "type": "staging_table",
+   "schema": "tags_src",
+   "grain": "window x warehouse",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "warehouse_id",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "warehouse_name",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "compute_credits",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "billed_credits",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "attributed_credits",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "idle_credits",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "temporary: dropped after tags.* is built (tools/load_results.py:422)",
+   "partition": "window_days",
+   "source_sql": "app/queries/tag_sources/warehouse_cost.sql:25-28"
+  },
+  {
+   "name": "tags_src.service_cost",
+   "type": "staging_table",
+   "schema": "tags_src",
+   "grain": "window x service_type",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "service_type",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "credits_billed",
+     "type": "from parquet",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "temporary: dropped after tags.* is built (tools/load_results.py:422)",
+   "partition": "window_days",
+   "source_sql": "app/queries/tag_sources/service_cost.sql:4-7"
+  },
+  {
+   "name": "tags.tag_entity",
+   "type": "table",
+   "schema": "tags",
+   "grain": "see tools/build_tags.py (tag slice)",
+   "columns": [
+    {
+     "name": "entity_type",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "account_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "entity_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "entity_label",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "raw_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_value",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "is_allocating",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "source",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "share",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "coverage",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "reason",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load; absent when the export wrote no tag_refs (tools/build_tags.py:97-98)",
+   "partition": null,
+   "source_sql": "tools/build_tags.py:173-178"
+  },
+  {
+   "name": "tags.cost_unit",
+   "type": "table",
+   "schema": "tags",
+   "grain": "see tools/build_tags.py (tag slice)",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "unit_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "account_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "compute_kind",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "compute_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "work_kind",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "work_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "credits",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "usd",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load; absent when the export wrote no tag_refs (tools/build_tags.py:97-98)",
+   "partition": null,
+   "source_sql": "tools/build_tags.py:195-196"
+  },
+  {
+   "name": "tags.cost_unit_tag",
+   "type": "table",
+   "schema": "tags",
+   "grain": "see tools/build_tags.py (tag slice)",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "unit_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "level",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "raw_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_value",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "source",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "credits",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "usd",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load; absent when the export wrote no tag_refs (tools/build_tags.py:97-98)",
+   "partition": null,
+   "source_sql": "tools/build_tags.py:197-198"
+  },
+  {
+   "name": "tags.cost_reconciliation",
+   "type": "table",
+   "schema": "tags",
+   "grain": "see tools/build_tags.py (tag slice)",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "usage_unit",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "billing_usd",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "unit_usd",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "unit_unpriced_quantity",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "attributed_credits",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "attributed_unmatched_credits",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "scaled_warehouse_days",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "warehouse_idle_usd",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "warehouse_unsplit_usd",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load; absent when the export wrote no tag_refs (tools/build_tags.py:97-98)",
+   "partition": null,
+   "source_sql": "tools/build_tags.py:199-202"
+  },
+  {
+   "name": "tags.perf_unit",
+   "type": "table",
+   "schema": "tags",
+   "grain": "see tools/build_tags.py (tag slice)",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "unit_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "account_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "compute_kind",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "compute_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "statements",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "failed_statements",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "duration_ms",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "queue_ms",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "spill_bytes",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load; absent when the export wrote no tag_refs (tools/build_tags.py:97-98)",
+   "partition": null,
+   "source_sql": "tools/build_tags.py:256-258"
+  },
+  {
+   "name": "tags.perf_unit_tag",
+   "type": "table",
+   "schema": "tags",
+   "grain": "see tools/build_tags.py (tag slice)",
+   "columns": [
+    {
+     "name": "window_days",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "unit_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "level",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "raw_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_value",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "source",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "statements",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "failed_statements",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "duration_ms",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "queue_ms",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "spill_bytes",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load; absent when the export wrote no tag_refs (tools/build_tags.py:97-98)",
+   "partition": null,
+   "source_sql": "tools/build_tags.py:259-261"
+  },
+  {
+   "name": "tags.tag_account",
+   "type": "table",
+   "schema": "tags",
+   "grain": "see tools/build_tags.py (tag slice)",
+   "columns": [
+    {
+     "name": "account_id",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "display_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_value",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "is_allocating",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "top_value",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "share",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "coverage",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "credits_tagged",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "credits_total",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "source",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "reason",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load; absent when the export wrote no tag_refs (tools/build_tags.py:97-98)",
+   "partition": null,
+   "source_sql": "tools/build_tags.py:285-288"
+  },
+  {
+   "name": "tags.tag_index",
+   "type": "table",
+   "schema": "tags",
+   "grain": "see tools/build_tags.py (tag slice)",
+   "columns": [
+    {
+     "name": "tag_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "display_key",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "raw_keys",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "tag_value",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "source",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "object_count",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "account_count",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "credits",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "first_seen",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "last_seen",
+     "type": "see source",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": null,
+   "versioning": "rebuilt per load; absent when the export wrote no tag_refs (tools/build_tags.py:97-98)",
+   "partition": null,
+   "source_sql": "tools/build_tags.py:333-342"
+  },
+  {
+   "name": "<db stem>.run_results.json",
+   "type": "sidecar_file",
+   "schema": null,
+   "grain": "one entry per check in the export manifest's findings",
+   "columns": [
+    {
+     "name": "query_id",
+     "type": "string",
+     "nullable": false,
+     "key": "pk",
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "status",
+     "type": "ok|failed",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "message",
+     "type": "string",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "reason",
+     "type": "string",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "sources",
+     "type": "list",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    },
+    {
+     "name": "all_rows_not_assessed",
+     "type": "bool",
+     "nullable": true,
+     "key": null,
+     "desc": "",
+     "pii": false
+    }
+   ],
+   "pk": "query_id",
+   "versioning": "rewritten per load (tools/load_results.py:282-303)",
+   "partition": null
+  }
+ ],
+ "relationships": [
+  {
+   "from": "findings.f_<query_id>",
+   "from_cols": [
+    "warehouse_id"
+   ],
+   "to": "dims.dim_warehouse",
+   "to_cols": [
+    "warehouse_id"
+   ],
+   "cardinality": "N:1",
+   "status": "logical",
+   "evidence": "app/core/data.py:1595-1608; web/src/components/names.tsx:47-48"
+  },
+  {
+   "from": "findings.f_<query_id>",
+   "from_cols": [
+    "task_full_name|job_id"
+   ],
+   "to": "dims.dim_task",
+   "to_cols": [
+    "task_full_name"
+   ],
+   "cardinality": "N:1",
+   "status": "logical",
+   "evidence": "app/core/finding_columns.py:72-74,86; web/src/components/names.tsx:45-46"
+  },
+  {
+   "from": "findings.f_<query_id>",
+   "from_cols": [
+    "account_id"
+   ],
+   "to": "dims.dim_account",
+   "to_cols": [
+    "account_id"
+   ],
+   "cardinality": "N:1",
+   "status": "logical",
+   "evidence": "app/core/data.py:878-882"
+  },
+  {
+   "from": "findings.f_<query_id>",
+   "from_cols": [
+    "user_name"
+   ],
+   "to": "dims.dim_user",
+   "to_cols": [
+    "user_name"
+   ],
+   "cardinality": "N:1 (count base only)",
+   "status": "logical",
+   "evidence": "app/core/finding_columns.py:83,91; app/core/data.py:863-904"
+  },
+  {
+   "from": "findings.f_<query_id>",
+   "from_cols": [
+    "database_name"
+   ],
+   "to": "dims.dim_database",
+   "to_cols": [
+    "database_name"
+   ],
+   "cardinality": "N:1 (count base only)",
+   "status": "logical",
+   "evidence": "app/core/finding_columns.py:81,92"
+  },
+  {
+   "from": "findings.f_<query_id>",
+   "from_cols": [
+    "warehouse_id"
+   ],
+   "to": "dims.dim_warehouse",
+   "to_cols": [
+    "lower(warehouse_name)"
+   ],
+   "cardinality": "N:1 (warehouse filter by name)",
+   "status": "logical",
+   "evidence": "app/core/data.py:432-442"
+  },
+  {
+   "from": "dims.dim_task",
+   "from_cols": [
+    "root_task_id"
+   ],
+   "to": "dims.dim_task",
+   "to_cols": [
+    "task_id"
+   ],
+   "cardinality": "N:1",
+   "status": "inferred",
+   "evidence": "app/queries/dims/dim_task.sql:6-8"
+  },
+  {
+   "from": "summary.finding_counts",
+   "from_cols": [
+    "query_id"
+   ],
+   "to": "findings.f_<query_id>",
+   "to_cols": [
+    "(table name)"
+   ],
+   "cardinality": "N:1",
+   "status": "enforced",
+   "evidence": "tools/load_results.py:447-453"
+  },
+  {
+   "from": "summary.finding_tables",
+   "from_cols": [
+    "query_id"
+   ],
+   "to": "summary.finding_counts",
+   "to_cols": [
+    "query_id"
+   ],
+   "cardinality": "1:N",
+   "status": "enforced",
+   "evidence": "tools/load_results.py:447-453"
+  },
+  {
+   "from": "main.direct_export_findings_meta",
+   "from_cols": [
+    "query_id"
+   ],
+   "to": "findings.f_<query_id>",
+   "to_cols": [
+    "(table name)"
+   ],
+   "cardinality": "1:1",
+   "status": "logical",
+   "evidence": "tools/load_results.py:662-670"
+  },
+  {
+   "from": "<db stem>.run_results.json",
+   "from_cols": [
+    "query_id"
+   ],
+   "to": "findings.f_<query_id>",
+   "to_cols": [
+    "(table name)"
+   ],
+   "cardinality": "1:0..1",
+   "status": "logical",
+   "evidence": "tools/load_results.py:293-301; app/core/data.py:1986-2006"
+  },
+  {
+   "from": "tags.tag_account",
+   "from_cols": [
+    "account_id",
+    "tag_key"
+   ],
+   "to": "dims.dim_account",
+   "to_cols": [
+    "account_id",
+    "<tag_key> columns"
+   ],
+   "cardinality": "N:1 (denormalised copy)",
+   "status": "enforced",
+   "evidence": "tools/load_results.py:353-380"
+  },
+  {
+   "from": "tags.tag_entity",
+   "from_cols": [
+    "entity_id (warehouse name, lower)"
+   ],
+   "to": "dims.dim_warehouse",
+   "to_cols": [
+    "lower(warehouse_name)"
+   ],
+   "cardinality": "N:1 (adds an id-keyed copy)",
+   "status": "enforced",
+   "evidence": "tools/build_tags.py:134-140"
+  },
+  {
+   "from": "tags_src.*",
+   "from_cols": [
+    "*"
+   ],
+   "to": "tags.*",
+   "to_cols": [
+    "*"
+   ],
+   "cardinality": "derived",
+   "status": "enforced",
+   "evidence": "tools/load_results.py:416-422"
+  }
+ ],
+ "views": [
+  {
+   "name": "findings.f_<query_id> alias window rows",
+   "sources": [
+    "findings.f_<query_id> WHERE window_days = source label"
+   ],
+   "filter": "windowed checks only; alias label > source label",
+   "grain": "same as source window",
+   "evidence": "tools/load_results.py:570-578"
+  },
+  {
+   "name": "read_finding effective status",
+   "sources": [
+    "findings.f_<query_id>",
+    "config/materiality.yml"
+   ],
+   "filter": "materiality floor / severity cap",
+   "grain": "row",
+   "evidence": "app/core/data.py:258-281"
+  },
+  {
+   "name": "GET /api/warehouses",
+   "sources": [
+    "dims.dim_warehouse",
+    "findings.f_sf_cost_warehouse_idle_credits_daily"
+   ],
+   "filter": "account scope",
+   "grain": "one per lower(warehouse_name), label name (id)",
+   "evidence": "app/api/app.py:1387-1424"
+  },
+  {
+   "name": "GET /api/databases",
+   "sources": [
+    "findings.f_sf_chg_by_database_schema",
+    "findings.f_sf_storage_schema_sprawl",
+    "findings.f_table_inventory_type",
+    "dims.dim_task"
+   ],
+   "filter": "placeholders dropped",
+   "grain": "database with schemas",
+   "evidence": "app/api/app.py:1427-1466"
+  },
+  {
+   "name": "GET /api/dims",
+   "sources": [
+    "dims.dim_task",
+    "dims.dim_warehouse"
+   ],
+   "filter": "none",
+   "grain": "one record per dim row",
+   "evidence": "app/api/app.py:600-670"
+  }
+ ]
+}

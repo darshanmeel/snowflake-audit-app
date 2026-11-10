@@ -22,3 +22,9 @@ sf-audit-out/
 sf-audit-out.tmp/
 sf-audit-out.zip
 *.p8
+
+# Knowledge graph data: rebuilt by its _scripts, too big and noisy to commit.
+snowflake-audit-app-knowledge-graph/graph/nodes.jsonl
+snowflake-audit-app-knowledge-graph/graph/edges.jsonl
+snowflake-audit-app-knowledge-graph/meta.json
+!/snowflake-audit-app-knowledge-graph/data/

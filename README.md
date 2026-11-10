@@ -10,6 +10,10 @@ and `SHOW` only. Only the export (and Refresh in the app) queries Snowflake; bro
 not. You can also [run the app inside Snowflake](#run-inside-snowflake), which is optional and is the
 only step that creates objects there.
 
+**Docs:** [Overview](docs/overview.html) (what it does, for business and management) ·
+[Technical](docs/technical.html) (architecture, data model, money rules, deploy and access, for
+engineers). Open the files in a browser; on GitHub, download them first.
+
 The checks have run on one small live trial account, and every check on the demo account, with
 its figures recomputed from the source views. Each still says "needs confirmation" in its
 confidence note until it has run on a busy account. The test queries ("Check the numbers
@@ -859,6 +863,8 @@ tools/export_kit the standalone export to send to someone else (refresh: tools/m
 tools/streamlit_deploy  optional deploy to Streamlit in Snowflake
 tests/           pytest suite
 start.py         one command: set up, sign in, export, load and open the app
+docs/            overview.html and technical.html
+snowflake-audit-app-knowledge-graph/  map of the code: start at index.md
 ```
 
 ## Tests

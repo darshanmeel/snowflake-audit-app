@@ -19,6 +19,7 @@ python snowflake-audit-app-knowledge-graph/_scripts/extract.py        # code -> 
 python snowflake-audit-app-knowledge-graph/_scripts/merge_extras.py   # + graph/extra_*.jsonl, recounts meta.json
 ```
 
+- `nodes.jsonl`, `edges.jsonl` and `meta.json` are not in git; run both scripts after a clone or pull.
 - Always run both, in that order: the merge appends to what `extract.py` just wrote, so it is repeatable.
 - The merge dedupes nodes by id and edges by (from, to, type) and drops edges whose endpoints don't exist. Last run dropped 0.
 - `_scripts/gen_queries_tables.py` and `_scripts/gen_extra_queries.py` rebuild the tables in `modules/queries.md` / `data/snowflake-views.md` and `graph/extra_queries.jsonl`.

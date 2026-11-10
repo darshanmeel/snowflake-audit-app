@@ -78,7 +78,7 @@ The current state, next steps and working preferences are in `STATUS.md`. Read i
 - The user runs the app from the GitHub zip, so list the changed files after each push.
 - No workflows and no background builder agents unless the user names them. Do the work in the main session, in steps.
 - Check every changed page in a real browser (Playwright) on real data before calling it done.
-- Keep the knowledge graph (`snowflake-audit-app-knowledge-graph/`, committed) current. After any change to code, SQL, config, UI or docs, in the same commit:
+- Keep the knowledge graph (`snowflake-audit-app-knowledge-graph/`; its pages and scripts are committed, `graph/nodes.jsonl`, `edges.jsonl` and `meta.json` are git-ignored and rebuilt by the scripts) current. After any change to code, SQL, config, UI or docs, in the same commit:
   - rerun `python snowflake-audit-app-knowledge-graph/_scripts/extract.py`, then `merge_extras.py` in the same folder;
   - fix the pages (`flows/`, `logic/`, `modules/`, `data/`, `processes/`, `index.md`) that cite changed files, and their `path:line` cites;
   - re-render `docs/*.html` when the change alters what they say.
