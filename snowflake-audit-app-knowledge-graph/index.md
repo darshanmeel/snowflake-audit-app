@@ -19,8 +19,8 @@ flowchart LR
   API -. "same API + build + DB file" .-> ST["Streamlit in Snowflake<br/>tools/streamlit_deploy"]
 ```
 
-- Read-only guard on every statement: tools/export_results.py:642-647, applied in run_sql at 724-732.
-- Load is atomic (`<db>.tmp` then `os.replace`): tools/load_results.py:496-501, 671-683.
+- Read-only guard on every statement: tools/export_results.py:660-665, applied in run_sql at 724-732.
+- Load is atomic (`<db>.tmp` then `os.replace`): tools/load_results.py:497-502, 671-683.
 - The app opens `AUDIT_DB`, else the `current_db.txt` pointer, else `audit.duckdb`: app/core/data.py:103-112.
 
 ## Entry points
@@ -29,18 +29,18 @@ flowchart LR
 |---|---|
 | One command: venv, sign-in, 7-day export, load, open app | start.py:275 (`main`), args start.py:50-56 |
 | First run (export + load, 30 days) | tools/first_run.py:183 |
-| Export CLI | tools/export_results.py:1499 (`build_parser`), 1547 (`main`) |
-| Load CLI | tools/load_results.py:706 (`build_parser`), 727 (`main`) |
+| Export CLI | tools/export_results.py:1528 (`build_parser`), 1547 (`main`) |
+| Load CLI | tools/load_results.py:711 (`build_parser`), 727 (`main`) |
 | API server (`python -m app.api`) | app/api/__main__.py:35 (`uvicorn.run`) |
-| FastAPI app object and routers | app/api/app.py:128, 736-737 |
-| Static UI mount (last, never shadows `/api/*`) | app/api/app.py:1537-1543 |
+| FastAPI app object and routers | app/api/app.py:124, 736-737 |
+| Static UI mount (last, never shadows `/api/*`) | app/api/app.py:1460-1466 |
 | React root | web/src/main.tsx:30 |
-| Area registry (which checks each sub-tab owns) | web/src/components/tab_registry.tsx:484-515 |
+| Area registry (which checks each sub-tab owns) | web/src/components/tab_registry.tsx:470-501 |
 | Check catalog generator | tools/build_manifest.py:105 |
-| Export kit generator / kit runner | tools/make_export_kit.py:239 / tools/export_kit/run_export.py:1441 |
+| Export kit generator / kit runner | tools/make_export_kit.py:247 / tools/export_kit/run_export.py:1484 |
 | Streamlit deploy / Streamlit app | tools/streamlit_deploy/deploy.py:162 / tools/streamlit_deploy/streamlit_app.py:1-221 |
 | Pre-commit check runner | tools/gate.py:52 |
-| Demo database builder | tools/build_demo_db.py:126 |
+| Demo database builder | tools/build_demo_db.py:121 |
 
 ## Where to look for what
 
@@ -94,6 +94,6 @@ flowchart LR
 | Shared SQL includes | 21 | app/queries/common/ |
 | Dims | 5 | app/queries/dims/ |
 | HTTP routes | 32: 29 in app.py, 2 in explorer.py, 1 in guide.py (31 `/api/*` + the `GET /` no-build fallback) | `@app.get`/`@router.*` in app/api/*.py |
-| UI top-level tabs | 19 | web/src/components/tab_registry.tsx:513-516 (`AREA_ORDER`) |
+| UI top-level tabs | 19 | web/src/components/tab_registry.tsx:499-502 (`AREA_ORDER`) |
 | UI sub-tabs | 66 | [flows/ui-navigation.md](flows/ui-navigation.md) |
 | Lenses ("View as") | 5 | [flows/roles.md](flows/roles.md) |

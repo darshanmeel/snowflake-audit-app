@@ -135,12 +135,12 @@ def l2():
     m.box("au", 15, 40, 165, 80, "ACCOUNT_USAGE ORGANIZATION_USAGE", "views, 298 checks", "data", "DATA", "SELECT / WITH / SHOW only")
     m.box("is", 15, 160, 165, 80, "INFORMATION_SCHEMA SHOW", "fallback source", "data", "DATA", "used when ACCOUNT_USAGE is unreadable")
     m.box("q", 250, 40, 225, 80, "app/queries/", "checks fallback shims common dims", "routine", "", "headers drive everything")
-    m.box("ex", 250, 160, 225, 80, "export_results.py", "probe, render, run, mask", "routine entry", "ENTRY", "run_export: tools/export_results.py:1129")
+    m.box("ex", 250, 160, 225, 80, "export_results.py", "probe, render, run, mask", "routine entry", "ENTRY", "run_export: tools/export_results.py:1146")
     m.box("cfg", 250, 280, 225, 80, "config/", "settings thresholds materiality", "data", "DATA", "yml; settings.local.yml overrides")
     m.box("res", 525, 40, 175, 80, "results/STAMP/", "findings dims tags_src manifest", "data", "DATA", "kept: newest 2 folders")
     m.box("ld", 525, 160, 175, 80, "load_results.py", "build_tags.py", "routine", "", "builds into audit.duckdb.tmp")
     m.box("db", 525, 280, 175, 80, "audit.duckdb", "findings dims summary tags", "data", "DATA", "read-only in the app")
-    m.box("api", 750, 40, 235, 80, "app/api/app.py", "32 routes, service.py, explorer", "routine entry", "ENTRY", "FastAPI app: app/api/app.py:128")
+    m.box("api", 750, 40, 235, 80, "app/api/app.py", "32 routes, service.py, explorer", "routine entry", "ENTRY", "FastAPI app: app/api/app.py:124")
     m.box("core", 750, 160, 235, 80, "app/core/data.py", "money, status, filters", "routine", "", "one cut-off, one price basis")
     m.box("ui", 750, 280, 235, 80, "React UI", "web/src built to app/web/dist", "", "", "mounted last at /")
     m.arrow([(180, 80), (250, 80)], "au", "q")
@@ -168,7 +168,7 @@ def sec_arch():
     b += key("grey = data · teal = code · bold border = what the user starts · dashed = data moves · solid = calls · numbers = order")
     b += cap("one direction only: Snowflake → export → folder → loader → DuckDB → API → UI. Nothing flows back.")
     b += ul([
-        "Read-only guard on every statement: one <code>SELECT</code>, <code>WITH</code> or <code>SHOW</code>, nothing else " + cite("tools/export_results.py:642-647, 724-732"),
+        "Read-only guard on every statement: one <code>SELECT</code>, <code>WITH</code> or <code>SHOW</code>, nothing else " + cite("tools/export_results.py:660-665, 724-732"),
         "Data never sits in the repo: <code>AUDIT_DATA_DIR</code> or the OS data folder; an output inside the repo is refused " + cite("app/core/datasource.py:16-38"),
         "The app opens <code>AUDIT_DB</code>, else the <code>current_db.txt</code> pointer, else <code>audit.duckdb</code> " + cite("app/core/data.py:103-112"),
     ])
@@ -177,13 +177,13 @@ def sec_arch():
     b += cap("only the export crosses the Snowflake boundary; everything right of it reads files.")
     b += table(["Component", "Does", "Entry"], [
         [c("start.py"), "venv, sign-in prompt, 7-day export, load, opens the app", cite("start.py:275")],
-        [c("tools/export_results.py"), "probe, render, run, mask, write the results folder", cite("tools/export_results.py:1547")],
-        [c("tools/load_results.py"), "folder or zip to DuckDB file plus sidecar", cite("tools/load_results.py:727")],
-        [c("app/api/app.py"), "FastAPI routes, response cache, static UI mount", cite("app/api/app.py:128")],
+        [c("tools/export_results.py"), "probe, render, run, mask, write the results folder", cite("tools/export_results.py:1576")],
+        [c("tools/load_results.py"), "folder or zip to DuckDB file plus sidecar", cite("tools/load_results.py:732")],
+        [c("app/api/app.py"), "FastAPI routes, response cache, static UI mount", cite("app/api/app.py:124")],
         [c("app/core/data.py"), "every DuckDB read: filters, money, status, cut-off", cite("app/core/data.py:1-40")],
         [c("web/src/main.tsx"), "React 18 + TypeScript root, built by Vite", cite("web/src/main.tsx:30")],
         [c("tools/streamlit_deploy/"), "ships the same build plus a DuckDB file to a stage", cite("tools/streamlit_deploy/deploy.py:162")],
-        [c("tools/make_export_kit.py"), "zip a customer can run themselves, SQL pasted flat", cite("tools/make_export_kit.py:239")],
+        [c("tools/make_export_kit.py"), "zip a customer can run themselves, SQL pasted flat", cite("tools/make_export_kit.py:247")],
     ])
     b += "<p class=\"key\">Other helpers: <code>tools/gate.py</code> (pre-commit runner), <code>tools/build_manifest.py</code>, <code>tools/lint_headers.py</code>, <code>tools/build_demo_db.py</code>.</p>"
     return section("arch", "1 · Architecture", b)
@@ -252,19 +252,19 @@ def sec_export():
         ("Tag sources and dims", "main session, after all checks", "<code>tags_src/*.parquet</code>, <code>dims/*.parquet</code>"),
         ("Mask, manifest, report, rename", "<code>--mask</code> or <code>privacy.mask_fields</code>", "<code>manifest.json</code>, <code>report.md</code>, <code>OUT</code>"),
     ])
-    b += cite("tools/export_results.py:1033-1040, 1129-1366, 821-873, 924-975, 989-1003, 1211-1288; tools/common.py:24-40")
+    b += cite("tools/export_results.py:1050-1057, 1129-1366, 821-873, 924-975, 989-1003, 1211-1288; tools/common.py:24-40")
     b += sub("Command and expected output")
     b += pair(
         payload("IN", "export one window set", "python tools/export_results.py --out <folder outside the repo> --windows 30", "sh"),
-        payload("OUT", "console (README.md:337, tools/export_results.py:1587-1594)",
+        payload("OUT", "console (README.md:343, tools/export_results.py:1616-1623)",
                 "[12/298] <check_id>: ok, 34 rows, 1.2s\n...\nwrote <folder>: N empty, N ok, ...\nnext: python tools/load_results.py <folder> --db PATH", "sh"))
     b += sub("Per-check decision order")
     b += table(["Condition", "Status written", "Where"], [
-        ["edition below Enterprise and the check needs it", f"{c('not_assessed')} / {c('edition_too_low')}, not run", cite("tools/export_results.py:1216-1226")],
-        ["a source is unreadable and a fallback exists (or <code>--use-fallbacks</code>)", "fallback runs; any failure reads <code>not_assessed</code> / <code>role_cannot_see</code>, never empty", cite("tools/export_results.py:1227-1256")],
-        ["a source is unreadable, no fallback", f"{c('not_assessed')} naming each view and its error", cite("tools/export_results.py:1257-1266")],
-        ["SQL error, timeout, view missing", f"{c('failed')} with <code>error_code</code> and <code>cause</code>", cite("tools/export_results.py:1267-1283")],
-        ["ran", f"{c('ok')} (rows) or {c('empty')}", cite("tools/export_results.py:1273-1276")],
+        ["edition below Enterprise and the check needs it", f"{c('not_assessed')} / {c('edition_too_low')}, not run", cite("tools/export_results.py:1235-1245")],
+        ["a source is unreadable and a fallback exists (or <code>--use-fallbacks</code>)", "fallback runs; any failure reads <code>not_assessed</code> / <code>role_cannot_see</code>, never empty", cite("tools/export_results.py:1246-1281")],
+        ["a source is unreadable, no fallback", f"{c('not_assessed')} naming each view and its error", cite("tools/export_results.py:1282-1291")],
+        ["SQL error, timeout, view missing", f"{c('failed')} with <code>error_code</code> and <code>cause</code>", cite("tools/export_results.py:1292-1308")],
+        ["ran", f"{c('ok')} (rows) or {c('empty')}", cite("tools/export_results.py:1298-1301")],
     ])
     b += sub("Examples")
     b += exset(
@@ -275,13 +275,13 @@ def sec_export():
         card("ok", "Cut-off at 03:00, today on (default)", [("now (UTC)", "2026-09-21 03:00"), ("include_today", "true")],
              "<code>2026-09-22</code>: tomorrow, so today is included and shown partial", "tests/test_export_show.py:136-142"),
         card("bad", "Statement that writes", [("SQL", "<code>SELECT 1; SELECT 2</code> or <code>DROP TABLE x</code>")],
-             "refused: <em>not a single SELECT, WITH or SHOW</em>", "run on this repo: tools/export_results.py:642-647"),
+             "refused: <em>not a single SELECT, WITH or SHOW</em>", "run on this repo: tools/export_results.py:660-665"),
     )
     b += ul([
-        "<code>--workers N</code>: default 4, or 1 with browser sign-in; each thread has its own session because a <code>SHOW</code> and its <code>RESULT_SCAN</code> must share one " + cite("tools/export_results.py:748-755, 1200-1209"),
-        "Exit codes: 0 done, 1 connection error, 2 config error " + cite("tools/export_results.py:1582-1596"),
-        "<code>--validate</code> runs every statement with <code>LIMIT 0</code>, writes <code>validate.md</code>, exports nothing " + cite("tools/export_results.py:1382-1492"),
-        "No zip step in <code>export_results.py</code>; only the export kit zips its output " + cite("tools/export_kit/run_export.py:1482-1484"),
+        "<code>--workers N</code>: default 4, or 1 with browser sign-in; each thread has its own session because a <code>SHOW</code> and its <code>RESULT_SCAN</code> must share one " + cite("tools/export_results.py:766-773, 1200-1209"),
+        "Exit codes: 0 done, 1 connection error, 2 config error " + cite("tools/export_results.py:1611-1625"),
+        "<code>--validate</code> runs every statement with <code>LIMIT 0</code>, writes <code>validate.md</code>, exports nothing " + cite("tools/export_results.py:1407-1521"),
+        "No zip step in <code>export_results.py</code>; only the export kit zips its output " + cite("tools/export_kit/run_export.py:1525-1527"),
     ])
     return section("export", "2 · Export flow", b)
 
@@ -351,13 +351,13 @@ WITH __INCLUDE_sf_cs_billed_ratio__,
                   "next": [{"query_id": "cost_chargeback_by_warehouse"}]}, indent=2), "json"))
     b += ul([
         "14 required fields, 7 optional; <code>tier</code> rides on the domain line (<code>lite|standard|deep</code>) " + cite("tools/header_schema.py:15-46, 61-71"),
-        "<code>lint_headers.py</code>: <code>reads</code> must list every view the SQL touches, includes too; no hard-coded windows; <code>status</code> labels only OK, WARN, CRITICAL, NOT_ASSESSED " + cite("tools/lint_headers.py:41-179"),
+        "<code>lint_headers.py</code>: <code>reads</code> must list every view the SQL touches, includes too; no hard-coded windows; <code>status</code> labels only OK, WARN, CRITICAL, NOT_ASSESSED " + cite("tools/lint_headers.py:41-183"),
         "<code>is_finding</code> = <code>healthy</code> not starting &quot;n/a -&quot; and the body has <code>AS status</code> " + cite("app/core/registry.py:202-204, 265-268"),
     ])
     b += sub("Includes, params, windows")
     b += ul([
-        "Render order: includes pasted first, then <code>:params</code>, then <code>__PLACEHOLDERS__</code>; a leftover <code>:name</code> raises " + cite("tools/export_results.py:600-639"),
-        "Param values: header default, overridden by <code>config/thresholds.yml</code> " + cite("tools/export_results.py:267-274"),
+        "Render order: includes pasted first, then <code>:params</code>, then <code>__PLACEHOLDERS__</code>; a leftover <code>:name</code> raises " + cite("tools/export_results.py:614-657"),
+        "Param values: header default, overridden by <code>config/thresholds.yml</code> " + cite("tools/export_results.py:270-277"),
         "Windows 7, 30, 90: <code>:period_days</code> is the window; the loader accepts only 0, 7, 30, 90 " + cite("tools/load_results.py:171-178"),
         "<code>--windows 30</code> runs 7 and 30 only; the 90 label reuses the 30-day rows (alias), shown as partial in the UI " + cite("tools/common.py:24-40"),
     ])
@@ -365,7 +365,7 @@ WITH __INCLUDE_sf_cs_billed_ratio__,
               payload("OUT", "render(days=30, as_of 2026-09-22, price 3.0, no storage price)", render_out, "sql"))
     b += cite("run on this repo: tools.export_results.render; unset storage price renders NULL, never 0")
     b += exset(
-        card("ok", "Typical", [("check", "<code>:period_days</code> in body"), ("days", "30")], "<code>-30</code> pasted, as-of date cast", "tools/export_results.py:600-639"),
+        card("ok", "Typical", [("check", "<code>:period_days</code> in body"), ("days", "30")], "<code>-30</code> pasted, as-of date cast", "tools/export_results.py:614-657"),
         card("bad", "Unknown parameter", [("check", "<code>SELECT :nope</code>"), ("params", "none")],
              "<code>ExportConfigError: unresolved parameter(s): ['nope']</code>", "run on this repo"),
         card("edge", "Missing price", [("storage price", "not set anywhere")], "<code>CAST(NULL AS DOUBLE)</code>: the $ column reads unpriced", "run on this repo"),
@@ -382,18 +382,18 @@ WITH __INCLUDE_sf_cs_billed_ratio__,
     b += "<p class=\"key\">Full check list per domain (collapsed):</p>" + det
     b += sub("Fallbacks and shims")
     b += ul([
-        "A fallback runs when a source is unreadable, and only if an INFORMATION_SCHEMA database is found: the session's current one, else the first non-<code>SNOWFLAKE</code> from <code>SHOW TERSE DATABASES</code> " + cite("tools/export_results.py:197-209, 1227"),
+        "A fallback runs when a source is unreadable, and only if an INFORMATION_SCHEMA database is found: the session's current one, else the first non-<code>SNOWFLAKE</code> from <code>SHOW TERSE DATABASES</code> " + cite("tools/export_results.py:197-212, 1227"),
         "Shim stub: each <code>SNOWFLAKE.ACCOUNT_USAGE.V</code> is swapped for <code>__SHIM_V__</code>; a view with no shim stops the run " + cite("tools/export_results.py:120-180"),
-        "Gates keep a partial answer honest: <code>MONITOR USAGE</code>, <code>MANAGE GRANTS</code>, <code>APPLY ... POLICY</code>; missing one reads <code>not_assessed</code> " + cite("tools/export_results.py:212-254"),
-        "Query feed: 28 six-hour slices of <code>INFORMATION_SCHEMA.QUERY_HISTORY</code>, read once for all query fallbacks; a slice at the 10,000-row limit is not flagged " + cite("tools/export_results.py:410-441; README.md:446-447"),
-        "Not covered by a fallback: 22 coverable checks left out on purpose, plus views with no equivalent (access history, tag references, org views) " + cite("README.md:420-436"),
+        "Gates keep a partial answer honest: <code>MONITOR USAGE</code>, <code>MANAGE GRANTS</code>, <code>APPLY ... POLICY</code>; missing one reads <code>not_assessed</code> " + cite("tools/export_results.py:215-257"),
+        "Query feed: 28 six-hour slices of <code>INFORMATION_SCHEMA.QUERY_HISTORY</code>, read once for all query fallbacks; a slice at the 10,000-row limit is not flagged " + cite("tools/export_results.py:423-454; README.md:452-453"),
+        "Not covered by a fallback: 22 coverable checks left out on purpose, plus views with no equivalent (access history, tag references, org views) " + cite("README.md:426-442"),
         "Result: 85 of 298 checks have a fallback, built on 52 rebuilt views " + cite("STATUS.md:17"),
     ])
     b += exset(
         card("ok", "Shim per database", [("view", "<code>COPY_HISTORY</code>, <code>each: database</code>"), ("databases", "3")],
              "3 <code>LOAD_HISTORY</code> statements, one UNION join, one result id the checks read", "app/queries/shims/COPY_HISTORY.sql:1-5"),
         card("edge", "One database fails", [("databases", "3"), ("db 2", "error")],
-             "note on the check: <em>1 of 3 (database) could not be read</em>", "tools/export_results.py:540-550"),
+             "note on the check: <em>1 of 3 (database) could not be read</em>", "tools/export_results.py:554-564"),
         card("bad", "Role lacks MONITOR USAGE", [("check", "fallback reads the METERING_DAILY_HISTORY shim"), ("privilege", "missing")],
              "<code>not_assessed</code>, never $0", "app/queries/shims/METERING_DAILY_HISTORY.sql:3"),
     )
@@ -472,13 +472,13 @@ def sec_model():
         ("summary, dims, tags, meta", "row counts cross-checked", "mismatch aborts the whole load"),
         ("Swap", "close, delete <code>.wal</code>", "<code>os.replace(tmp, db)</code>; sidecar + <code>current_db.txt</code>"),
     ])
-    b += cite("tools/load_results.py:456-703, 171-178, 426-453, 671-683; tests/test_load_results.py:270-281, 318-328")
+    b += cite("tools/load_results.py:457-708, 171-178, 426-453, 671-683; tests/test_load_results.py:270-281, 318-328")
     b += sub("Data model (DuckDB, app side)")
     b += er_map()
     b += key("card = table · subtitle = grain · <b>PK</b> primary key · dashed line = logical key, not enforced (no foreign key is declared) · ‖ = one · crow's foot = many · chip = key column")
     b += cap("findings carry ids, never names; the dims turn ids into <code>name (id)</code> at read time.")
     b += ul([
-        "No foreign key is declared; every join is logical " + cite("tools/load_results.py:530-531, 567, 603, 614"),
+        "No foreign key is declared; every join is logical " + cite("tools/load_results.py:531-532, 567, 603, 614"),
         "Standalone: <code>tags.*</code> (8 tables: <code>tag_account</code>, <code>tag_entity</code>, <code>tag_index</code>, <code>cost_unit</code>, <code>cost_unit_tag</code>, <code>cost_reconciliation</code>, <code>perf_unit</code>, <code>perf_unit_tag</code>) are built by <code>tools/build_tags.py</code>; tag columns are copied into <code>dim_account</code>",
         "Grain changes per check: one row per warehouse, per task, per day and so on; read each check's <code>entity:</code> header line",
         "A missing dim becomes an empty stub, so the id shows instead of the name " + cite("tools/load_results.py:42-58, 613-614"),
@@ -497,15 +497,15 @@ def sec_model():
     ])
     b += sub("View | Built from | Rows")
     b += table(["View (derived)", "Built from", "Rows (test DB)"], [
-        [c("summary.finding_counts"), "GROUP BY over every findings table " + cite("tools/load_results.py:441-444"), "1,401 (query x window x status)"],
-        [c("summary.finding_tables"), "count(*) per findings table " + cite("tools/load_results.py:445-446"), "296"],
-        [c("tags.*"), "<code>tags_src/*.parquet</code> via <code>build_tags.build</code>; <code>tags_src</code> dropped after " + cite("tools/build_tags.py:91-358"), "8 tables"],
+        [c("summary.finding_counts"), "GROUP BY over every findings table " + cite("tools/load_results.py:442-445"), "1,401 (query x window x status)"],
+        [c("summary.finding_tables"), "count(*) per findings table " + cite("tools/load_results.py:446-447"), "296"],
+        [c("tags.*"), "<code>tags_src/*.parquet</code> via <code>build_tags.build</code>; <code>tags_src</code> dropped after " + cite("tools/build_tags.py:96-362"), "8 tables"],
     ])
     b += exset(
         card("ok", "Join id to name", [("finding", "<code>warehouse_id '1001'</code> CRITICAL, 30 d"), ("dim", "<code>('1001', 'WH_ETL')</code>")],
              "cell <code>WH_ETL (1001)</code>; top row <code>est_wasted_usd_list 9046.8</code>", "run on tests/db_audit_test.duckdb (fake data, tests/fake_snowflake/data.py:168)"),
         card("edge", "Dim missing", [("finding", "<code>warehouse_id '1001'</code>"), ("dim", "not exported: empty stub")],
-             "cell shows the id only", "tools/load_results.py:779-782"),
+             "cell shows the id only", "tools/load_results.py:788-791"),
         card("bad", "Bad check id", [("file", "<code>x&quot;; DROP TABLE y; --.parquet</code>")], "recorded as missing file, never spliced into SQL", "tests/test_load_results.py:337-341"),
     )
     return section("model", "4 · Loading and data model", b)
@@ -517,7 +517,7 @@ def req_map():
     w, h, g = 130, 90, 44
     xs = [i * (w + g) for i in range(6)]
     labels = [("rq", "Browser", "web/src/api.ts", "actor"), ("mw", "Middleware", "_cache_read_only", "routine"),
-              ("rt", "Route", "get_finding app.py:1003", "routine entry"), ("sv", "service.py", "load_outcome", "routine"),
+              ("rt", "Route", "get_finding app.py:926", "routine entry"), ("sv", "service.py", "load_outcome", "routine"),
               ("da", "data.py", "read_finding", "routine"), ("fx", "DuckDB", "findings.f_QID", "data")]
     for (bid, t, s, cl), x in zip(labels, xs):
         m.box(bid, x, 25, w, h, t, s, cl)
@@ -539,27 +539,27 @@ def sec_backend():
         ("data.read_finding", "WHERE built from bound params; effective status", "rows page, <code>rows_total</code>, <code>floor</code>"),
         ("DuckDB read-only connection", "one shared connection per file identity", "rows from <code>findings.f_sf_wh_idle_minutes</code>"),
     ])
-    b += cite("app/api/app.py:130-199, 1003-1148; app/api/service.py:277-425; app/core/data.py:120-164, 688-793")
+    b += cite("app/api/app.py:126-200, 1003-1148; app/api/service.py:277-425; app/core/data.py:120-164, 688-793")
     b += sub("Important endpoints (32 routes: 29 in app.py, 2 in explorer.py, 1 in guide.py)")
     b += table(["Method", "Path", "Returns", "Where"], [
-        ["GET", c("/api/status"), "<code>{state, settings_error, database, brand}</code>; state = settings_invalid, no_database, build_incomplete, ready. Never raises", cite("app.py:446-473")],
-        ["GET", c("/api/meta"), "as_of, windows, discount, price_basis, edition, <code>cost_cutoff</code>, <code>checks_ran</code>", cite("app.py:495-558")],
-        ["GET", c("/api/findings"), "one row per check: outcome, status_counts, money, affected, not_assessed, floor", cite("app.py:915-953")],
-        ["GET", c("/api/finding/{query_id}"), "outcome-specific body: rows page, empty-window, empty-filters, status_info or error", cite("app.py:1003-1148")],
-        ["GET", c("/api/finding/{id}/aggregate"), "server-side sum / count over every matching row, grouped; raw <code>total_value</code>", cite("app.py:1159-1291")],
-        ["GET", c("/api/finding/{id}/rows.csv"), "every row (cap 1,000,000); 409 when not assessed", cite("app.py:1329-1375")],
-        ["GET", c("/api/coverage"), "per-source state, <code>checks_not_ok</code>, visibility, edition", cite("app.py:684-723")],
-        ["GET", c("/api/rollup"), "nested cost/perf tree for one tag key, with reconciliation", cite("app.py:748-778")],
-        ["GET", c("/api/access/explore"), "grants with every path, roles reached, holders", cite("explorer.py:208-244")],
-        ["GET", c("/api/guide"), "Guide feed: every check's prose, params, columns, grants, traps", cite("guide.py:501-559")],
-        ["GET/PUT", c("/api/settings/{cost-center,privacy,required-tags}"), "PUT writes <code>config/settings.local.yml</code>", cite("app.py:350-437")],
-        ["POST", c("/api/refresh"), "one background export + load into a new db file; second call returns the running state", cite("app.py:486-489; refresh.py:32-39")],
+        ["GET", c("/api/status"), "<code>{state, settings_error, database, brand}</code>; state = settings_invalid, no_database, build_incomplete, ready. Never raises", cite("app.py:445-472")],
+        ["GET", c("/api/meta"), "as_of, windows, discount, price_basis, edition, <code>cost_cutoff</code>, <code>checks_ran</code>", cite("app.py:494-557")],
+        ["GET", c("/api/findings"), "one row per check: outcome, status_counts, money, affected, not_assessed, floor", cite("app.py:870-908")],
+        ["GET", c("/api/finding/{query_id}"), "outcome-specific body: rows page, empty-window, empty-filters, status_info or error", cite("app.py:926-1071")],
+        ["GET", c("/api/finding/{id}/aggregate"), "server-side sum / count over every matching row, grouped; raw <code>total_value</code>", cite("app.py:1082-1214")],
+        ["GET", c("/api/finding/{id}/rows.csv"), "every row (cap 1,000,000); 409 when not assessed", cite("app.py:1252-1298")],
+        ["GET", c("/api/coverage"), "per-source state, <code>checks_not_ok</code>, visibility, edition", cite("app.py:680-719")],
+        ["GET", c("/api/rollup"), "nested cost/perf tree for one tag key, with reconciliation", cite("app.py:744-774")],
+        ["GET", c("/api/access/explore"), "grants with every path, roles reached, holders", cite("explorer.py:209-245")],
+        ["GET", c("/api/guide"), "Guide feed: every check's prose, params, columns, grants, traps", cite("guide.py:506-564")],
+        ["GET/PUT", c("/api/settings/{cost-center,privacy,required-tags}"), "PUT writes <code>config/settings.local.yml</code>", cite("app.py:349-436")],
+        ["POST", c("/api/refresh"), "one background export + load into a new db file; second call returns the running state", cite("app.py:485-488; refresh.py:32-39")],
     ])
     b += "<p class=\"key\">Other routes: <code>/api/accounts</code>, <code>/api/dims</code>, <code>/api/warehouses</code>, <code>/api/databases</code>, <code>/api/tags</code>, <code>/api/tags/compliance</code>, <code>/api/guide/sql/{id}</code>, <code>/api/access/names</code>, <code>/api/rollup/keys</code>.</p>"
     b += sub("Core modules")
     b += table(["Name", "Does", "Example"], [
         [c("data.py"), "every DuckDB read: filters pushed into SQL as bound params, money, cut-off, checks-ran", "<code>sf_wh_idle_minutes</code>, 30 d: <code>money.usd 13827.6</code>"],
-        [c("service.py"), "the five outcomes, findings list, fix-first, storage overlap", "unknown id: <code>QueryNotFoundError</code>, 404"],
+        [c("service.py"), "the five outcomes, findings list, storage overlap", "unknown id: <code>QueryNotFoundError</code>, 404"],
         [c("materiality.py"), "floors and the report severity cap, one SQL expression for every status read", "WARN of $5 under a $50 floor reads OK"],
         [c("finding_columns.py"), "which column is the money, which kind", "<code>[&quot;est_wasted_usd_list&quot;, &quot;est_compute_usd_list&quot;]</code> gives waste"],
         [c("reasons.py"), "error text to reason code to GRANT line", "&quot;no such view&quot; gives <code>view_missing</code>"],
@@ -569,7 +569,7 @@ def sec_backend():
         [c("rollup.py / tags.py / tag_compliance.py"), "nested tag rollup, tag filters, required-tag coverage", "work tag, then compute tag, then account tag: first real value wins"],
         [c("datasource.py / config.py"), "data folder, pointer file, settings with line-numbered errors", "bad key <code>default_windw</code>: state <code>settings_invalid</code>, line 2"],
     ])
-    b += "<p class=\"key\">Other helpers: <code>explorer.py</code>, <code>guide.py</code>, <code>refresh.py</code>, <code>app/core/envmap.py</code>, <code>cost_center.py</code>, <code>tag_keys.py</code>. Examples run on this repo or from tests/test_materiality.py:172-218, tests/test_api.py:230-275.</p>"
+    b += "<p class=\"key\">Other helpers: <code>explorer.py</code>, <code>guide.py</code>, <code>refresh.py</code>, <code>app/core/envmap.py</code>, <code>cost_center.py</code>, <code>tag_keys.py</code>. Examples run on this repo or from tests/test_materiality.py:172-218, tests/test_api.py:228-273.</p>"
     b += cite("modules/core.md in the knowledge graph; app/core/*.py")
     return section("backend", "5 · Backend", b)
 
@@ -598,10 +598,12 @@ def sec_money():
     b += key("each price (credit, AI credit, storage) walks this chain on its own · first source with a value wins · red dashed = no price")
     b += cap("storage skips the rate sheet; a missing price shows as unpriced, never $0.")
     b += ul([
-        "Prices are fixed once per export and pasted as literals (<code>__CREDIT_PRICE__</code>), so a price is never joined and never counted twice " + cite("tools/export_results.py:600-614, 821-873"),
+        "Data transfer $/TB (same cloud, other cloud) comes from the <code>sf_cost_data_transfer_egress</code> params, default 20 and 90 " + cite("tools/export_results.py:280-283, 631-632"),
+        "The Overview total reads – when any line with usage has no rate (e.g. archive storage), never a partial sum " + cite("app/queries/checks/overview_spend_estimate.sql"),
+        "Prices are fixed once per export and pasted as literals (<code>__CREDIT_PRICE__</code>), so a price is never joined and never counted twice " + cite("tools/export_results.py:614-628, 821-873"),
         "Settings defaults: credit $3.00, AI credit $2.00, storage empty " + cite("config/settings.yml:20-22"),
         "Invoice storage rate is per TB-day, multiplied by 30.4 " + cite("tools/export_results.py:53, 860-862"),
-        "Prices from the rate sheet or invoice are <code>invoice_derived</code>: the discount what-if does not apply to them " + cite("app/core/data.py:2205-2234"),
+        "Prices from the rate sheet or invoice are <code>invoice_derived</code>: the discount what-if does not apply to them " + cite("app/core/data.py:2197-2226"),
     ])
     b += sub("1 · Pricing order")
     b += exset(
@@ -615,7 +617,7 @@ def sec_money():
     b += ul([
         "Each day, cloud services up to 10% of that day's warehouse compute are free; the rest is billed " + cite("app/queries/common/sf_cs_billed_ratio.sql:1-11"),
         "Billed = compute + cloud services x <code>billed_ratio</code>, ratio per day = <code>max(cs + adj, 0) / cs</code>; a day with no row reads 1",
-        "Every money check reads <code>common/cost_lines.sql</code>, so totals agree across pages " + cite("app/queries/common/cost_lines.sql:1-18"),
+        "Every money check reads <code>common/cost_lines.sql</code>, so totals agree across pages " + cite("app/queries/common/cost_lines.sql:1-20"),
     ])
     b += exset(
         card("ok", "Typical day", [("compute", "100 credits"), ("cloud services", "15"), ("adjustment", "-10")],
@@ -627,9 +629,10 @@ def sec_money():
     b += sub("3 · Spend, change and waste are never added")
     b += ul([
         "A check's headline $ is one column with one kind: spend, change, context, balance (all rows) or waste, saving, gap (flagged rows only) " + cite("app/core/finding_columns.py:15-152"),
-        "Waste counts only rows that still read WARN or CRITICAL after the materiality floor " + cite("app/core/data.py:1110-1184"),
+        "Waste counts only rows that still read WARN or CRITICAL after the materiality floor " + cite("app/core/data.py:1110-1187"),
         "<code>blank_unflagged_waste</code> nulls waste columns on rows that are not WARN or CRITICAL, in the export itself " + cite("tools/common.py:68-85"),
-        "No route returns a cross-kind total; fix-first keeps <code>priced_window</code>, <code>priced_month</code>, <code>critical_no_usd</code> apart " + cite("app/api/service.py:996-1049")
+        "No route returns a cross-kind total: each check's money carries its own kind " + cite("app/core/data.py:1178-1182"),
+        "<code>unpriced_rows</code> counts rows with no figure; the checks list shows \"N without a figure\" " + cite("app/core/data.py:1181")
     ])
     b += exset(
         card("ok", "Waste on a real check", [("check", "<code>sf_wh_idle_minutes</code>, 30 d"), ("rows", "4 CRITICAL, 1 WARN, 7 NOT_ASSESSED")],
@@ -650,23 +653,23 @@ def sec_money():
     b += cite("app/api/service.py:277-425")
     b += exset(
         card("ok", "Edition too low", [("export error", "&quot;SQL compilation error: no such view 'ACCOUNT_USAGE.ICEBERG_TABLES' in this account&quot;")],
-             "<code>view_missing</code>; on a known Standard account for an Enterprise check: <code>edition_too_low</code>", "run: reasons.classify_error; app/core/data.py:1880-1889"),
+             "<code>view_missing</code>; on a known Standard account for an Enterprise check: <code>edition_too_low</code>", "run: reasons.classify_error; app/core/data.py:1872-1881"),
         card("edge", "Access denied", [("export error", "&quot;SQL access control error: Insufficient privileges to operate on view 'ORGANIZATION_USAGE.ACCOUNTS'&quot;")],
              "<code>no_access</code>; fix: <code>GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_USAGE_VIEWER TO ROLE &lt;audit_role&gt;</code>", "tests/fixtures/build_fixtures.py:46-48"),
         card("edge", "Timeout", [("export error", "&quot;Statement reached its statement or warehouse timeout&quot;")], "<code>timeout</code>: re-run with a shorter window", "run: reasons.classify_error"),
-        card("edge", "Half the warehouses unseen", [("role sees", "6 of 12 billed warehouses")], "7 rows NOT_ASSESSED in <code>sf_wh_idle_minutes</code>, not zero", "app/core/data.py:2282-2308"),
+        card("edge", "Half the warehouses unseen", [("role sees", "6 of 12 billed warehouses")], "7 rows NOT_ASSESSED in <code>sf_wh_idle_minutes</code>, not zero", "app/core/data.py:2274-2300"),
     )
     b += sub("5 · One cut-off, today partial, one count")
     b += ul([
-        "<code>as_of_date</code> is the first day left out; the last complete day is the day before, capped by <code>last_complete_day</code> " + cite("app/core/data.py:2157-2191"),
+        "<code>as_of_date</code> is the first day left out; the last complete day is the day before, capped by <code>last_complete_day</code> " + cite("app/core/data.py:2149-2183"),
         "Today is shown as partial (<code>partial_day</code>, <code>partial_until</code>), never as a full day",
-        "One &quot;checks that ran&quot; count, the same object in <code>/api/meta</code>, <code>/api/findings</code>, <code>/api/coverage</code> " + cite("app/core/data.py:2253-2274"),
-        "A 90-day pick on a 30-day export reads &quot;30 (the export covered 30 of the 90 days you picked)&quot;, and the 90 total equals the 30 total " + cite("tests/test_totals_agree.py:73-84")
+        "One &quot;checks that ran&quot; count, the same object in <code>/api/meta</code>, <code>/api/findings</code>, <code>/api/coverage</code> " + cite("app/core/data.py:2245-2266"),
+        "A 90-day pick on a 30-day export reads &quot;30 (the export covered 30 of the 90 days you picked)&quot;, and the 90 total equals the 30 total " + cite("tests/test_totals_agree.py:71-82")
     ])
     b += exset(
-        card("ok", "Test DB, today off", [("as_of", "2026-09-21T12:00:00Z")], "<code>data_through 2026-09-20</code>, <code>partial_day null</code>", "run via GET /api/meta; tests/test_totals_agree.py:87-89"),
+        card("ok", "Test DB, today off", [("as_of", "2026-09-21T12:00:00Z")], "<code>data_through 2026-09-20</code>, <code>partial_day null</code>", "run via GET /api/meta; tests/test_totals_agree.py:85-87"),
         card("edge", "Today on (illustrative)", [("as_of_date", "2026-11-11"), ("as_of", "2026-11-10T09:30Z"), ("last_complete_day", "2026-11-08")],
-             "<code>data_through 2026-11-08</code>, <code>partial_day 2026-11-10</code>, <code>partial_until 09:30</code> (traced by hand)", "derived from app/core/data.py:2157-2191"),
+             "<code>data_through 2026-11-08</code>, <code>partial_day 2026-11-10</code>, <code>partial_until 09:30</code> (traced by hand)", "derived from app/core/data.py:2149-2183"),
         card("ok", "Checks that ran", [("test DB", "298 checks")], "<code>ran 290</code>, <code>not_ran {build_failed: 2, all_rows_not_assessed: 6}</code>", "run via GET /api/meta"),
     )
     b += sub("6 · Materiality floor and discount")
@@ -674,7 +677,7 @@ def sec_money():
         card("ok", "Above the floor", [("floor", "est_wasted_usd_list &lt; 10"), ("row", "CRITICAL, $264")], "stays <code>CRITICAL</code>, <code>below_floor false</code>", "tests/test_materiality.py:172-218"),
         card("edge", "Below the floor", [("row", "CRITICAL, $5")], "reads <code>OK</code>, <code>below_floor true</code>; exported <code>status</code> never rewritten", "tests/test_materiality.py:172-218"),
         card("edge", "USD floor is per 30 days", [("floor", "$50"), ("row", "$30")], "30 d: <code>OK</code>; 7 d: still <code>CRITICAL</code> (30 &gt; 50 x 7/30 = 11.67)", "tests/test_materiality.py:132-151"),
-        card("edge", "Discount on invoice price", [("discount_pct", "0.2"), ("price source", "usage_in_currency_daily")], "effective discount <code>0.0</code>, <code>ignored: true</code>; with source <code>cli</code>: 0.2", "tests/test_api_features.py:275-287"),
+        card("edge", "Discount on invoice price", [("discount_pct", "0.2"), ("price source", "usage_in_currency_daily")], "effective discount <code>0.0</code>, <code>ignored: true</code>; with source <code>cli</code>: 0.2", "tests/test_api_features.py:239-251"),
     )
     return section("money", "6 · Money and number rules", b)
 
@@ -703,10 +706,10 @@ def sec_ui():
     b += key(f"{len(TABS)} top-level tabs, {n_sub} sub-tabs counted from <code>key:</code> entries in tab_registry.tsx")
     b += cap("the registry decides which checks each sub-tab owns; a check has one home.")
     b += ul([
-        f"{len(TABS)} tabs and {n_sub} sub-tabs " + cite("web/src/components/tab_registry.tsx:484-516"),
-        "<code>AREA_REGISTRY</code> maps each area to sub-tabs and their check ids; <code>QUERY_HOME</code> sends a cross-area jump to a check's home " + cite("tab_registry.tsx:575-589"),
+        f"{len(TABS)} tabs and {n_sub} sub-tabs " + cite("web/src/components/tab_registry.tsx:470-502"),
+        "<code>AREA_REGISTRY</code> maps each area to sub-tabs and their check ids; <code>QUERY_HOME</code> sends a cross-area jump to a check's home " + cite("tab_registry.tsx:561-575"),
         "State lives in the URL hash as plain <code>key=value</code> pairs: <code>tab</code>, <code>subtab</code>, <code>focus</code>, <code>role</code>, window, filters. Writes use <code>replaceState</code>, so no history entries " + cite("web/src/components/hash_state.tsx:9-45"),
-        "Org sub-tabs hide when none of their checks ran " + cite("tab_registry.tsx:558-570"),
+        "Org sub-tabs hide when none of their checks ran " + cite("tab_registry.tsx:544-556"),
         "Every area page: overview with charts first, then <code>ChecksList</code>; a row opens the drawer, which pages through every row and downloads CSV " + cite("web/src/components/drawer.tsx:86"),
     ])
     b += sub("View as: five lenses")
@@ -717,13 +720,13 @@ def sec_ui():
         ["Governance", c("overview"), "Access, Data, Trail"],
         ["CTO", c("overview"), "Cost, Reliability, Performance, Security"],
     ])
-    b += "<p class=\"key\">A lens is a persona, never a permission: every lens reads the same data " + cite("web/src/App.tsx:111-154; web/src/components/lens_nav.ts:20-57") + "</p>"
+    b += "<p class=\"key\">A lens is a persona, never a permission: every lens reads the same data " + cite("web/src/App.tsx:111-148; web/src/components/lens_nav.ts:20-57") + "</p>"
     b += sub("Build into app/web/dist")
     b += ul([
         "Vite builds <code>web/</code> into <code>app/web/dist</code>, committed so users need no Node " + cite("web/vite.config.ts:41-47"),
         "<code>dist/source-hash.txt</code> = sha256 over every tracked file under <code>web/</code>; a test fails when the build is stale " + cite("tests/test_build_web.py:33-38"),
         "Order: commit <code>web/</code> source, then <code>npm run build</code>, then commit <code>app/web/dist</code> " + cite("CLAUDE.md; web/vite.config.ts:11-38"),
-        "FastAPI mounts <code>dist</code> last at <code>/</code>, so it never shadows <code>/api/*</code>; no build gives a 404 text with the fix " + cite("app/api/app.py:1495-1543"),
+        "FastAPI mounts <code>dist</code> last at <code>/</code>, so it never shadows <code>/api/*</code>; no build gives a 404 text with the fix " + cite("app/api/app.py:1418-1466"),
     ])
     b += sub("Number rules the UI enforces")
     b += table(["Rule", "Example"], [
@@ -745,10 +748,10 @@ def sec_masking():
     b += cite("config/settings.yml:43-48; app/core/identity.py:38-40; app/core/masking.py:1-22")
     b += ul([
         "Kinds: user, warehouse, database, schema, object, role, task, account, or <code>all</code> " + cite("masking.py:33, 111-122"),
-        "Token = prefix + 8 hex of <code>sha256(salt|kind|lower(name))</code>; the same name gets the same token in every file; the salt is random per export and never written " + cite("masking.py:164-180"),
-        "System names (<code>SNOWFLAKE</code>, <code>PUBLIC</code>, <code>ACCOUNTADMIN</code>, ...), ids and numbers are never masked " + cite("masking.py:94-102"),
+        "Token = prefix + 8 hex of <code>sha256(salt|kind|lower(name))</code>; the same name gets the same token in every file; the salt is random per export and never written " + cite("masking.py:168-184"),
+        "System names (<code>SNOWFLAKE</code>, <code>PUBLIC</code>, <code>ACCOUNTADMIN</code>, ...), ids and numbers are never masked " + cite("masking.py:98-106"),
         "Never masked by default: names are the product's value " + cite("CLAUDE.md"),
-        "Anyone with the Streamlit app sees all data in the file whatever their role; export with <code>--mask</code> " + cite("README.md:528-529"),
+        "Anyone with the Streamlit app sees all data in the file whatever their role; export with <code>--mask</code> " + cite("README.md:534-535"),
     ])
     b += exset(
         card("ok", "On-screen user", [("value", "<code>person@example.com</code>")], "<code>542d2401 pe***</code> (8 hex + first 2 chars); masking it again returns the same string", "run: identity.format_identity; tests/test_identity_masking.py:43-48"),
@@ -766,18 +769,18 @@ def sec_masking():
 # ================================================================= 9. traps
 def sec_traps():
     rows = [
-        ["Price joined twice", "price is a pasted literal; org checks reduce the rate to one row per account first", "tools/export_results.py:600-614; sf_org_warehouse_spend_across_accounts.sql:62-77"],
+        ["Price joined twice", "price is a pasted literal; org checks reduce the rate to one row per account first", "tools/export_results.py:614-628; sf_org_warehouse_spend_across_accounts.sql:62-77"],
         ["Units added together", "credits, TB, $ in separate columns; money kinds never summed", "common/cost_lines.sql:4-9; app/core/finding_columns.py:15-56"],
-        ["Days with zero usage skipped", "GENERATOR day spine in 9 checks (partly)", "checks/cost_daily_spikes.sql:47-63"],
-        ["Two &quot;todays&quot;", "one as-of date pasted as <code>__AS_OF_DATE__</code>", "tools/export_results.py:600-609, 1037-1041"],
+        ["Days with zero usage skipped", "GENERATOR day spine in 9 checks (partly)", "checks/cost_daily_spikes.sql:47-65"],
+        ["Two &quot;todays&quot;", "one as-of date pasted as <code>__AS_OF_DATE__</code>", "tools/export_results.py:614-623, 1037-1041"],
         ["Cloud services 10% adjustment", "billed ratio per day from METERING_DAILY_HISTORY", "common/sf_cs_billed_ratio.sql:1-12"],
         ["Attribution is not a total", "idle time and sub-100 ms queries accounted separately; NULL on adaptive warehouses", "checks/sf_cost_warehouse_idle_credits_daily.sql:28-65; common/sf_chg_query_credits.sql:1-30"],
-        ["Role sees only part", "probe every view; NOT_ASSESSED with the GRANT; billed vs SHOW-listed warehouse count", "tools/export_results.py:938-985, 1211-1266"],
+        ["Role sees only part", "probe every view; NOT_ASSESSED with the GRANT; billed vs SHOW-listed warehouse count", "tools/export_results.py:955-1002, 1211-1266"],
         ["Fail-safe tables have NULL names", "live-table include filters them; dropped-not-purged reads them on purpose", "common/sf_storage_live_tables.sql:25-28; checks/sf_storage_dropped_not_purged.sql:41-68"],
         ["POLICY_REFERENCES misses session, password, auth policies", "use SHOW AUTHENTICATION / PASSWORD POLICIES (needs APPLY grants)", "checks/sf_secx_session_policy_coverage.sql:13-14; sf_secx_password_policy_posture.sql:6-22"],
         ["TABLE_ID vs BASE_TABLE_ID rename", "read both while the rename rolls out", "checks/sf_storage_search_optimization_value.sql:38-46"],
         ["Org billing lag up to 72 h", "<code>:settle_days</code> on org checks; not applied in the export's own price lookup", "checks/sf_org_warehouse_spend_across_accounts.sql:41-69"],
-        ["View missing / edition too low", "NOT_ASSESSED with reason, never &quot;nothing found&quot;", "tools/export_results.py:1216-1283; app/core/reasons.py:36-122"],
+        ["View missing / edition too low", "NOT_ASSESSED with reason, never &quot;nothing found&quot;", "tools/export_results.py:1235-1308; app/core/reasons.py:36-122"],
     ]
     b = table(["Trap", "How handled", "Where"], [[a, b_, cite(c_)] for a, b_, c_ in rows])
     b += "<p class=\"key\">Handling status is the knowledge graph's reading of the code; the zero-usage-days defence is partial (9 checks).</p>"
@@ -804,16 +807,15 @@ def sec_decisions():
 
 def sec_risks():
     b = table(["#", "Risk or limitation", "Impact", "Where"], [
-        ["1", "Rollup tree applies the configured discount; the total uses the effective one", "with an invoice price the nodes disagree with the total; test DB also shows a -869.03 gap between spend and billing, cause unclear", cite("app/core/rollup.py:874-881 vs 546-552")],
-        ["2", "AI service regex differs: pricing uses <code>AI|CORTEX|COCO|COWORK</code>, invoice compute rate excludes only <code>AI|CORTEX</code>", "COCO / COWORK dollars could sit in the compute rate; not tested", cite("cost_lines.sql:15; tools/export_results.py:915")],
+        ["1", "The test DB fills a check whose SQL fails on the fake account with placeholder rows", "tests can pass on a broken check; read <code>smoke_failed</code> or run <code>tools/sql_smoke.py</code> and expect 0 failed", cite("tests/fixtures/build_fixtures.py:160-171")],
+        ["2", "Admin MFA reads <code>USERS</code> only, not <code>CREDENTIALS</code> (passkey, TOTP)", "an admin with only a passkey or TOTP can read as no MFA; the fallback has no CREDENTIALS stand-in", cite("app/queries/checks/sf_sec_admin_role_holders.sql")],
         ["3", "Streamlit in Snowflake has never run in Snowflake", "packages, DuckDB, the security policy and warehouse-runtime custom components may be disallowed", cite("STATUS.md:22")],
-        ["4", "No role sees everything: SHOW lists only what the role can monitor", "billed warehouses missing from SHOW read NOT_ASSESSED; grant MONITOR per warehouse", cite("README.md:244-247")],
+        ["4", "No role sees everything: SHOW lists only what the role can monitor", "billed warehouses missing from SHOW read NOT_ASSESSED; grant MONITOR per warehouse", cite("README.md:250-253")],
         ["5", "Query attribution lags up to 8 h and omits idle time", "idle and per-query credits never equal the billed total", cite("CLAUDE.md; sf_chg_query_credits.sql")],
-        ["6", "Query-history fallback slice at the 10,000-row limit is not flagged", "busy accounts can undercount in fallback mode", cite("README.md:446-447")],
-        ["7", "Full test suite takes about 25 minutes and several GB", "tests run at the end of a batch, not per change", cite("README.md:874")],
+        ["6", "Query-history fallback slice at the 10,000-row limit is not flagged", "busy accounts can undercount in fallback mode", cite("README.md:452-453")],
+        ["7", "Full test suite takes about 25 minutes and several GB", "tests run at the end of a batch, not per change", cite("README.md:883")],
         ["8", "No test covers <code>start.py</code> or <code>tools/streamlit_deploy/</code>; fallback helpers are tested only through smoke runs", "deploy and sign-in regressions are found by hand", cite("tests/ (grep)")],
-        ["9", "Anyone granted the Streamlit app sees all data in the file", "use <code>--mask</code> at export", cite("README.md:528-529")],
-        ["10", "Dead code: <code>tag_spend.py</code> stub; <code>/api/fix-first</code>, <code>/api/rollup/top</code>, <code>/api/workspaces</code> have no live caller", "dead paths confuse maintainers; <code>PrintSummary</code> is not mounted though README promises a printable summary", cite("app/core/tag_spend.py:14-27; web/src/components/print_summary.tsx")],
+        ["9", "Anyone granted the Streamlit app sees all data in the file", "use <code>--mask</code> at export", cite("README.md:534-535")],
     ])
     return section("risks", "11 · Major risks and limitations", b)
 
@@ -856,18 +858,18 @@ def sec_deploy():
     b += cap("local is the default and proven; Streamlit in Snowflake ships a finished DuckDB file and has not run live.")
     b += sub("Environments")
     b += table(["Environment", "Status", "What it is", "Source"], [
-        ["Local machine", "default, in use", "<code>python -m app.api</code> on 127.0.0.1; data in the OS data folder", cite("README.md:496-500; app/api/__main__.py:27-35")],
+        ["Local machine", "default, in use", "<code>python -m app.api</code> on 127.0.0.1; data in the OS data folder", cite("README.md:502-506; app/api/__main__.py:27-35")],
         ["Streamlit in Snowflake, warehouse runtime", "built, never run in Snowflake", "v1 component, <code>environment.yml</code>, no compute pool", cite("tools/streamlit_deploy/deploy.py:81-83, 129-131")],
         ["Streamlit in Snowflake, container runtime", "fallback, never run", "v2 component, <code>requirements.txt</code>, needs a compute pool", cite("tools/streamlit_deploy/deploy.py:84-87")],
         ["Dev / test / prod accounts, CI, Docker, hosted server", "Not defined in source — confirm with owner", "no pipeline, no Dockerfile, no environment config", cite("repo has none")],
     ])
     b += sub("Prerequisites")
     b += table(["Need", "Version / detail", "Source"], [
-        ["Python", "3.11+ (tested on 3.12); <code>start.py</code> exits 2 below 3.11", cite("README.md:57; start.py:292-299")],
-        ["Node", "20+, only to change the UI; built UI is committed", cite("README.md:72")],
+        ["Python", "3.11+ (tested on 3.12); <code>start.py</code> exits 2 below 3.11", cite("README.md:62; start.py:292-299")],
+        ["Node", "20+, only to change the UI; built UI is committed", cite("README.md:77")],
         ["Packages", "duckdb 1.5.1, <code>snowflake-connector-python</code> &gt;=3.12,&lt;5, sqlglot, pyarrow, pyyaml, pandas 3.0.3, fastapi, uvicorn, httpx", cite("requirements.txt:1-9")],
-        ["Sign-in", "key-pair (PKCS8 <code>.p8</code>) for a service user; password or browser also work", cite("tools/export_results.py:672-695")],
-        ["Role", "read-only role with grants below", cite("README.md:143-199")],
+        ["Sign-in", "key-pair (PKCS8 <code>.p8</code>) for a service user; password or browser also work", cite("tools/export_results.py:690-713")],
+        ["Role", "read-only role with grants below", cite("README.md:148-205")],
     ])
     b += sub("Secrets and config (names only)")
     b += table(["Name", "Used for", "Required"], [
@@ -881,10 +883,10 @@ def sec_deploy():
     b += "<p class=\"key\">Values live in <code>.env</code> (git-ignored) or the environment; no password or token flag exists on any command " + cite("tools/first_run.py:15-19; .env.example") + "</p>"
     b += sub("Roles and the grant script")
     b += ul([
-        "One script, in README &quot;The grant script&quot;, copied by <code>make_export_kit.py</code> to <code>tools/export_kit/grants.sql</code> " + cite("README.md:143-199; tools/make_export_kit.py:110-130"),
+        "One script, in README &quot;The grant script&quot;, copied by <code>make_export_kit.py</code> to <code>tools/export_kit/grants.sql</code> " + cite("README.md:148-205; tools/make_export_kit.py:112-132"),
         "Creates <code>AUDIT_ROLE</code>, service user <code>AUDIT_USER</code> (<code>TYPE = SERVICE</code>, RSA key), warehouse <code>AUDIT_WH</code> (XSMALL, auto-suspend 60 s)",
         "<code>GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE</code>, or the four viewer roles (USAGE, OBJECT, GOVERNANCE, SECURITY): 249 of 298 checks, 269 with an org role",
-        "Plus <code>MONITOR USAGE</code>, <code>MONITOR EXECUTION</code>, <code>APPLY AUTHENTICATION POLICY</code>, <code>APPLY PASSWORD POLICY</code> on the account; app roles <code>TRUST_CENTER_VIEWER</code>, <code>BUDGET_VIEWER</code>, <code>DATA_QUALITY_MONITORING_VIEWER</code>",
+        "Plus <code>MONITOR USAGE</code>, <code>MONITOR EXECUTION</code> on the account (<code>APPLY AUTHENTICATION|PASSWORD POLICY</code> optional, commented out: they let the role change those policies); app roles <code>TRUST_CENTER_VIEWER</code>, <code>BUDGET_VIEWER</code>, <code>DATA_QUALITY_MONITORING_VIEWER</code>",
         "<code>MONITOR</code> per warehouse and per resource monitor, repeated for new ones",
         "Optional org billing: <code>ORGANIZATION_BILLING_VIEWER</code>, <code>ORGANIZATION_USAGE_VIEWER</code>",
         "Streamlit deploy needs a separate deploy role (never the audit role): <code>CREATE STREAMLIT</code> on the schema, READ+WRITE on the stage " + cite("tools/streamlit_deploy/README.md:31-48"),
@@ -892,19 +894,19 @@ def sec_deploy():
     b += sub("Commands")
     cmds = [
         ("Check a role before a run", "USE ROLE AUDIT_ROLE;\nUSE WAREHOUSE AUDIT_WH;\nSELECT COUNT(*) FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY;", "sql",
-         "a count; an error means the role cannot read ACCOUNT_USAGE", "README.md:130-134"),
+         "a count; an error means the role cannot read ACCOUNT_USAGE", "README.md:135-139"),
         ("Everything in one command (7 days)", "python start.py", "sh",
          "Signed in: role R, warehouse W.  then the export lines, then the app opens on the first free port from 8000", "start.py:163-177, 232-275"),
         ("Dry run, nothing exported", "python tools/export_results.py --out <folder outside the repo> --windows 7 --validate", "sh",
-         "validated N statements: A ok, B not readable by this role or account, C SQL errors  (+ validate.md with one GRANT per cause)", "tools/export_results.py:1564-1569"),
+         "validated N statements: A ok, B not readable by this role or account, C SQL errors  (+ validate.md with one GRANT per cause)", "tools/export_results.py:1593-1598"),
         ("Export and load by hand", "python tools/first_run.py --windows 30 --credit-price 3.0 --storage-price 23", "sh",
-         "step 1 export, step 2 load; stops at the first failure and names it", "README.md:315-327, 389-391"),
+         "step 1 export, step 2 load; stops at the first failure and names it", "README.md:321-333, 389-391"),
         ("Load an existing export", "python tools/load_results.py <folder or .zip> --db <file>.duckdb", "sh",
-         "loaded N finding(s) into <db>  then  Run the app against this data:  python -m app.api", "tools/load_results.py:753-791"),
+         "loaded N finding(s) into <db>  then  Run the app against this data:  python -m app.api", "tools/load_results.py:762-800"),
         ("Run the app", "python -m app.api", "sh",
          "database: <path>  then  open http://127.0.0.1:8000", "app/api/__main__.py:14-35"),
         ("Build the UI (only after editing web/)", "cd web\nnpm ci\nnpm run build", "sh",
-         "writes app/web/dist and dist/source-hash.txt; commit it", "README.md:905-913; web/vite.config.ts:41-47"),
+         "writes app/web/dist and dist/source-hash.txt; commit it", "README.md:914-922; web/vite.config.ts:41-47"),
         ("Deploy to Streamlit (dry build, then real)", "python tools/streamlit_deploy/deploy.py --warehouse MY_WH\npython tools/streamlit_deploy/deploy.py --warehouse MY_WH --run", "sh",
          "dry: prints the db it will ship and the bundle size; --run: REMOVE + PUT to the stage, CREATE OR REPLACE STREAMLIT, ADD LIVE VERSION. Never run live yet", "tools/streamlit_deploy/README.md:11-15; deploy.py:190-194"),
     ]
@@ -912,7 +914,7 @@ def sec_deploy():
         b += f'<p class="key"><b>{esc(t)}</b> {cite(src)}</p>' + pair(payload("IN", "command", cmd, kind), payload("OUT", "expected", outp, "sh"))
     b += sub("Roll back")
     b += ul([
-        "App code: take the previous GitHub zip or <code>git pull</code> an older commit; keep <code>.env</code> and <code>config/settings.local.yml</code> " + cite("README.md:537-544"),
+        "App code: take the previous GitHub zip or <code>git pull</code> an older commit; keep <code>.env</code> and <code>config/settings.local.yml</code> " + cite("README.md:543-550"),
         "Data: the export folder is kept for the newest two runs; reload an older one with <code>python tools/load_results.py &lt;older folder&gt; --db &lt;file&gt;</code> " + cite("start.py:221-229; app/api/refresh.py:99-103"),
         "Refresh deletes older db files, so keep a copy of a <code>.duckdb</code> you may want " + cite("app/api/refresh.py:80-83"),
         "Streamlit: new data = export, load, deploy again, repeat the GRANT " + cite("tools/streamlit_deploy/README.md:117-119"),
@@ -930,11 +932,11 @@ def sec_deploy():
         ["Cut-off and count", c("GET /api/meta"), "<code>checks_ran {ran 290, total 298}</code> on the test DB"],
         ["Coverage gaps", c("GET /api/coverage"), "<code>checks_not_ok</code> names each gap and its GRANT"],
     ])
-    b += cite("tools/gate.py:52-66; tests/test_api.py:230-275; app/api/app.py:446-473")
+    b += cite("tools/gate.py:52-66; tests/test_api.py:228-273; app/api/app.py:445-472")
     b += ul([
         "Logs: the console of <code>python -m app.api</code> and the export; Streamlit shows a &quot;Browser checks&quot; panel and <code>server_checks()</code> on top of the page " + cite("tools/streamlit_deploy/streamlit_app.py:106-120, 204-221"),
         "Access: local URL <code>http://127.0.0.1:8000/</code>; Streamlit via Snowsight, then <code>GRANT USAGE ON STREAMLIT ... TO ROLE ...</code> and USAGE on its db and schema " + cite("tools/streamlit_deploy/README.md:109-115"),
-        "Request access to Snowflake: ask the account's admins to run the grant script for the audit role (ACCOUNTADMIN for the viewer roles) " + cite("README.md:108-113"),
+        "Request access to Snowflake: ask the account's admins to run the grant script for the audit role (ACCOUNTADMIN for the viewer roles) " + cite("README.md:113-118"),
     ])
     return section("deploy", "12 · Deploy and access", b)
 

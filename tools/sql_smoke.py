@@ -388,6 +388,8 @@ def build_fake_db(as_of: dt.date, lenient: bool = False, demo: bool = False) -> 
 
 
 def _status_counts(path: Path) -> dict[str, int]:
+    if not path.exists():
+        return {}  # a not-assessed check writes no file
     table = pq.read_table(path, columns=["status"]) if "status" in pq.read_schema(path).names else None
     if table is None:
         return {}

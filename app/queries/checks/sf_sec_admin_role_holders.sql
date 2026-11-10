@@ -24,17 +24,23 @@
 --   MFA with an authentication policy on admin users (config)
 -- next: none
 -- caveats: MFA via an external IdP is not visible, so an SSO user with no password counts as covered;
+--   a passkey or TOTP enrolled in CREDENTIALS is not read here (the INFORMATION_SCHEMA fallback has no
+--   stand-in for it), so such a holder can read "password without MFA";
 --   disabled holders are listed as OK for completeness. Lags up to 2 hours.
 WITH __INCLUDE_sf_sec_users__,
 __INCLUDE_sf_sec_user_roles__,
-held AS (
-  SELECT user_name, role_name AS admin_role, MIN(depth) AS depth,
-         MIN_BY(path, depth) AS grant_path, MIN_BY(granted_role, depth) AS granted_role
+-- The shortest path per user and admin role; on a tie, through a system admin role, then by name, so a rerun
+-- picks the same path.
+best AS (
+  SELECT user_name, role_name AS admin_role, depth, path AS grant_path, granted_role
   FROM sf_sec_user_roles
   WHERE role_name IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'ORGADMIN', 'USERADMIN')
-  GROUP BY user_name, role_name
-  -- A role implied by a higher system admin role (ACCOUNTADMIN > SECURITYADMIN > USERADMIN) is not a new fact.
-  HAVING NOT (MIN(depth) > 0 AND MIN_BY(granted_role, depth) IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'ORGADMIN', 'USERADMIN'))
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY user_name, role_name
+                             ORDER BY depth, IFF(granted_role IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'ORGADMIN', 'USERADMIN'), 0, 1), granted_role, path) = 1
+),
+-- A role implied by a higher system admin role (ACCOUNTADMIN > SECURITYADMIN > USERADMIN) is not a new fact.
+held AS (
+  SELECT * FROM best WHERE NOT (depth > 0 AND granted_role IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'ORGADMIN', 'USERADMIN'))
 ),
 j AS (
   SELECT h.*, u.user_id, u.email, u.user_type, u.is_disabled, u.has_password, u.has_mfa, u.has_duo, u.has_rsa_key,

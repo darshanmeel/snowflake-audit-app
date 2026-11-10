@@ -10,7 +10,7 @@ flowchart TD
   A[(findings.f_sf_use_table_activity<br/>row_level=table, window 30)] -. queries per table .-> L
   L --> G{{users, user_roles + PUBLIC,<br/>children, parents, grants, holders}}
   G --> N[GET /api/access/names<br/>explorer.py:194-205]
-  G --> E[GET /api/access/explore<br/>explorer.py:208-244]
+  G --> E[GET /api/access/explore<br/>explorer.py:209-245]
   E -->|kind=user| GF[_grants_from: walk down children<br/>explorer.py:118-148]
   E -->|kind=role| GF
   E -->|kind=role| HO[_holders_of: walk up parents<br/>explorer.py:151-174]

@@ -33,7 +33,7 @@ flowchart TD
   - `["est_wasted_usd_list", "est_compute_usd_list"]` -> `("est_wasted_usd_list", "waste")`
   - `["est_idle_context_usd_list"]` -> `"context"` (idle $ already counted as waste elsewhere is never waste again)
   - `["warehouse_name", "status"]` -> None
-- `cost_period_over_period` has current, previous and change columns; its headline is the change only, never change + current (tests/test_totals_agree.py:153-167).
+- `cost_period_over_period` has current, previous and change columns; its headline is the change only, never change + current (tests/test_totals_agree.py:151-165).
 
 ### 2. Possible waste = flagged rows only
 - Plain words: waste, saving and gap figures add the money column over rows that read CRITICAL or WARN after the materiality floor; every other kind adds every listed row (data.py:1110-1128).
@@ -42,44 +42,44 @@ flowchart TD
 - `usd_flagged` (flagged share of an all-row figure) is filled only for basis "all" and non-currency units (data.py:1139-1140, 1176-1177).
 
 ### 3. Never added together
-- No route returns a cross-kind total: `/api/findings` and `/api/meta` have no key with "total", "sum", "waste" or "spend" (tests/test_totals_agree.py:170-174; tests/test_waste_contract.py:137-147).
-- Fix-first keeps three groups apart: `priced_window` (waste/saving/gap $ in the window), `priced_month` (saving_month), `critical_no_usd` (CRITICAL with no $), service.py:996-1049.
-  - Example: a check with kind "spend" and CRITICAL rows is NOT put in `critical_no_usd` because its $ is a view of money another check ranks (service.py:1035-1037).
+- No route returns a cross-kind total: `/api/findings` and `/api/meta` have no key with "total", "sum", "waste" or "spend" (tests/test_totals_agree.py:168-172; tests/test_waste_contract.py:137-147).
 
 ### 4. Storage tables counted once
-- Plain words: five storage checks can price the same table; for each (account, table) the largest $ is kept and the others get `money.overlap_usd`/`overlap_tables` so a total can subtract them (service.py:797-844).
+- Plain words: five storage checks can price the same table; for each (account, table) the largest $ is kept and the others get `money.overlap_usd`/`overlap_tables` so a total can subtract them (service.py:809-856).
 - Example (inferred from code): table T priced 40 by `sf_storage_unused_tables` and 25 by `sf_storage_failsafe_on_staging` -> the failsafe check gets `overlap_usd = 25 x (1 - discount)`, `overlap_tables = 1`.
 
 ### 5. Never $0 for something not priced
 - Unpriced figure -> `usd: null` with `money_reason: "unpriced"` or `"no_amount"` (data.py:1159-1169).
 - A currency amount with no or mixed currency column is never summed as dollars (data.py:1143-1153, 1172-1173).
-- Aggregate: if every value is NULL, `total_value` is null, not 0 (data.py:1525-1527); `null_value_rows` says how many rows never entered the sum (data.py:1484-1489).
-- A failed check has `money: null`, `affected: null`, and its aggregate has no `total_value` key (tests/test_totals_agree.py:177-182; tests/test_waste_contract.py:150-154).
+- Aggregate: if every value is NULL, `total_value` is null, not 0 (data.py:1528-1530); `null_value_rows` says how many rows never entered the sum (data.py:1487-1492).
+- `unpriced_rows` counts priced-basis rows with no figure; the checks list shows " · N without a figure" (data.py:1181; web/src/components/checks_list.tsx).
+- `overview_spend_estimate` returns NULL total when any line with quantity has no rate (e.g. archive storage), so the Overview total reads "–", never a partial sum (app/queries/checks/overview_spend_estimate.sql).
+- A failed check has `money: null`, `affected: null`, and its aggregate has no `total_value` key (tests/test_totals_agree.py:175-180; tests/test_waste_contract.py:150-154).
 
 ### 6. Discount what-if
-- `effective_discount_pct` = configured `discount_pct`, except 0 when the credit price came from the invoice/rate sheet (already discounted) (data.py:2229-2234).
-- Examples (tests/test_api_features.py:275-287): source `usage_in_currency_daily`, configured 0.2 -> effective 0.0, `ignored: true`; source `cli` -> 0.2.
-- `/api/findings` money is discounted; `/aggregate` returns raw `total_value` plus `discount_pct` for the caller (app.py:1249-1251). Example: discount 0.25 on a CLI price -> list usd = round(raw x 0.75, 2), aggregate total unchanged (tests/test_totals_agree.py:133-150).
+- `effective_discount_pct` = configured `discount_pct`, except 0 when the credit price came from the invoice/rate sheet (already discounted) (data.py:2221-2226).
+- Examples (tests/test_api_features.py:239-251): source `usage_in_currency_daily`, configured 0.2 -> effective 0.0, `ignored: true`; source `cli` -> 0.2.
+- `/api/findings` money is discounted; `/aggregate` returns raw `total_value` plus `discount_pct` for the caller (app.py:1172-1174). Example: discount 0.25 on a CLI price -> list usd = round(raw x 0.75, 2), aggregate total unchanged (tests/test_totals_agree.py:131-148).
 
 ### 7. The same $ on every page
-- Five cuts of total spend must be the same number at 7/30/90 days: chargeback by account, by service, period-over-period current, daily spikes (tests/test_totals_agree.py:21-57).
-- Account filter partitions the total: filtered total + `excluded_no_account.value` = unfiltered total (tests/test_totals_agree.py:92-100; data.py:1461-1482).
+- Five cuts of total spend must be the same number at 7/30/90 days: chargeback by account, by service, period-over-period current, daily spikes (tests/test_totals_agree.py:21-55).
+- Account filter partitions the total: filtered total + `excluded_no_account.value` = unfiltered total (tests/test_totals_agree.py:90-98; data.py:1464-1485).
 
 ### 8. One "checks that ran" count
-- Plain words: a check RAN when the export ran it and at least one row is assessed; independent of window and filters (data.py:2253-2274).
-- Same object in `/api/meta.checks_ran`, `/api/findings.checks_ran`, `/api/coverage.checks_ran`, and unchanged at window 7 (tests/test_api_features.py:313-327).
+- Plain words: a check RAN when the export ran it and at least one row is assessed; independent of window and filters (data.py:2245-2266).
+- Same object in `/api/meta.checks_ran`, `/api/findings.checks_ran`, `/api/coverage.checks_ran`, and unchanged at window 7 (tests/test_api_features.py:279-293).
 - Example (test DB): 298 checks, `ran = 290`, `not_ran = {build_failed: 2, all_rows_not_assessed: 6}`.
 
 ### 9. One money cut-off, today partial
-- `cost_cutoff` data.py:2157-2191: `as_of_date` is the first day left out; without today the last complete day is `as_of_date - 1` (capped by `last_complete_day`); with `includes_today`, that day is `partial_day`, and `data_through` is the day before it (also capped by `last_complete_day`), `partial_from` = `data_through + 1`.
-- Example (test DB, no today): `as_of 2026-09-21T12:00:00Z` -> `{"data_through": "2026-09-20", "partial_day": null, ...}` (tests/test_totals_agree.py:87-89; tests/test_api.py:307-312).
+- `cost_cutoff` data.py:2149-2183: `as_of_date` is the first day left out; without today the last complete day is `as_of_date - 1` (capped by `last_complete_day`); with `includes_today`, that day is `partial_day`, and `data_through` is the day before it (also capped by `last_complete_day`), `partial_from` = `data_through + 1`.
+- Example (test DB, no today): `as_of 2026-09-21T12:00:00Z` -> `{"data_through": "2026-09-20", "partial_day": null, ...}` (tests/test_totals_agree.py:85-87; tests/test_api.py:306-311).
 - Example (inferred from code): `as_of_date 2026-11-11`, `includes_today`, `as_of 2026-11-10T09:30Z`, `last_complete_day 2026-11-08` -> `data_through 2026-11-08`, `partial_from 2026-11-09`, `partial_day 2026-11-10`, `partial_until "09:30"`.
-- Served once in `/api/meta.cost_cutoff` (app.py:540-542).
+- Served once in `/api/meta.cost_cutoff` (app.py:539-541).
 
 ### 10. Windows the export could not fill
-- `window_status` per 7/30/90: `available`, `covered_days`, `partial` (data.py:1728-1743); a window never exported reads NOT_ASSESSED `not_exported`, never "nothing in this window" (service.py:212-220, 329-338).
-- Example (test DB, 30-day export): 90d -> `{"days": 90, "available": true, "covered_days": 30, "partial": true}`; the 90d total equals the 30d total (tests/test_totals_agree.py:73-84).
-- Header `:period_days` reads `30 (the export covered 30 of the 90 days you picked)` at 90d (service.py:185-193; tests/test_api.py:582-587).
+- `window_status` per 7/30/90: `available`, `covered_days`, `partial` (data.py:1720-1735); a window never exported reads NOT_ASSESSED `not_exported`, never "nothing in this window" (service.py:212-220, 329-338).
+- Example (test DB, 30-day export): 90d -> `{"days": 90, "available": true, "covered_days": 30, "partial": true}`; the 90d total equals the 30d total (tests/test_totals_agree.py:71-82).
+- Header `:period_days` reads `30 (the export covered 30 of the 90 days you picked)` at 90d (service.py:185-193; tests/test_api.py:581-586).
 
 ## NOT_ASSESSED vs empty
 
@@ -92,10 +92,10 @@ flowchart TD
 | `ok_rows` | otherwise (service.py:413-425) | rows page, `window_coverage`, `floor`, `truncated` | table |
 
 - `not_built` in run results alone is not treated as bad; the missing table is the evidence (service.py:322-325).
-- Fixture examples: `sf_org_dormant_accounts` (no_access) and `sf_obj_iceberg_tables` (view missing) are `not_assessed` at every window (tests/fixtures/build_fixtures.py:46-51; tests/test_api.py:478-489).
+- Fixture examples: `sf_org_dormant_accounts` (no_access) and `sf_obj_iceberg_tables` (view missing) are `not_assessed` at every window (tests/fixtures/build_fixtures.py:46-51; tests/test_api.py:477-488).
 
 ## Issues seen
 
-- Rollup tree discount differs from its total: `_build_tree` reads the configured `discount_pct` itself (rollup.py:874-881) while `rollup()` uses `effective_discount_pct` for `total` (rollup.py:546-552, 605). With an invoice-derived price and a non-zero what-if, every tree node's `usd_disc` applies the what-if on top of an already-discounted rate; `total.usd_disc` does not, so the tree and its total disagree.
-- On the test DB the rollup's `reconciliation.spend_usd` (26,708.15) is lower than `billing_usd` (27,577.18): `spend_gap_usd = -869.03` (observed via GET /api/rollup?tag_key=cost_center&window=30; fields at rollup.py:684-723). The page text "spend = split + outside_split" does not hold there; cause unclear.
-- `/api/meta.checks` carries both `ok` (296 from run results) and `ran` (290) (app.py:545-557). The comment says use `ran` everywhere; a UI reading `ok` would show a second count (no `checks.ok` use found in web/src by grep).
+- Rollup tree discount differs from its total: `_build_tree` reads the configured `discount_pct` itself (rollup.py:874-874) while `rollup()` uses `effective_discount_pct` for `total` (rollup.py:545-551, 605). With an invoice-derived price and a non-zero what-if, every tree node's `usd_disc` applies the what-if on top of an already-discounted rate; `total.usd_disc` does not, so the tree and its total disagree.
+- On the test DB the rollup's `reconciliation.spend_usd` (26,708.15) is lower than `billing_usd` (27,577.18): `spend_gap_usd = -869.03` (observed via GET /api/rollup?tag_key=cost_center&window=30; fields at rollup.py:682-721). The page text "spend = split + outside_split" does not hold there; cause unclear.
+- `/api/meta.checks` carries both `ok` (296 from run results) and `ran` (290) (app.py:544-556). The comment says use `ran` everywhere; a UI reading `ok` would show a second count (no `checks.ok` use found in web/src by grep).

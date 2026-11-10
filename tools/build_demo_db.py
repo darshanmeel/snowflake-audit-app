@@ -92,13 +92,8 @@ def report() -> Path:
 
 def build(db_path: Path = DEFAULT_DB, windows: int = 90, export: Path | None = None, scenario: str | None = None) -> dict:
     export = export or db_path.parent / "export"
-    orig = sql_smoke._status_counts
-    sql_smoke._status_counts = lambda p: orig(p) if p.exists() else {}   # a check that did not run has no file
-    try:
-        result = sql_smoke.run_smoke(windows=windows, export_to=export, lenient=True, demo=True,
-                                     scenario=None if scenario in (None, "full") else scenario)
-    finally:
-        sql_smoke._status_counts = orig
+    result = sql_smoke.run_smoke(windows=windows, export_to=export, lenient=True, demo=True,
+                                 scenario=None if scenario in (None, "full") else scenario)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     summary = load_results.load_folder(export, db_path)
     summary["manifest"] = result["manifest"]

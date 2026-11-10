@@ -9,6 +9,7 @@ tests/test_export_kit.py fails while the kit is out of date.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -207,9 +208,15 @@ def build(kit: Path = KIT) -> Path:
                      # fallback prices when the org billing view has none
                      "credit_price_usd": settings.get("credit_price_usd"),
                      "ai_credit_price_usd": settings.get("ai_credit_price_usd"),
-                     "storage_price_usd_tb_month": settings.get("storage_price_usd_tb_month"), "query_tag": query_tag},
+                     "storage_price_usd_tb_month": settings.get("storage_price_usd_tb_month"), "query_tag": query_tag,
+                     "include_snowflake_tasks": bool(settings.get("include_snowflake_tasks", False))},
         "checks": checks, "tag_sources": tag_sources, "dims": dims,
     }
+    # Which SQL built an export: a hash of the kit's queries (a git commit is not known inside the kit).
+    digest = hashlib.sha256()
+    for f in sorted((kit / "queries").rglob("*.sql")):
+        digest.update(f.relative_to(kit).as_posix().encode() + b"\0" + f.read_bytes())
+    index["queries_sha256"] = digest.hexdigest()
     _write(kit / "queries" / "index.json", json.dumps(index, indent=1) + "\n")
     _write(kit / "grants.sql", grants_sql())
     for f in sorted((ex.SQL_DIR / "verify").glob("*.sql")):

@@ -37,7 +37,7 @@ WITH ai AS (
   SELECT query_id, function_name, COALESCE(NULLIF(model_name, ''), '(none)') AS model_name, warehouse_id,
          user_id, credits
   FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY
-  WHERE start_time >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
+  WHERE is_completed AND start_time >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
 ),
 -- QUERY_HISTORY is heavy: only the window, only statements that did not succeed, only AI query ids.
 qh AS (

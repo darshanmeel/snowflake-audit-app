@@ -263,20 +263,12 @@ def read_tag_index(
                 )
                 by_value[api_value]["object_count"] += object_count
 
-            if not norm_key:
-                # A bare search (no tag_key given): only the top values are listed for each
-                # matching key, ranked so a matching value surfaces first.
-                order = sorted(
-                    order,
-                    key=lambda v: (0 if needle and needle in v.lower() else 1, -by_value[v]["object_count"]),
-                )
-                values_out = order[:limit_values]
-            else:
-                order = sorted(
-                    order,
-                    key=lambda v: (0 if needle and needle in v.lower() else 1, -by_value[v]["object_count"]),
-                )
-                values_out = order[:limit_values]
+            # The top values per key, a matching value first.
+            order = sorted(
+                order,
+                key=lambda v: (0 if needle and needle in v.lower() else 1, -by_value[v]["object_count"]),
+            )
+            values_out = order[:limit_values]
 
             keys_out.append(
                 {
@@ -400,8 +392,8 @@ def tag_chain(query_id: str, col_names: list[str], domain: str) -> TagChain:
       - kind="row_tags": the table carries its own tag_key/tag_value columns -- filtered directly,
         no tags.tag_entity lookup, `__untagged__` not applicable.
       - kind="entity": one or more ChainTerm, in priority order (the first allocating value on a
-        row wins -- see tag_clause's COALESCE): query tag, then warehouse tag, then the object
-        cascade, then the account tag.
+        row wins -- see tag_clause's COALESCE): query tag, then the object cascade, then the
+        warehouse tag, then the user or role tag, then the account tag.
       - kind="none": not applicable, with a plain reason -- the finding is returned unfiltered.
     """
     cols = set(col_names)

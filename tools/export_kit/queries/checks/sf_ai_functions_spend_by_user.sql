@@ -47,7 +47,7 @@ b AS (
          f.role_names[0]::VARCHAR AS role_raw,
          TRY_TO_NUMBER(TO_VARCHAR(f.user_id)) AS user_num
   FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY f
-  WHERE f.start_time >= DATEADD(day, -2 * :period_days, __AS_OF_DATE__) AND f.start_time < __AS_OF_DATE__
+  WHERE f.is_completed AND f.start_time >= DATEADD(day, -2 * :period_days, __AS_OF_DATE__) AND f.start_time < __AS_OF_DATE__
 ),
 d AS (
   SELECT b.query_id, b.function_name, b.model_name, b.query_tag, b.credits, b.is_cur,

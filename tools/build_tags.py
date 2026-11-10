@@ -94,10 +94,6 @@ def _windows(con, aliases: dict[int, int]) -> dict[int, int]:
     return out
 
 
-def _norm_sql(col: str) -> str:
-    return f"regexp_replace(lower({col}), '[ _-]+', '', 'g')"
-
-
 def build(con: duckdb.DuckDBPyConnection, *, credit_price: float | None, share_floor: float = 0.6,
           coverage_floor: float = 0.5, tag_key_filter: list[str] | None = None,
           aliases: dict[int, int] | None = None) -> dict:

@@ -6,8 +6,8 @@ Optional second environment: the same FastAPI API and React build, plus a loaded
 
 | Environment | Defined? | What it is | Source |
 |---|---|---|---|
-| Local machine | Yes, default | `python -m app.api` on 127.0.0.1, data in the OS data folder | README.md:496-500; app/api/__main__.py:27-35 |
-| Streamlit in Snowflake, warehouse runtime | Yes, default for deploy | v1 component in its own frame, `environment.yml` (Snowflake Conda channel), no compute pool | tools/streamlit_deploy/deploy.py:81-83, 129-131; README.md:503 |
+| Local machine | Yes, default | `python -m app.api` on 127.0.0.1, data in the OS data folder | README.md:498-502; app/api/__main__.py:27-35 |
+| Streamlit in Snowflake, warehouse runtime | Yes, default for deploy | v1 component in its own frame, `environment.yml` (Snowflake Conda channel), no compute pool | tools/streamlit_deploy/deploy.py:81-83, 129-131; README.md:505 |
 | Streamlit in Snowflake, container runtime | Yes, fallback | v2 component, `requirements.txt` from PyPI, needs a compute pool | tools/streamlit_deploy/deploy.py:84-87, 132-134; tools/streamlit_deploy/README.md:129-144 |
 | Dev / test / prod Snowflake accounts, CI, Docker, cloud hosting | Not defined | No pipeline, no environment config, no CI file | inferred: no CI or Dockerfile in the repo |
 
@@ -31,10 +31,10 @@ flowchart TD
 1. **One-time objects, as ACCOUNTADMIN**: deploy role, `AUDIT_APP` database, `AUDIT_APP.PUBLIC.AUDIT_APP_STAGE` (SSE, directory on), USAGE on db/schema/warehouse, READ+WRITE on stage, `CREATE STREAMLIT` on schema, a service user with its own key, and the role granted to the person who will open the app (tools/streamlit_deploy/README.md:31-48).
    - The read-only audit role must not be used; a separate deploy role (tools/streamlit_deploy/README.md:31).
 2. **Dry build** (no login): `python tools/streamlit_deploy/deploy.py --warehouse MY_WH` prints the DB it will ship and the bundle size (tools/streamlit_deploy/README.md:11-15; tools/streamlit_deploy/deploy.py:190-192).
-3. **Deploy**: set `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_PRIVATE_KEY_FILE` for the window, then `deploy.py --warehouse MY_WH --run` (README.md:509-515).
+3. **Deploy**: set `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_PRIVATE_KEY_FILE` for the window, then `deploy.py --warehouse MY_WH --run` (README.md:511-517).
    - `--run` logs in with the export's `connect()`; environment beats `.env`; a key set in the window drops `.env`'s passphrase (tools/streamlit_deploy/deploy.py:142-159).
    - `--setup` with `--run` also creates database, schema, stage (and the pool for container) (tools/streamlit_deploy/deploy.py:103-109, 193-194).
-4. **Open** Snowsight > Projects > Streamlit > "Snowflake audit" (README.md:517).
+4. **Open** Snowsight > Projects > Streamlit > "Snowflake audit" (README.md:519).
 5. **Share**: `GRANT USAGE ON STREAMLIT ... TO ROLE ...`; viewers also need USAGE on db and schema (tools/streamlit_deploy/README.md:109-115).
 
 Defaults: `--database AUDIT_APP`, `--schema PUBLIC`, `--stage AUDIT_APP_STAGE`, `--warehouse COMPUTE_WH`, `--app AUDIT_APP`, `--runtime warehouse`, `--pool AUDIT_APP_POOL`, `--db` = the file the local app opens (tools/streamlit_deploy/deploy.py:36-40, 162-173).
@@ -49,7 +49,7 @@ Defaults: `--database AUDIT_APP`, `--schema PUBLIC`, `--stage AUDIT_APP_STAGE`, 
 - **The stage folder is cleared first**: `REMOVE @stage/app_src/`, then one PUT per folder, or one PUT per file where a folder has subfolders or dotfiles (tools/streamlit_deploy/deploy.py:112-126).
 - **Paths with `'`, `[` or `]` are refused** before REMOVE, since PUT has no documented escape (tools/streamlit_deploy/deploy.py:178-180).
 - **Runtime is named even for warehouse** (`SYSTEM$WAREHOUSE_RUNTIME`), because omitting it now means container runtime on commercial accounts (tools/streamlit_deploy/deploy.py:129-139).
-- **Refresh and settings saves are off in the app**: `POST /api/refresh` and any `PUT` answer 409 (tools/streamlit_deploy/streamlit_app.py:126-133); the UI hides them when `window.APP_HOSTED` (web/src/api.ts:10; web/src/App.tsx:282, 490, 646).
+- **Refresh and settings saves are off in the app**: `POST /api/refresh` and any `PUT` answer 409 (tools/streamlit_deploy/streamlit_app.py:126-133); the UI hides them when `window.APP_HOSTED` (web/src/api.ts:10; web/src/App.tsx:277, 490, 646).
 - **Message cap**: responses are packed into ≤ 24 MB per batch (warehouse runtime caps 32 MB); one response over it → 413, others wait for the next batch (tools/streamlit_deploy/streamlit_app.py:34-35, 145-165).
 
 ## Packages
@@ -67,15 +67,15 @@ Defaults: `--database AUDIT_APP`, `--schema PUBLIC`, `--stage AUDIT_APP_STAGE`, 
 
 ## What differs from local
 
-- No Refresh; new data = export, load, deploy again, repeat the GRANT (README.md:526-527; tools/streamlit_deploy/README.md:117-119).
-- Anyone granted the app sees all data in the file, whatever their role; use `--mask` at export (README.md:528-529).
-- Warehouse stays on ~15 min after last activity in an open tab (README.md:531-532).
+- No Refresh; new data = export, load, deploy again, repeat the GRANT (README.md:528-529; tools/streamlit_deploy/README.md:117-119).
+- Anyone granted the app sees all data in the file, whatever their role; use `--mask` at export (README.md:530-531).
+- Warehouse stays on ~15 min after last activity in an open tab (README.md:533-534).
 - Network: allow `*.snowflake.app`, `*.snowflake.com` (and `*.snowflakecomputing.app` for container) and WebSockets (tools/streamlit_deploy/README.md:50).
 - Copy link may not open the same page on warehouse runtime (tools/streamlit_deploy/README.md:125).
 
 ## Not yet verified
 
-- Nothing has run in Snowflake: packages, DuckDB, the security policy, speed and `--run` are open (STATUS.md:22; README.md:502-503).
+- Nothing has run in Snowflake: packages, DuckDB, the security policy, speed and `--run` are open (STATUS.md:22; README.md:504-505).
 - v1 custom components on warehouse runtime: Snowflake's limitations page lists only `html` and `iframe`, so this may be disallowed (STATUS.md:22; tools/streamlit_deploy/README.md:7).
 - DuckDB `.so` files may be unsupported on warehouse runtime (tools/streamlit_deploy/README.md:150).
 - The per-file PUT and the named warehouse runtime in CREATE STREAMLIT have not run live (STATUS.md:22).

@@ -19,7 +19,9 @@ acct AS (
   SELECT SUM(credits_used_cloud_services) AS cs_used,
          GREATEST(SUM(credits_used_cloud_services + credits_adjustment_cloud_services), 0) AS cs_billed
   FROM __SHIM_METERING_DAILY_HISTORY__
-  WHERE usage_date >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND usage_date < __AS_OF_DATE__
+  -- warehouse cloud services only: each serverless type has its own adjustment and no query drivers
+  WHERE service_type = 'WAREHOUSE_METERING'
+    AND usage_date >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND usage_date < __AS_OF_DATE__
 ),
 s AS (
   SELECT q.*, acct.cs_billed,

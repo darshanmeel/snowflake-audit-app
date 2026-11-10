@@ -47,6 +47,7 @@ wh AS (
   SELECT r.task_full_name, MAX(r.task_name) AS task_name, MAX(r.database_name) AS database_name,
          MAX(r.schema_name) AS schema_name,
          COUNT_IF(r.period = 'current') AS runs,
+         COUNT_IF(r.period = 'current' AND a.task_query_id IS NOT NULL) AS attributed_runs,
          SUM(IFF(r.period = 'current', a.credits, 0)) AS warehouse_credits,
          SUM(IFF(r.period = 'previous', a.credits, 0)) AS prev_warehouse_credits,
          MAX(a.warehouse_name) AS warehouse_name
@@ -70,7 +71,7 @@ j AS (
          COALESCE(wh.database_name, sl.database_name) AS database_name,
          COALESCE(wh.schema_name, sl.schema_name) AS schema_name,
          d.root_task_id, d.root_task_full_name,
-         COALESCE(wh.runs, 0) AS runs,
+         COALESCE(wh.runs, 0) AS runs, COALESCE(wh.attributed_runs, 0) AS attributed_runs,
          COALESCE(wh.warehouse_name, d.task_warehouse_name) AS warehouse_name,
          COALESCE(wh.warehouse_credits, 0) AS warehouse_credits,
          COALESCE(sl.serverless_credits, 0) AS serverless_credits,
@@ -80,8 +81,11 @@ j AS (
   LEFT JOIN sf_task_dim d ON d.task_full_name = COALESCE(wh.task_full_name, sl.task_full_name)
 ),
 scored AS (
-  SELECT j.*, warehouse_credits + serverless_credits AS credits,
-         (warehouse_credits + serverless_credits) * __CREDIT_PRICE__ AS usd,
+  -- runs with no attribution row (adaptive warehouse, lag, short statements) were not measured: no $, never $0
+  SELECT j.*, runs > 0 AND attributed_runs = 0 AND serverless_credits = 0 AS unmeasured,
+         warehouse_credits + serverless_credits AS credits,
+         IFF(runs > 0 AND attributed_runs = 0 AND serverless_credits = 0, NULL,
+             (warehouse_credits + serverless_credits) * __CREDIT_PRICE__) AS usd,
          prev_credits * __CREDIT_PRICE__ AS prev_usd
   FROM j
   WHERE warehouse_credits + serverless_credits + prev_credits > 0 OR runs > 0
@@ -100,9 +104,10 @@ SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id,
        IFF(__CREDIT_PRICE__ IS NULL, 'unpriced', 'priced') AS price_basis,
        ROUND(credits, 2) || ' credits over ' || runs || ' runs (previous window '
          || ROUND(prev_credits, 2) || ')' AS cost_reason,
-       CASE WHEN __CREDIT_PRICE__ IS NULL THEN 'unpriced' END AS not_assessed_reason,
+       CASE WHEN __CREDIT_PRICE__ IS NULL THEN 'unpriced'
+            WHEN unmeasured THEN 'no_attributed_usage' END AS not_assessed_reason,
        CASE
-         WHEN __CREDIT_PRICE__ IS NULL THEN 'NOT_ASSESSED'
+         WHEN __CREDIT_PRICE__ IS NULL OR unmeasured THEN 'NOT_ASSESSED'
          WHEN usd >= :crit_usd THEN 'CRITICAL'
          WHEN usd >= :warn_usd THEN 'WARN'
          WHEN usd - prev_usd >= :min_growth_usd

@@ -189,10 +189,12 @@ GRANT APPLICATION ROLE SNOWFLAKE.BUDGET_VIEWER TO ROLE AUDIT_ROLE;
 -- Data quality expectation results (SNOWFLAKE.LOCAL); IMPORTED PRIVILEGES does not open them.
 GRANT APPLICATION ROLE SNOWFLAKE.DATA_QUALITY_MONITORING_VIEWER TO ROLE AUDIT_ROLE;
 
--- Authentication and password policies. POLICY_REFERENCES does not list them, so the checks use
+-- Optional: authentication and password policies. POLICY_REFERENCES does not list them, so the checks use
 -- SHOW AUTHENTICATION POLICIES and SHOW PASSWORD POLICIES, which need a privilege on the account.
-GRANT APPLY AUTHENTICATION POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
-GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
+-- These are not read-only: they let the role attach and detach sign-in policies. Without them the
+-- two checks see only the policies the role owns.
+-- GRANT APPLY AUTHENTICATION POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
+-- GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
 
 -- Optional: the organization billing views (invoice, rates, contract balance).
 -- In an ORGADMIN-enabled account they are database roles of the SNOWFLAKE database:
@@ -223,7 +225,7 @@ roles per view, at 298 checks. A check can need more than one grant, so they ove
 | `MONITOR EXECUTION` on the account | `SHOW TASKS` and pipes, account-wide | `SHOW TASKS` lists only tasks the role owns, so the suspended, orphaned and stream-consumer checks (4) see fewer tasks; `SHOW PIPES` lists only pipes the role can monitor (1 check: broken or unalerted pipes). |
 | `MONITOR` on each warehouse | `SHOW WAREHOUSES` (23 checks: auto-suspend, size, scaling, warehouse settings) | Warehouses you did not grant are missing from the settings checks; their spend still shows from metering. `report.md` says how many billed warehouses `SHOW WAREHOUSES` left out. |
 | `MONITOR` on each resource monitor | `SHOW RESOURCE MONITORS` | Monitors you did not grant are missing from resource monitor coverage and projection (2 checks). |
-| `APPLY AUTHENTICATION POLICY`, `APPLY PASSWORD POLICY` | `SHOW AUTHENTICATION POLICIES`, `SHOW PASSWORD POLICIES` | The authentication and password policy checks (2) see only policies the role owns. `POLICY_REFERENCES` does not list these policies, so there is no other way. |
+| `APPLY AUTHENTICATION POLICY`, `APPLY PASSWORD POLICY` (optional) | `SHOW AUTHENTICATION POLICIES`, `SHOW PASSWORD POLICIES` | Without them, the authentication and password policy checks (2) see only policies the role owns. `POLICY_REFERENCES` does not list these policies, so there is no other way. They also let the role attach and detach sign-in policies, so they are off in the script. |
 | Application role `SNOWFLAKE.BUDGET_VIEWER` | Budgets | The budgets check (1) lists no budgets, or only the role's own. |
 | Application role `SNOWFLAKE.TRUST_CENTER_VIEWER` | Trust Center findings | The Trust Center check (1). |
 | Application role `SNOWFLAKE.DATA_QUALITY_MONITORING_VIEWER` | `SNOWFLAKE.LOCAL` data quality expectation results | The expectations failing check (1); `IMPORTED PRIVILEGES` does not open it. |
@@ -590,8 +592,8 @@ Node is only needed to change it.
   A check's details have a Copy link button.
 - **A check that did not run** shows "–" and why (the role can't see it, needs a higher edition,
   not in this export, failed), never $0. Rows under a check's money floor read "Under $X", not OK.
-- **Downloads:** every check as CSV (all rows, filters applied); any page as PDF; a printable
-  one-page summary from the Overview.
+- **Downloads:** every check as CSV (all rows, filters applied); any page as PDF (Money prints
+  with an account, as-of and rate header).
 - **Task panel:** click any task name to open its runs, failures, cost and what changed.
 - **Snowsight links:** the ↗ next to a warehouse, database, table, task, user, role or query opens it
   in Snowsight. The paths are a best guess and may change.

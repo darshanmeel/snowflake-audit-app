@@ -81,9 +81,17 @@ ORDER BY granted_on, object_fqn;
 WITH s AS (
   SELECT DISTINCT object_database AS db, object_schema AS sch, object_name AS tbl, column_name AS col
   FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES
+  -- the app's rule (common/sf_gov_sensitive_columns.sql): Snowflake classification, or a custom tag whose
+  -- name says PII/PHI/PCI/GDPR as a word or sensitive/confidential/personal/restricted, with a "yes" value
   WHERE object_deleted IS NULL AND domain = 'COLUMN'
-    AND (tag_name IN ('PRIVACY_CATEGORY', 'SEMANTIC_CATEGORY')
-         OR REGEXP_LIKE(UPPER(tag_name), '.*(PII|SENSITIVE|CONFIDENTIAL|PHI|PCI|GDPR|PERSONAL|RESTRICTED).*'))
+    AND ((tag_database = 'SNOWFLAKE' AND tag_schema = 'CORE' AND tag_name IN ('PRIVACY_CATEGORY', 'SEMANTIC_CATEGORY')
+          AND UPPER(COALESCE(tag_value, '')) <> 'INSENSITIVE')
+         OR (tag_database <> 'SNOWFLAKE'
+             AND (REGEXP_LIKE(UPPER(tag_name), '(^|.*[^A-Z0-9])(PII|PHI|PCI|GDPR)([^A-Z0-9].*|$)')
+                  OR (REGEXP_LIKE(UPPER(tag_name), '.*(SENSITIV|CONFIDENTIAL|PERSONAL|RESTRICTED).*')
+                      AND NOT REGEXP_LIKE(UPPER(tag_name), '.*(INSENSITIV|NON.?SENSITIV|NOT.?SENSITIV).*')))
+             AND UPPER(COALESCE(tag_value, '')) NOT IN
+                 ('FALSE', 'NO', 'N', 'NONE', 'PUBLIC', 'INSENSITIVE', 'NON_SENSITIVE', 'NON-SENSITIVE', 'NOT_SENSITIVE', '0')))
 ),
 m AS (
   SELECT DISTINCT ref_database_name AS db, ref_schema_name AS sch, ref_entity_name AS tbl, ref_column_name AS col

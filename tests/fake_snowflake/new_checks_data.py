@@ -10,7 +10,6 @@ the previous window the 30 before that.
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 
 def _ts(day: dt.date, hour: int = 0, minute: int = 0) -> dt.datetime:

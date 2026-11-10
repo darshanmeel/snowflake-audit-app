@@ -70,7 +70,7 @@ al AS (
 use_ AS (
   SELECT COUNT(DISTINCT user_id) AS ai_users, SUM(credits) AS ai_credits
   FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY
-  WHERE start_time >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
+  WHERE is_completed AND start_time >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
 ),
 grants_ AS (
   SELECT pa.access_path, COALESCE(pub.grant_rows, 0) AS grant_rows, pub.open_to_public, pub.public_granted_on,

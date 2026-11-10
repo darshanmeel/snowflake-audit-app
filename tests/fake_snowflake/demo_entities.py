@@ -255,6 +255,3 @@ def _warehouse_traits(whs: list[dict]) -> None:
         if name in by:
             by[name].update(kv)
 
-
-def team_of_warehouse(name: str) -> str | None:
-    return next((w["team"] for w in catalog()["warehouses"] if w["name"] == name), None)

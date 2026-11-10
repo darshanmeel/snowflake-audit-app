@@ -71,8 +71,12 @@ def _universes(con, window_days: int) -> dict[str, list[tuple[str, str, list[str
     # The full inventories when the export has them; else the spending objects below.
     full = {kind for kind, table in (("user", "dim_user"), ("database", "dim_database")) if _exists(con, "dims", table)}
     if _exists(con, "dims", "dim_user"):
+        masked = app_identity.masking_enabled()
         for name, uid in con.execute("SELECT user_name, user_id FROM dims.dim_user").fetchall():
-            add("user", name, None, [str(uid)] if uid else [])
+            ids = [str(uid)] if uid else []
+            if masked and name:
+                ids.append(app_identity.format_identity(name))  # the loader masks user names in the tag rows
+            add("user", name, None, ids)
     if _exists(con, "dims", "dim_database"):
         for name, did in con.execute("SELECT database_name, database_id FROM dims.dim_database").fetchall():
             add("database", name, f"{name} ({did})" if did else name, [str(did)] if did else [])

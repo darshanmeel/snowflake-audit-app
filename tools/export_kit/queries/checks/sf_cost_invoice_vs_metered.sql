@@ -59,7 +59,8 @@ rows_ AS (
   SELECT 'ALL CREDITS', 'compute', 'consumption', FALSE, MAX(inv.currency), COUNT(DISTINCT inv.currency),
          SUM(inv.usage_qty), SUM(inv.amount), MAX(met.metered_credits)
   FROM inv CROSS JOIN met
-  WHERE NOT inv.non_credit AND LOWER(COALESCE(inv.rating_type, 'compute')) = 'compute'
+  -- AI credits too: the metered side counts AI_SERVICES
+  WHERE NOT inv.non_credit AND LOWER(COALESCE(inv.rating_type, 'compute')) IN ('compute', 'ai_compute')
     AND LOWER(COALESCE(inv.billing_type, 'consumption')) = 'consumption'
 ),
 s AS (

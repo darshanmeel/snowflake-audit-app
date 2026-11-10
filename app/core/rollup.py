@@ -44,11 +44,6 @@ LEVELS = [
     {"level": "work", "label": "Query / job tag"},
 ]
 
-# by_tag_top's own, more granular levels -- never the nested rollup's account/workspace/compute/
-# work above. "billing line" is a compute-level tag billed against anything that is not a named
-# warehouse/cluster (an endpoint, app or serverless budget policy) -- a line on the bill, not a
-# resource with its own identity.
-TOP_LEVELS = ("query", "warehouse", "cluster", "job", "pipeline", "workspace", "billing line")
 
 class RollupError(ValueError):
     """A bad area/window/tag_key -- app/api/app.py turns this into a 422."""
@@ -381,7 +376,7 @@ def _resolve_account_scope(
     """The workspace id set account_ids/env/attributes resolve to, via read_dim_account() (the
     same public dim every other route reads) -- None means "no scope filter at all" (every path
     kept); an empty df read failure degrades to an empty set (nothing kept) rather than raising, the
-    same defensive shape every other route's guard uses. Shared by rollup() and by_tag_top()."""
+    same defensive shape every other route's guard uses."""
     if not (account_ids or env or attributes):
         return None
     try:
@@ -556,7 +551,7 @@ def rollup(
 
         degraded = _degraded_effect(area)
 
-        tree = _build_tree(paths, area, metric_keys, primary_key, degraded)
+        tree = _build_tree(paths, area, metric_keys, primary_key, degraded, discount_pct)
         by_value = _build_by_value(paths, metric_keys, primary_key)
         total_metrics = tree["metrics"]
 
@@ -821,7 +816,7 @@ def _mark(node: dict, p, metric_keys, level: str) -> None:
         node["attributed_here"] = _add(node["attributed_here"], p.metrics)
 
 
-def _build_tree(paths: list, area: str, metric_keys, primary_key: str, degraded: dict) -> dict:
+def _build_tree(paths: list, area: str, metric_keys, primary_key: str, degraded: dict, discount_pct: float = 0.0) -> dict:
     root = _new_node("account", "account", "account", None, "Account", None, None, metric_keys)
 
     for p in paths:
@@ -874,13 +869,8 @@ def _build_tree(paths: list, area: str, metric_keys, primary_key: str, degraded:
         w_node["metrics"] = _add(w_node["metrics"], p.metrics)
         _mark(w_node, p, metric_keys, level)
 
+    # The same effective discount as the total (0 on an invoice price), so the tree adds up to it.
     grand_total = _primary(root["metrics"], primary_key) or 0.0
-    discount_pct = 0.0
-    if area == "cost":
-        try:
-            discount_pct = float(app_config.load_settings().get("discount_pct", 0.0))
-        except Exception:  # pragma: no cover
-            discount_pct = 0.0
     return _finalize_node(root, area, discount_pct, grand_total, grand_total, primary_key)
 
 
@@ -1011,170 +1001,3 @@ def rollup_keys(area: str, window_days: int) -> dict:
         return {"area": area, "window_days": window_days, "keys": keys}
     finally:
         con.close()
-
-
-# ---------------------------------------------------------------------------------------------
-# by_tag_top -- the by-tag view: top VALUES for one key, kept separate per LEVEL,
-# unlike by_value above which deliberately walks to ONE effective (innermost) value per unit for
-# the nested tree. Reuses the same paths (_fetch_cost_paths/_fetch_perf_paths) and workspace scope
-# (_resolve_account_scope) rollup() itself uses -- no new SQL, no new model.
-# ---------------------------------------------------------------------------------------------
-
-_COMPUTE_TOP_LEVEL = {"warehouse": "warehouse", "cluster": "cluster"}  # else -> "billing line"
-_WORK_TOP_LEVEL = {"query": "query", "job": "job", "pipeline": "pipeline"}  # idle/unsplit/none carry no real per-tag value
-
-
-def _top_metrics_meta(area: str) -> list[dict]:
-    if area == "cost":
-        return [{"key": "usd", "label": "list price (effective)", "unit": "usd"}]
-    return [
-        {"key": "statements", "label": "statements", "unit": "count"},
-        {"key": "failed_statements", "label": "failed statements", "unit": "count"},
-        {"key": "duration_ms", "label": "total duration", "unit": "ms"},
-        {"key": "queue_ms", "label": "queue time", "unit": "ms"},
-        {"key": "spill_bytes", "label": "spill", "unit": "bytes"},
-    ]
-
-
-def by_tag_top(
-    area: str,
-    tag_key: str,
-    window_days: int,
-    top: int = 10,
-    account_ids: list[str] | None = None,
-    env: list[str] | None = None,
-    attributes: dict[str, list[str]] | None = None,
-    tag_filter: "app_core_tags.TagFilter | app_core_tags.TagFilterSet | None" = None,
-) -> dict:
-    """The top `top` tag VALUES for one key, ranked by $ (area="cost") or by total query time
-    (area="performance" ranks by duration_ms -- tags.perf_unit_tag carries no dollars or credits; a
-    credits figure for this key is the same rollup under area="cost"). Rows are per LEVEL and never
-    merged across levels: the same value tagged on a warehouse and on a job are two separate rows,
-    each summing only that level's own rows -- so rows overlap by design (see `tagged`/
-    `rows_overlap_across_levels` below). Always returns one "untagged" row and `more_count`, the
-    (level, value) rows past `top` that are not returned."""
-    norm_key = _validate(area, tag_key, window_days)
-    primary_key = "usd" if area == "cost" else "duration_ms"
-    metric_keys = COST_METRIC_KEYS if area == "cost" else PERF_METRIC_KEYS
-
-    con = _connect()
-    try:
-        if not _tags_models_exist(con):
-            return _by_tag_not_assessed(
-                area, norm_key, window_days,
-                "tag_models_not_built: the tag rollup was not built; rebuild to see it",
-            )
-        norm_key = _resolve_cost_center_alias(con, area, norm_key)
-        source_status, required_ok, na_reason = _source_status(area)
-        if not required_ok:
-            return _by_tag_not_assessed(area, norm_key, window_days, na_reason, source_status=source_status)
-
-        resolved_ws = _resolve_account_scope(account_ids, env, attributes)
-        unit_ids = _matching_unit_ids(con, area, window_days, tag_filter)
-        paths = _fetch_cost_paths(con, window_days, norm_key, unit_ids) if area == "cost" \
-            else _fetch_perf_paths(con, window_days, norm_key, unit_ids)
-        excluded_account = _zero(metric_keys)
-        workspace_filtered = resolved_ws is not None
-        if resolved_ws is not None:
-            # Account-level usage (no workspace at all) has no workspace to match a scope filter
-            # against, so it is dropped rather than kept unfiltered (same rule rollup() follows) --
-            # tallied here the same way, so the two views of the same scope agree on what they drop.
-            kept = []
-            for p in paths:
-                if p.account_id is None:
-                    excluded_account = _add(excluded_account, p.metrics)
-                    continue
-                if p.account_id in resolved_ws:
-                    kept.append(p)
-            paths = kept
-
-        discount_pct = 0.0
-        if area == "cost":
-            try:
-                discount_pct = app_core_data.effective_discount_pct(
-                    float(app_config.load_settings().get("discount_pct", 0.0)))
-            except Exception:  # pragma: no cover
-                discount_pct = 0.0
-
-        groups: dict[tuple[str, str], dict] = {}
-        untagged_metrics = _zero(metric_keys)
-        total_metrics = _zero(metric_keys)
-
-        def _bucket(level: str, value: str) -> dict:
-            return groups.setdefault((level, value), {"level": level, "value": value, "metrics": _zero(metric_keys)})
-
-        for p in paths:
-            total_metrics = _add(total_metrics, p.metrics)
-            eff_value, _eff_level, _eff_source = _effective(p)
-            if eff_value == tag_keys.UNTAGGED:
-                untagged_metrics = _add(untagged_metrics, p.metrics)
-            if tag_keys.is_real_value(p.compute_value):
-                b = _bucket(_COMPUTE_TOP_LEVEL.get(p.compute_kind, "billing line"), p.compute_value)
-                b["metrics"] = _add(b["metrics"], p.metrics)
-            work_level = _WORK_TOP_LEVEL.get(p.work_kind)
-            if work_level and tag_keys.is_real_value(p.work_value):
-                b = _bucket(work_level, p.work_value)
-                b["metrics"] = _add(b["metrics"], p.metrics)
-            if tag_keys.is_real_value(p.workspace_value):
-                b = _bucket("workspace", p.workspace_value)
-                b["metrics"] = _add(b["metrics"], p.metrics)
-
-        ranked = sorted(groups.values(), key=lambda g: (-_primary(g["metrics"], primary_key), g["level"], str(g["value"])))
-        top_rows = ranked[:top]
-        tagged_metrics = {k: total_metrics[k] - untagged_metrics[k] for k in metric_keys}
-
-        rows = [
-            {
-                "level": g["level"],
-                "value": tag_keys.model_value_to_api(g["value"]),
-                "label": "(no value)" if g["value"] == "" else g["value"],
-                "metrics": _round_metrics(g["metrics"], discount_pct, area),
-            }
-            for g in top_rows
-        ]
-
-        return {
-            "area": area,
-            "tag_key": norm_key,
-            "display_key": _display_key(con, norm_key),
-            "window_days": window_days,
-            "outcome": "ok_rows" if paths else ("ok_empty_filters" if (workspace_filtered or tag_filter is not None) else "ok_empty_window"),
-            "not_assessed_reason": None,
-            "metrics": _top_metrics_meta(area),
-            "primary_metric": primary_key,
-            "discount_pct": discount_pct,
-            "levels": list(TOP_LEVELS),
-            "rows": rows,
-            "untagged": {
-                "level": None, "value": tag_keys.UNTAGGED, "label": "untagged",
-                "metrics": _round_metrics(untagged_metrics, discount_pct, area),
-            },
-            "group_count": len(ranked),
-            "more_count": max(len(ranked) - len(top_rows), 0),
-            "total": _round_metrics(total_metrics, discount_pct, area),
-            # rows overlap by design (a level's dollars are counted again at every outer level), so
-            # summing them or taking a share of `total` overstates tagged spend; `tagged` (total
-            # minus untagged, from this same walk) is the one number that reconciles.
-            "tagged": _round_metrics(tagged_metrics, discount_pct, area),
-            "rows_overlap_across_levels": True,
-            "scope": {
-                "workspace_filtered": workspace_filtered,
-                "excluded_account_level": _round_metrics(excluded_account, discount_pct, area) if area == "cost" else excluded_account,
-            },
-            "source_status": source_status,
-        }
-    finally:
-        con.close()
-
-
-def _by_tag_not_assessed(area, norm_key, window_days, reason, source_status=None):
-    return {
-        "area": area, "tag_key": norm_key, "display_key": norm_key, "window_days": window_days,
-        "outcome": "not_assessed", "not_assessed_reason": reason,
-        "metrics": _top_metrics_meta(area), "primary_metric": "usd" if area == "cost" else "duration_ms",
-        "discount_pct": 0.0, "levels": list(TOP_LEVELS),
-        "rows": [], "untagged": None, "group_count": 0, "more_count": 0, "total": None,
-        "tagged": None, "rows_overlap_across_levels": True,
-        "scope": {"workspace_filtered": False, "excluded_account_level": None},
-        "source_status": source_status or [],
-    }

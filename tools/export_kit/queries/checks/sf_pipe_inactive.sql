@@ -30,6 +30,8 @@ WITH p AS (
          created, last_altered
   FROM SNOWFLAKE.ACCOUNT_USAGE.PIPES
   WHERE deleted IS NULL
+  -- one row per pipe: the view keeps a row per version
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY pipe_catalog, pipe_schema, pipe_name ORDER BY last_altered DESC NULLS LAST) = 1
 ),
 u AS (
   SELECT TO_VARCHAR(pipe_id) AS pipe_id,

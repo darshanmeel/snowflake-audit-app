@@ -29,14 +29,19 @@ cost_lines AS (
               WHEN usage_date >= DATEADD(day, -2 * :period_days, __AS_OF_DATE__) THEN 'previous'
               ELSE 'older' END AS period
   FROM (
-    SELECT usage_date, service_type AS sku_name, service_type AS billing_origin_product,
+    -- Live accounts bill AI as AI_INFERENCE, the docs say AI_SERVICES: the larger per day, as the AI checks
+    -- do, so a day under both is not counted twice.
+    SELECT usage_date, MAX_BY(service_type, credits) AS sku_name, MAX_BY(service_type, credits) AS billing_origin_product,
            'COMPUTE_TIME' AS usage_type, 'CREDITS' AS usage_unit,
-           credits_billed AS qty,
+           MAX(credits) AS qty,
            -- AI credits (Cortex, Copilot) have their own price
-           IFF(REGEXP_LIKE(service_type, '(^|.*_)(AI|CORTEX|COCO|COWORK)(_.*|$)'),
+           IFF(REGEXP_LIKE(MAX(service_type), '(^|.*_)(AI|CORTEX|COCO|COWORK)(_.*|$)'),
                __AI_CREDIT_PRICE__, __CREDIT_PRICE__) AS rate
-    FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
-    WHERE usage_date >= DATEADD(day, -400, __AS_OF_DATE__) AND usage_date < __AS_OF_DATE__
+    FROM (SELECT usage_date, service_type, SUM(credits_billed) AS credits
+          FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
+          WHERE usage_date >= DATEADD(day, -400, __AS_OF_DATE__) AND usage_date < __AS_OF_DATE__
+          GROUP BY usage_date, service_type)
+    GROUP BY usage_date, IFF(service_type IN ('AI_SERVICES', 'AI_INFERENCE'), 'AI_SERVICES', service_type)
     UNION ALL
     SELECT usage_date, 'STORAGE', 'STORAGE', 'STORAGE_SPACE', 'TB_DAYS',
            (COALESCE(storage_bytes, 0) + COALESCE(stage_bytes, 0) + COALESCE(failsafe_bytes, 0)
@@ -53,11 +58,12 @@ cost_lines AS (
     WHERE usage_date >= DATEADD(day, -400, __AS_OF_DATE__) AND usage_date < __AS_OF_DATE__
       AND COALESCE(archive_storage_cool_bytes, 0) + COALESCE(archive_storage_cold_bytes, 0) > 0
     UNION ALL
-    -- Estimated like sf_cost_data_transfer_egress (same per-TB rates). The view lists only transfer out of
+    -- Estimated like sf_cost_data_transfer_egress, at its per-TB rates (config/thresholds.yml). The view lists only transfer out of
     -- the region (same-region transfer is free and has no row): another region of the same cloud, or another cloud.
     SELECT CAST(start_time AS DATE), 'DATA_TRANSFER', 'DATA_TRANSFER', 'DATA_TRANSFER', 'TB',
            SUM(TRY_TO_DOUBLE(TO_VARCHAR(bytes_transferred))) / POWER(1024, 4),
-           IFF(COALESCE(UPPER(target_cloud) = UPPER(source_cloud), FALSE), 20, 90)
+           IFF(COALESCE(UPPER(target_cloud) = UPPER(source_cloud), FALSE),
+               __TRANSFER_SAME_CLOUD_USD_TB__, __TRANSFER_OTHER_CLOUD_USD_TB__)
     FROM SNOWFLAKE.ACCOUNT_USAGE.DATA_TRANSFER_HISTORY
     WHERE start_time >= DATEADD(day, -400, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
     GROUP BY CAST(start_time AS DATE), COALESCE(UPPER(target_cloud) = UPPER(source_cloud), FALSE)
@@ -65,7 +71,8 @@ cost_lines AS (
 )
 SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id,
        SUM(IFF(usage_unit = 'CREDITS', qty, 0)) AS total_net_credits, 'USD' AS currency_code,
-       SUM(usd) AS net_list_cost_usd,
+       -- a line with usage but no price leaves the total short: no total, never a partial one
+       IFF(COUNT_IF(rate IS NULL AND qty > 0) > 0, NULL, SUM(usd)) AS net_list_cost_usd,
        'effective credit price' AS credit_price_source,
        IFF(COUNT_IF(rate IS NULL) > 0, 'unpriced', 'priced') AS price_basis
 FROM cost_lines

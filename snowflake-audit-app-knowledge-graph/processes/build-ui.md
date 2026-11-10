@@ -16,11 +16,11 @@ flowchart LR
 
 ## Commands
 
-From `web/` with Node 20+ (README.md:905-913; web/package.json scripts):
+From `web/` with Node 20+ (README.md:907-915; web/package.json scripts):
 
 | Command | Does | Source |
 |---|---|---|
-| `npm ci` | install once | README.md:908 |
+| `npm ci` | install once | README.md:910 |
 | `npm run dev` | Vite dev server on :5173, `/api` proxied to :8000 | web/package.json `dev`; web/vite.config.ts:45 |
 | `npx tsc --noEmit` / `npm run typecheck` | type check | web/package.json `typecheck` |
 | `npx vitest run` / `npm test` | UI tests (jsdom) | web/package.json `test`; web/vite.config.ts:46 |
@@ -36,12 +36,12 @@ From `web/` with Node 20+ (README.md:905-913; web/package.json scripts):
 - **index.html first-paint rules**: theme script reads `localStorage` before paint, author/copyright meta, empty favicon, no Google Fonts, hashed bundle `/assets/index-*.js` (tests/test_build_web.py:41-48).
 - **No window globals** in `web/src` (`Object.assign(window` or `window.__`) (tests/test_build_web.py:57-60).
 - **Old build gone**: no `.jsx` under `app/web`, no `app/web/vendor`, no `tools/build_web.js` (tests/test_build_web.py:51-54).
-- **Commit order** (project rule): commit the `web/` source, then build, then commit `app/web/dist` (CLAUDE.md:74; README.md:915-916). Git log shows this as alternating commits, e.g. "Build UI" after a source commit (git log 556a877, 22b7644).
+- **Commit order** (project rule): commit the `web/` source, then build, then commit `app/web/dist` (CLAUDE.md:74; README.md:917-918). Git log shows this as alternating commits, e.g. "Build UI" after a source commit (git log 556a877, 22b7644).
 
 ## Serving
 
-- FastAPI mounts `app/web/dist` last at `/` so it never shadows `/api/*`; a path with no extension gets `index.html`; `index.html` is served `no-cache` with the settings brand put in `<title>` and `window.APP_BRAND` (app/api/app.py:1495-1543).
-- No `dist` → `GET /` returns 404 text "The UI is not built. Run: cd web && npm ci && npm run build" (app/api/app.py:1539-1543; README.md:841).
+- FastAPI mounts `app/web/dist` last at `/` so it never shadows `/api/*`; a path with no extension gets `index.html`; `index.html` is served `no-cache` with the settings brand put in `<title>` and `window.APP_BRAND` (app/api/app.py:1418-1466).
+- No `dist` → `GET /` returns 404 text "The UI is not built. Run: cd web && npm ci && npm run build" (app/api/app.py:1462-1466; README.md:843).
 - Streamlit deploy reuses the same `dist/assets` (tools/streamlit_deploy/deploy.py:21, 60-72; tools/streamlit_deploy/streamlit_app.py:176-183).
 
 ## Gate

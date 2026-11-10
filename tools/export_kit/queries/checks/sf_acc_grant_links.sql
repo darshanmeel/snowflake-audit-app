@@ -45,6 +45,7 @@ g AS (
   FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
   WHERE deleted_on IS NULL AND granted_to IN ('ROLE', 'ACCOUNT ROLE', 'DATABASE_ROLE')
 )
+SELECT * FROM (
 SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, 'user' AS link_kind, user_name AS grantee,
        'USER' AS grantee_type, default_role AS name, 'USER' AS granted_on, CAST(NULL AS VARCHAR) AS privilege,
        CAST(NULL AS VARCHAR) AS database_name, CAST(NULL AS VARCHAR) AS schema_name, FALSE AS grant_option,
@@ -74,4 +75,6 @@ SELECT 0, __ACCOUNT_ID__, IFF(granted_on IN ('ROLE', 'DATABASE_ROLE') AND privil
        COALESCE(grant_option, FALSE),
        NULL, NULL, NULL, NULL
 FROM g
-ORDER BY 3, 4, 6, 8
+)
+-- Users and role links first: when the export's row cap cuts, it cuts role-to-object grants, not who holds what.
+ORDER BY CASE link_kind WHEN 'user' THEN 0 WHEN 'user_role' THEN 1 WHEN 'role_role' THEN 2 ELSE 3 END, grantee, name, privilege

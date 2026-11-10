@@ -6,26 +6,26 @@ One vocabulary for "is the app ready", "what did this check find" and "why could
 flowchart TD
   ERR[export error message + Snowflake code] --> CE[classify_error<br/>reasons.py:36-49]
   CE --> STORED[stored cause in run results]
-  STORED --> CR[coverage_reason<br/>data.py:1863-1872]
-  CR --> RR[resolve_reason: Standard edition + needs Enterprise<br/>-> edition_too_low data.py:1880-1889]
-  RR --> FIX[reason_fix: own GRANT lines for no_access<br/>data.py:1896-1902]
-  FIX --> NA[not_assessed_status code/label/fix/grants<br/>data.py:2025-2076]
+  STORED --> CR[coverage_reason<br/>data.py:1855-1864]
+  CR --> RR[resolve_reason: Standard edition + needs Enterprise<br/>-> edition_too_low data.py:1872-1881]
+  RR --> FIX[reason_fix: own GRANT lines for no_access<br/>data.py:1888-1894]
+  FIX --> NA[not_assessed_status code/label/fix/grants<br/>data.py:2017-2068]
   NA --> F[/api/findings row.not_assessed/]
-  NA --> C[/api/coverage checks_not_ok<br/>data.py:2079-2111/]
-  NA --> R[checks_ran_summary not_ran<br/>data.py:2253-2274]
+  NA --> C[/api/coverage checks_not_ok<br/>data.py:2071-2103/]
+  NA --> R[checks_ran_summary not_ran<br/>data.py:2245-2266]
 ```
 
-## 1. App state (GET /api/status, app.py:446-473)
+## 1. App state (GET /api/status, app.py:445-472)
 
 | state | When | Source |
 |---|---|---|
-| settings_invalid | `config/settings.yml` (+ local) fails to load; wins over every db state | app.py:455-466 |
+| settings_invalid | `config/settings.yml` (+ local) fails to load; wins over every db state | app.py:454-465 |
 | no_database | db file missing | data.py:201-219 |
 | build_incomplete | file unreadable/corrupt, or no `dims.dim_account` | data.py:201-219 |
 | ready | otherwise | data.py:201-219 |
 
-- Examples (tests/test_api.py:230-275): unknown key `default_windw` on line 2 -> `settings_invalid`, `key "default_windw"`, `line 2`; a YAML syntax error on line 3 -> `line 3`, `key null`; a missing dim_account -> `build_incomplete` with "dim_account" in the detail.
-- Every other route answers a broken settings file with 503 `{state: "settings_invalid", key, line}` (app.py:176-186).
+- Examples (tests/test_api.py:228-273): unknown key `default_windw` on line 2 -> `settings_invalid`, `key "default_windw"`, `line 2`; a YAML syntax error on line 3 -> `line 3`, `key null`; a missing dim_account -> `build_incomplete` with "dim_account" in the detail.
+- Every other route answers a broken settings file with 503 `{state: "settings_invalid", key, line}` (app.py:177-187).
 
 ## 2. Request outcome (one check, service.load_outcome service.py:277-425)
 
@@ -39,7 +39,7 @@ flowchart TD
 - Read-time status is the effective one: materiality floor -> OK, report cap -> WARN (logic/materiality.md). Raw kept as `status_raw`.
 - `status_counts` on the findings list count effective status (data.py:1086-1099).
 - Example (test DB): `sf_wh_idle_minutes` 30d -> `{NOT_ASSESSED: 7, CRITICAL: 4, WARN: 1}`; 7 warehouses NOT_ASSESSED because the role sees only 6 of 12 billed warehouses (observed via /api/findings).
-- A check whose every row in scope is NOT_ASSESSED gets `not_assessed.code = "all_rows_not_assessed"` (service.py:766-774; data.py:2059-2061; tests/test_api.py:505-512).
+- A check whose every row in scope is NOT_ASSESSED gets `not_assessed.code = "all_rows_not_assessed"` (service.py:778-786; data.py:2051-2053; tests/test_api.py:504-511).
 
 ## 4. Why a check did not run (reason codes)
 
@@ -54,7 +54,7 @@ flowchart TD
 - Example (tests/fixtures/build_fixtures.py:49-50): "SQL compilation error: no such view 'ACCOUNT_USAGE.ICEBERG_TABLES' in this account" -> `view_missing`.
 - Note: "Object does not exist or not authorized" matches the no_access words before view_missing, so it reads no_access (reasons.py:26-29, 45-48).
 
-### Reason -> label and fix (data.py:1841-1857)
+### Reason -> label and fix (data.py:1833-1849)
 
 | reason | label on screen | fix |
 |---|---|---|
@@ -65,8 +65,8 @@ flowchart TD
 | not_exported | not run in this export | re-run the export |
 | unknown (sql_error) | failed in the export | re-run, read the export's error output |
 
-- Stored cause wins over the message; a check with no run-result entry is `not_exported`, never `unknown` (data.py:1863-1872).
-- Edition override: `no_access` or `view_missing` on a known Standard account for a check that needs Enterprise -> `edition_too_low` (data.py:1880-1889; reasons.py:63-75).
+- Stored cause wins over the message; a check with no run-result entry is `not_exported`, never `unknown` (data.py:1855-1864).
+- Edition override: `no_access` or `view_missing` on a known Standard account for a check that needs Enterprise -> `edition_too_low` (data.py:1872-1881; reasons.py:63-75).
   - Example (inferred from code): edition `STANDARD`, header `requires: Enterprise Edition`, message "insufficient privileges" -> `edition_too_low`; edition unknown -> stays `no_access`.
 
 ### GRANT line per source (grant_for, reasons.py:93-112)
@@ -82,9 +82,9 @@ flowchart TD
 | SHOW TASKS | MONITOR EXECUTION ON ACCOUNT |
 | other SHOW X | "Use a role that owns or can MONITOR the objects SHOW X lists." |
 
-- Example (test DB): `sf_org_dormant_accounts` -> `not_assessed.code "build_failed"`, label "the role can't see it", fix "Run: GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_USAGE_VIEWER TO ROLE <audit_role>; ..." (observed via /api/findings; tests/test_api_features.py:330-340 asserts requires/grants/cause).
+- Example (test DB): `sf_org_dormant_accounts` -> `not_assessed.code "build_failed"`, label "the role can't see it", fix "Run: GRANT DATABASE ROLE SNOWFLAKE.ORGANIZATION_USAGE_VIEWER TO ROLE <audit_role>; ..." (observed via /api/findings; tests/test_api_features.py:296-306 asserts requires/grants/cause).
 
-## 5. not_assessed_status order (data.py:2025-2076)
+## 5. not_assessed_status order (data.py:2017-2068)
 
 1. `not_built`: no run-result entry and the table is not there. Label "not in this export".
 2. `build_failed`: the export errored; label/fix from the resolved reason; `reason` carried as `cause`.
@@ -92,15 +92,15 @@ flowchart TD
 4. `all_rows_not_assessed`: every row in scope is NOT_ASSESSED.
 5. Partial: `{code: null, partial: true}` when the export covered fewer days than the window; still counts as assessed.
 
-- Same function feeds `/api/findings` rows and `/api/coverage` `checks_not_ok`, so one gap is never named two ways (data.py:2079-2083).
+- Same function feeds `/api/findings` rows and `/api/coverage` `checks_not_ok`, so one gap is never named two ways (data.py:2071-2075).
 - Test DB counts: `checks_ran.not_ran = {build_failed: 2, all_rows_not_assessed: 6}` of 298 (observed via /api/meta).
 
 ## 6. Visibility (what the role cannot see)
 
-- `visibility_summary` compares billed warehouses with SHOW-listed ones (data.py:2282-2308); `finding_visibility` attaches a per-check note (data.py:2311-2320).
+- `visibility_summary` compares billed warehouses with SHOW-listed ones (data.py:2274-2300); `finding_visibility` attaches a per-check note (data.py:2303-2312).
 - Example (test DB): "Role sees 6 of 12 billed warehouses" on `sf_wh_idle_minutes` (observed).
 
 ## Issues seen
 
 - `NO_ACCESS_CODES` comment names three Snowflake codes (2003, 3001, 2043) but the set has four, adding 2014 without a note (reasons.py:19-21).
-- GET /api/guide/sql/{query_id} docstring says the SQL is filled with "defaults", but `sql_text` fills the values in effect (thresholds.yml overrides) (guide.py:492-498 vs 453-489).
+- GET /api/guide/sql/{query_id} docstring says the SQL is filled with "defaults", but `sql_text` fills the values in effect (thresholds.yml overrides) (guide.py:497-503 vs 453-489).

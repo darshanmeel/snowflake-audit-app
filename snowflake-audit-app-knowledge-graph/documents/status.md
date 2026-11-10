@@ -21,8 +21,8 @@ flowchart LR
 | Heaviest tables, full scans, own copies (`sources:`), table day by day | built; not yet run live | 9-12 | `apply_sources` named in app/core/config.py (not opened here) |
 | Activity, Last active, Access explorer | built; checked in browser on demo DB; Last active ran live on one small account | 13-15 | explorer route in app/api/explorer.py (not opened here) |
 | First live run | 152 ok, 122 empty, 4 not assessed, 1 failed (`sf_ai_model_serving_spend`, error 100038); prices from RATE_SHEET_DAILY ($3.00, $2.00) | 16 | – |
-| Prices | CLI → rate sheet → 90-day invoice → settings | 17 | README.md:376-394 |
-| INFORMATION_SCHEMA fallbacks | 85 checks, 52 shim views, gates MONITOR USAGE / MANAGE GRANTS / APPLY policy; 22 left out on purpose; all 85 ran live | 18 | README.md:398-451 |
+| Prices | CLI → rate sheet → 90-day invoice → settings | 17 | README.md:378-396 |
+| INFORMATION_SCHEMA fallbacks | 85 checks, 52 shim views, gates MONITOR USAGE / MANAGE GRANTS / APPLY policy; 22 left out on purpose; all 85 ran live | 18 | README.md:400-453 |
 | App | FastAPI + DuckDB; React/TS built by Vite to `app/web/dist` | 19 | web/vite.config.ts:44 |
 | Streamlit in Snowflake | ships API + build + DuckDB; refuses demo/test data by contents; warehouse runtime default (v1 frame, may not be allowed), container fallback; checked with local Streamlit 1.52.2 and 1.56 on Python 3.11; **not run in Snowflake** | 22 | tools/streamlit_deploy/deploy.py:43-57, 75-100, 129-139 |
 | Export kit | refresh with `make_export_kit.py` after any SQL, check or README Roles change | 23 | tests/test_export_kit.py:38-42 |

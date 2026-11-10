@@ -32,25 +32,25 @@ flowchart TD
 | Trigger | Command | Guard test | Source |
 |---|---|---|---|
 | any `web/` change | commit source → `cd web && npm run build` → commit `app/web/dist` | tests/test_build_web.py:33-38 | CLAUDE.md:74; web/vite.config.ts:11-38 |
-| any SQL in `app/queries`, a check, or README "Roles and privileges" | `python tools/make_export_kit.py` | tests/test_export_kit.py:38-42 | README.md:771-772; STATUS.md:23; tools/make_export_kit.py:1-8 |
-| the masking code | same command: the kit holds a copy of `app/core/masking.py` between markers | tests/test_export_kit.py:38-42 | tools/make_export_kit.py:132-150 |
+| any SQL in `app/queries`, a check, or README "Roles and privileges" | `python tools/make_export_kit.py` | tests/test_export_kit.py:38-42 | README.md:773-774; STATUS.md:23; tools/make_export_kit.py:1-8 |
+| the masking code | same command: the kit holds a copy of `app/core/masking.py` between markers | tests/test_export_kit.py:38-42 | tools/make_export_kit.py:134-152 |
 | check headers | `python tools/build_manifest.py --check` in the gate | tools/gate.py:55 | tools/gate.py:52-60 |
 
-- The kit: `run_export.py`, `queries/` (each statement with includes pasted in, plus `index.json`), `grants.sql` cut from README, `verify/`, `README.md` (README.md:752-764; tools/make_export_kit.py:152-222).
-  - `grants.sql` example: the text between ` ```sql ` and ` ``` ` after "### The grant script" in README (tools/make_export_kit.py:126-130) → `tools/export_kit/grants.sql:1-55`.
-- `python tools/make_export_kit.py --zip <folder outside the repo>` writes `export_kit.zip` without `.env`, `*.p8`, `sf-audit-out*`, `__pycache__` (tools/make_export_kit.py:224-247; README.md:773-774).
+- The kit: `run_export.py`, `queries/` (each statement with includes pasted in, plus `index.json`), `grants.sql` cut from README, `verify/`, `README.md` (README.md:754-766; tools/make_export_kit.py:154-230).
+  - `grants.sql` example: the text between ` ```sql ` and ` ``` ` after "### The grant script" in README (tools/make_export_kit.py:128-132) → `tools/export_kit/grants.sql:1-57`.
+- `python tools/make_export_kit.py --zip <folder outside the repo>` writes `export_kit.zip` without `.env`, `*.p8`, `sf-audit-out*`, `__pycache__` (tools/make_export_kit.py:232-255; README.md:775-776).
 
 ## User side (update to a new version)
 
-1. Download the new zip, or `git pull` (README.md:537).
-2. Keep `.env` and `config/settings.local.yml` (not in the zip). `settings.yml`, `tag_aliases.yml`, `thresholds.yml`, `materiality.yml` are replaced, so keep a copy of any edit (README.md:538-541).
-3. `python -m pip install -r requirements.txt` again; in a new folder, make the venv first (README.md:542-543). `start.py` does this when `requirements.txt` changed (start.py:78-85).
-4. `python tools/first_run.py`: new or changed checks appear only after a new export (README.md:544).
+1. Download the new zip, or `git pull` (README.md:539).
+2. Keep `.env` and `config/settings.local.yml` (not in the zip). `settings.yml`, `tag_aliases.yml`, `thresholds.yml`, `materiality.yml` are replaced, so keep a copy of any edit (README.md:540-543).
+3. `python -m pip install -r requirements.txt` again; in a new folder, make the venv first (README.md:544-545). `start.py` does this when `requirements.txt` changed (start.py:78-85).
+4. `python tools/first_run.py`: new or changed checks appear only after a new export (README.md:546).
 
-- The data folder is outside the repo, so an update never touches it (README.md:546).
-- The UI ships built; Node is only needed to change it (README.md:546-547).
+- The data folder is outside the repo, so an update never touches it (README.md:548).
+- The UI ships built; Node is only needed to change it (README.md:548-549).
 - No version number, changelog, tag or release step exists (inferred: `web/package.json` version is `0.0.0`; no CHANGELOG in the repo).
 
 ## Licence
 
-- Dual MIT or Apache-2.0, at the user's option; contributions under the same terms (README.md:918-921; LICENSE-MIT; LICENSE-APACHE).
+- Dual MIT or Apache-2.0, at the user's option; contributions under the same terms (README.md:920-923; LICENSE-MIT; LICENSE-APACHE).

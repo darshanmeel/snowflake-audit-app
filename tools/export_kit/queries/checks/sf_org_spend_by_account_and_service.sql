@@ -29,8 +29,9 @@
 --   without access this check fails. Lags up to 72 hours (last settle_days left out). Amounts are in
 --   the invoice currency, not list USD.
 WITH agg AS (
-  SELECT account_locator, MAX(account_name) AS account_name, usage_type,
-         MAX(service_type) AS service_type, MAX(LOWER(rating_type)) AS rating_type, currency,
+  -- by SERVICE_TYPE, RATING_TYPE and BILLING_TYPE: USAGE_TYPE is legacy and spans several of them
+  SELECT account_locator, MAX(account_name) AS account_name, MAX(usage_type) AS usage_type,
+         service_type, LOWER(rating_type) AS rating_type, LOWER(billing_type) AS billing_type, currency,
          SUM(IFF(usage_date >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), usage_in_currency, 0)) AS amount,
          SUM(IFF(usage_date < DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), usage_in_currency, 0)) AS prev_amount,
          SUM(IFF(usage_date >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__), usage, 0)) AS usage_qty,
@@ -38,7 +39,7 @@ WITH agg AS (
   FROM SNOWFLAKE.ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY
   WHERE usage_date >= DATEADD(day, -(2 * :period_days + :settle_days), __AS_OF_DATE__)
     AND usage_date < DATEADD(day, -:settle_days, __AS_OF_DATE__)
-  GROUP BY account_locator, usage_type, currency
+  GROUP BY account_locator, service_type, LOWER(rating_type), LOWER(billing_type), currency
 ),
 s AS (
   SELECT agg.*,
@@ -51,7 +52,7 @@ s AS (
   FROM agg
 )
 SELECT :period_days AS window_days, account_locator AS account_id, account_name, account_locator,
-       usage_type, service_type, currency, usage_qty, IFF(per_tb, 'TB', 'credits') AS usage_unit,
+       usage_type, service_type, rating_type, billing_type, currency, usage_qty, IFF(per_tb, 'TB', 'credits') AS usage_unit,
        amount, prev_amount, amount - prev_amount AS change_amount, change_pct, effective_rate,
        adjustment_amount, share_of_account_pct,
        CASE WHEN amount = 0 AND prev_amount = 0 THEN 'no_billed_usage' END AS not_assessed_reason,

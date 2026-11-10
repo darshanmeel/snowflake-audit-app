@@ -554,9 +554,7 @@ export function DoTheseFirst({ actions, ready, filters, goTo }: { actions: Actio
   );
 }
 
-// Fix these first (GET /api/fix-first, contract 11.8): three groups that are never added. Each
-// item's usd is the finding's own money.usd, so it agrees with Overview and Waste & savings.
-/** One GET /api/fix-first item. */
+/** One check to act on, as the critical-by-area chart takes it: usd is the finding's own money.usd. */
 export interface FixFirstItem {
   query_id: string;
   domain?: string;
@@ -570,81 +568,10 @@ export interface FixFirstItem {
   [key: string]: any;
 }
 
-/** GET /api/fix-first: the items, their per-group counts and the price basis. */
-export interface FixFirstData {
-  items?: FixFirstItem[];
-  counts?: Record<string, any>;
-  price_basis?: { label?: string } | null;
-  discount?: { ignored?: boolean; reason?: string } | null;
-  note?: string | null;
-  [key: string]: any;
-}
-
-export interface FixFirstState {
-  phase: "loading" | "ready" | "error";
-  data: FixFirstData | null;
-  error?: string;
-}
-
-// Coverage-only ids (data lag) and areas the role cannot open are left out of the lists.
-export function fixFirstVisible(items: FixFirstItem[] | null | undefined, allowedAreas?: Set<string> | null) {
-  return (items || []).filter((it) => {
-    if (COVERAGE_REF_IDS.includes(it.query_id)) return false;
-    return !allowedAreas || allowedAreas.has(homeForQuery({ query_id: it.query_id, domain: it.domain }).tab);
-  });
-}
-
-export function fixFirstUsd(item: FixFirstItem) {
-  if (item.usd == null || item.money_reason === "unpriced") return "-";
-  return fmtMoney(item.usd, 0) + (item.per === "month" ? "/mo" : "");
-}
-
-export function fixFirstAffected(item: FixFirstItem) {
-  const a = item.affected;
-  if (!a || a.flagged == null || a.total == null) return null;
-  return `${fmtInt(a.flagged)} of ${fmtInt(a.total)} ${a.noun}`;
-}
-
-// The money kinds "Fix these first" groups by, in order. Each group is its own unit: never added.
-export const FIX_KIND_GROUPS: { kind: string; title: (w: number) => string; per: string }[] = [
-  { kind: "waste", title: (w) => `Possible waste · last ${w} days`, per: "" },
-  { kind: "saving", title: (w) => `Possible saving · last ${w} days`, per: "" },
-  { kind: "gap", title: (w) => `Billing gap · last ${w} days`, per: "" },
-  { kind: "saving_month", title: () => "Storage that could be freed · per month", per: "/mo" },
-];
-
-export function fixKindOf(item: FixFirstItem): string {
-  if (item.kind && FIX_KIND_GROUPS.some((g) => g.kind === item.kind)) return item.kind;
-  return item.group === "priced_month" ? "saving_month" : "waste";
-}
-
 export function openFixItem(item: FixFirstItem, index: Record<string, Finding>, goTo: GoToFn) {
   const row = index[item.query_id] || { query_id: item.query_id, domain: item.domain };
   const home = homeForQuery(row);
   goTo({ tab: home.tab, subtab: home.subtab, focusQueryId: item.query_id });
-}
-
-// One ranked row: rank, check, a $ bar scaled to its group's largest, the $ and "N of M".
-export function FixItemRow({ item, rank, max, per, onOpen }: { item: FixFirstItem; rank: number; max: number; per: string; onOpen: () => void }) {
-  const usd = item.usd != null && item.money_reason !== "unpriced" ? Number(item.usd) : null;
-  const w = usd != null && max > 0 ? Math.max(2, (usd / max) * 100) : 0;
-  const aff = fixFirstAffected(item);
-  const title = getCheckLabel(item.query_id, item.title).title;
-  return (
-    // A div, not a button, so the row can hold the Guide link beside the title.
-    <div role="button" tabIndex={0} className="ff-item" onClick={onOpen}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}>
-      <span className="ff-item-rank mono">{rank}</span>
-      <span className="ff-item-text">
-        <span className="ff-item-title" title={title}>{title} <GuideHelp id={item.query_id} label={title} /></span>
-        {aff && <span className="ff-item-aff">{aff}</span>}
-      </span>
-      <span className="ff-item-track" aria-hidden="true">{w > 0 && <span className="ff-item-fill" style={{ width: `${w}%` }} />}</span>
-      <span className={`ff-item-usd mono${usd == null && item.group === "critical_no_usd" ? " tone-crit" : ""}`}>
-        {usd != null ? `${fmtMoney(usd, 0)}${per}` : item.group === "critical_no_usd" ? "Critical" : "-"}
-      </span>
-    </div>
-  );
 }
 
 // "Critical, not priced": how many critical checks with no $ each area holds, one bar per area.

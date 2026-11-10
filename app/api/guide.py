@@ -462,6 +462,8 @@ def sql_text(query_id: str) -> dict:
     direct = app_core_data.direct_export_info()
     as_of = str(direct["as_of"])[:10] if direct and direct.get("as_of") else None
     price = (direct or {}).get("pricing") or {}
+    egress_spec = next((s for s in registry.load_registry() if s.query_id == "sf_cost_data_transfer_egress"), None)
+    egress = {n: v for n, (v, _src) in service.resolve_params(egress_spec).items()} if egress_spec else {}
     ctx = {
         "__AS_OF_DATE__": f"CAST('{as_of}' AS DATE)" if as_of else "CURRENT_DATE()",
         "__ACCOUNT_ID__": "'<account_id>'",
@@ -469,6 +471,8 @@ def sql_text(query_id: str) -> dict:
         "__CREDIT_PRICE__": _literal(price.get("credit_price_usd")),
         "__AI_CREDIT_PRICE__": _literal(price.get("ai_credit_price_usd")),
         "__STORAGE_PRICE_TB_MONTH__": _literal(price.get("storage_price_usd_tb_month")),
+        # cost_lines prices transfer at the egress check's $/TB
+        **{f"__TRANSFER_{k.upper()}_CLOUD_USD_TB__": _literal(egress.get(f"{k}_cloud_usd_per_tb")) for k in ("same", "other")},
         "__QUERY_SOURCE__": "'<query_tag>'",
         "__WITH_SNOWFLAKE_TASKS__": _literal(bool((direct or {}).get("include_snowflake_tasks"))),
     }

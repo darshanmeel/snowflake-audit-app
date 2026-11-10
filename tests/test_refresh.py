@@ -21,8 +21,14 @@ def _wait():
 def test_refresh_runs_both_steps_and_switches_the_db(monkeypatch, tmp_path):
     calls = []
 
+    made = []
+
     def fake_call(args):
         calls.append(args[0])
+        if args[0] == "tools/export_results.py":
+            out = Path(args[args.index("--out") + 1])
+            out.mkdir(parents=True)  # the real export writes its results folder
+            made.append(out.name)
         if args[0] == "tools/load_results.py":
             Path(args[args.index("--db") + 1]).touch()  # the real loader writes the db file
 
@@ -44,8 +50,7 @@ def test_refresh_runs_both_steps_and_switches_the_db(monkeypatch, tmp_path):
     assert not old.exists()
     assert refresh.datasource.current_db() == Path(new_db)
     remaining = sorted(p.name for p in (tmp_path / "results").iterdir())
-    assert len(remaining) == 2  # this refresh's stamp plus the previous one
-    assert "19991230-000000" not in remaining
+    assert remaining == sorted([made[0], "20000101-000000"])  # this refresh's stamp plus the previous one
 
 
 def test_refresh_switches_the_shared_connection_and_closes_the_old_one(monkeypatch, tmp_path):

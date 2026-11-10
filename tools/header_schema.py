@@ -274,11 +274,3 @@ def iter_query_files(queries_dir: Path):
     for p in sorted(queries_dir.glob("*.sql")):
         yield p
 
-
-def load_all(queries_dir: Path) -> dict[str, dict]:
-    """query_id -> parsed header, for every .sql directly in queries_dir."""
-    out = {}
-    for p in iter_query_files(queries_dir):
-        hdr = parse_header(p.read_text(encoding="utf-8"), path=str(p))
-        out[hdr["query_id"]] = hdr
-    return out

@@ -54,8 +54,8 @@ NOT_ASSESSED_ON_PURPOSE = "sf_gov_classification_coverage"
 
 _INPUT_GLOBS = (
     "app/queries/**/*", "config/*.yml", "tests/fake_snowflake/*.py", "tests/fixtures/build_fixtures.py",
-    "tools/sql_smoke.py", "tools/export_results.py", "tools/load_results.py", "tools/common.py",
-    "app/core/registry.py", "app/core/snowflake_docs.py",
+    # every tool and core module the build runs (tags, pricing, masking, reasons, ...)
+    "tools/*.py", "app/core/*.py",
 )
 
 _NAMES = {
@@ -223,15 +223,6 @@ def is_current(db_path: Path) -> bool:
             and db_path.with_name(db_path.stem + ".run_results.json").exists())
 
 
-_orig_status_counts = sql_smoke._status_counts
-
-
-def _tolerant_counts(path: Path) -> dict:
-    """A check the export did not run (not assessed: the role, edition or a view is missing) has no
-    result file; the smoke's per-status count reads it as empty instead of failing the whole build."""
-    return _orig_status_counts(path) if path.exists() else {}
-
-
 def build(db_path: Path = DB_PATH, *, force: bool = False) -> dict:
     """Build db_path from the fake account; returns a summary. A no-op when nothing it reads changed."""
     if not force and is_current(db_path):
@@ -239,7 +230,6 @@ def build(db_path: Path = DB_PATH, *, force: bool = False) -> dict:
     work = Path(tempfile.mkdtemp(prefix="audit_fixture_"))
     try:
         export = work / "export"
-        sql_smoke._status_counts = _tolerant_counts
         # windows=30: window labels 7 and 30 are real, 90 is an alias of 30 (a partial window).
         result = sql_smoke.run_smoke(windows=30, export_to=export, lenient=True)
         manifest = json.loads((export / "manifest.json").read_text(encoding="utf-8"))
@@ -249,7 +239,6 @@ def build(db_path: Path = DB_PATH, *, force: bool = False) -> dict:
         (export / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         summary = load_results.load_folder(export, db_path)
     finally:
-        sql_smoke._status_counts = _orig_status_counts
         shutil.rmtree(work, ignore_errors=True)
     _stamp_path(db_path).write_text(inputs_hash(), encoding="utf-8")
     summary.update({"rebuilt": True, "fallbacks": filled, "smoke_failed": [

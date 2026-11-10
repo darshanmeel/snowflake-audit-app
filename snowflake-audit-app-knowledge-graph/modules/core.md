@@ -39,13 +39,13 @@ flowchart TD
 
 ## app/api/service.py (business layer between routes and data.py)
 
-- Purpose: the five outcomes, the findings list, fix-first, column kinds, JSON-safe rows (service.py:1-36).
+- Purpose: the five outcomes, the findings list, column kinds, JSON-safe rows (service.py:1-36).
 - Key functions:
   - `load_outcome` service.py:277-425: one check's outcome in a fixed order (failed -> not exported -> table missing -> empty window -> empty by filters -> rows).
   - `load_aggregate` service.py:460-525: reruns `load_outcome(limit=1)` so the aggregate and the detail never disagree, then `data.aggregate_finding`.
-  - `list_findings` service.py:614-625 (cached per data stamp, max 65 entries) -> `_list_findings_uncached` service.py:628-794.
-  - `_mark_storage_overlap` service.py:799-844: sets `money.overlap_usd` / `overlap_tables` so a table priced by two storage checks counts once.
-  - `fix_first` service.py:1014-1049; `classify_columns` service.py:892-912; `records` service.py:945-962 (masks person columns); `rows_csv` service.py:1052-1057.
+  - `list_findings` service.py:623-637 (cached per data stamp, max 65 entries) -> `_list_findings_uncached` service.py:640-806.
+  - `_mark_storage_overlap` service.py:811-856: sets `money.overlap_usd` / `overlap_tables` so a table priced by two storage checks counts once.
+  - `classify_columns` service.py:904-924; `records` service.py:957-974 (masks person columns); `rows_csv` service.py:1002-1007.
   - `resolve_params` service.py:99-121 and `substitute_header_params` service.py:172-205: `:param` tokens in header prose -> `"<value> (<source>)"`.
 - Calls out: data.py, materiality.py, identity.py, pricing.py, registry.py, tags.py (service.py:57-63).
 - Called by: app.py routes, guide.py (`classify_columns`, `resolve_params`), `__main__._warm`.
@@ -64,17 +64,17 @@ flowchart TD
 | `_order_by_clause` | data.py:676-685 | Worst effective status first, then export row order, so the row cap never drops a CRITICAL row. |
 | `read_finding` | data.py:688-793 | Rows page + `rows_total` + `rows_below_floor` + `excluded_no_account` + applicability flags. |
 | `count_finding(_ex)` | data.py:796-849 | Row count with the same filters (owner and dims not passed). |
-| `finding_window_counts` | data.py:938-1254 | Bulk counts for the findings list on one connection: rows_in_window, rows_total, status_counts, money (data.py:1119-1184), affected (data.py:1186-1235), floor. |
-| `aggregate_finding` | data.py:1333-1547 | GROUP BY sum/count/count_distinct over every matching row; top-N fold; `total_value` None when every value is NULL. |
-| `direct_export_info` | data.py:1632-1676 | Export metadata row (`main.direct_export_meta`). |
-| `exported_window_coverage` / `window_status` / `window_coverage` | data.py:1709-1743, 2131-2149 | Days actually covered per window label; `partial` flag. |
-| `run_results`, `finding_status` | data.py:1817-1834, 1986-2006 | Per-check ok/failed from the loader sidecar. |
-| `coverage_reason`, `resolve_reason`, `reason_fix` | data.py:1863-1902 | Error text -> reason code -> fix text (GRANT lines for no_access). |
-| `not_assessed_status`, `checks_not_ok` | data.py:2025-2111 | One NOT_ASSESSED vocabulary for /api/findings and /api/coverage. |
-| `cost_cutoff` | data.py:2157-2191 | The one money cut-off. |
-| `price_basis`, `effective_discount_pct`, `discount_info` | data.py:2206-2245 | Where $/credit came from; discount what-if is 0 on an invoice rate. |
-| `checks_ran_summary` | data.py:2253-2274 | THE checks-that-ran count. |
-| `visibility_summary`, `finding_visibility` | data.py:2282-2320 | Role-visibility probe; billed vs listed warehouse gap. |
+| `finding_window_counts` | data.py:938-1257 | Bulk counts for the findings list on one connection: rows_in_window, rows_total, status_counts, money (data.py:1119-1187), affected (data.py:1189-1238), floor. |
+| `aggregate_finding` | data.py:1336-1550 | GROUP BY sum/count/count_distinct over every matching row; top-N fold; `total_value` None when every value is NULL. |
+| `direct_export_info` | data.py:1624-1668 | Export metadata row (`main.direct_export_meta`). |
+| `exported_window_coverage` / `window_status` / `window_coverage` | data.py:1701-1735, 2131-2149 | Days actually covered per window label; `partial` flag. |
+| `run_results`, `finding_status` | data.py:1809-1826, 1986-2006 | Per-check ok/failed from the loader sidecar. |
+| `coverage_reason`, `resolve_reason`, `reason_fix` | data.py:1855-1894 | Error text -> reason code -> fix text (GRANT lines for no_access). |
+| `not_assessed_status`, `checks_not_ok` | data.py:2017-2103 | One NOT_ASSESSED vocabulary for /api/findings and /api/coverage. |
+| `cost_cutoff` | data.py:2149-2183 | The one money cut-off. |
+| `price_basis`, `effective_discount_pct`, `discount_info` | data.py:2198-2237 | Where $/credit came from; discount what-if is 0 on an invoice rate. |
+| `checks_ran_summary` | data.py:2245-2266 | THE checks-that-ran count. |
+| `visibility_summary`, `finding_visibility` | data.py:2274-2312 | Role-visibility probe; billed vs listed warehouse gap. |
 
 - Calls out: config, cost_center, datasource, finding_columns, materiality, reasons, registry, tags, tag_spend (data.py:62-70).
 - Called by: service.py, app.py, explorer.py, guide.py, rollup.py, tag_compliance.py, tags.py (lazy), cost_center.py (lazy).
@@ -82,10 +82,10 @@ flowchart TD
 ## rollup.py (nested tag rollup)
 
 - Purpose: per request, walk each cost/perf unit from work tag -> compute tag -> account tag; the first real value wins (rollup.py:1-19).
-- Key functions: `_effective` rollup.py:206-216; `_fetch_cost_paths` rollup.py:231-288 (untagged remainder = unit usd minus tagged work usd); `_resolve_cost_center_alias` rollup.py:78-98; `_resolve_account_scope` rollup.py:378-405; `_matching_unit_ids` rollup.py:419-464; `rollup` rollup.py:486-620; `_reconciliation` rollup.py:684-730; `_build_tree` rollup.py:821-881; `_build_by_value` rollup.py:884-916; `rollup_keys` rollup.py:941-1011; `by_tag_top` rollup.py:1036-1165.
-- Reads: `tags.cost_unit`, `cost_unit_tag`, `cost_reconciliation`, `perf_unit`, `perf_unit_tag`, `tag_account` (rollup.py:66-72) and `findings.f_cost_dollarized_by_service_day` (rollup.py:667-681).
-- Stubs: `_source_status` and `_degraded_effect` always return "nothing degraded" (rollup.py:112-119).
-- Called by: app.py:769, 797, 817, 830.
+- Key functions: `_effective` rollup.py:200-210; `_fetch_cost_paths` rollup.py:225-282 (untagged remainder = unit usd minus tagged work usd); `_resolve_cost_center_alias` rollup.py:72-92; `_resolve_account_scope` rollup.py:372-400; `_matching_unit_ids` rollup.py:414-459; `rollup` rollup.py:481-618; `_reconciliation` rollup.py:682-728; `_build_tree` rollup.py:819-873; `_build_by_value` rollup.py:876-908; `rollup_keys` rollup.py:933-933.
+- Reads: `tags.cost_unit`, `cost_unit_tag`, `cost_reconciliation`, `perf_unit`, `perf_unit_tag`, `tag_account` (rollup.py:60-66) and `findings.f_cost_dollarized_by_service_day` (rollup.py:665-679).
+- Stubs: `_source_status` and `_degraded_effect` always return "nothing degraded" (rollup.py:106-113).
+- Called by: app.py:765, 797, 817, 830.
 
 ## materiality.py (floors and severity cap)
 
@@ -106,7 +106,7 @@ flowchart TD
 - `MONEY_COLUMN_KIND` finding_columns.py:25-51; `FLAGGED_KINDS = {waste, saving, saving_month, gap}` finding_columns.py:55.
 - `money_column` finding_columns.py:135-152: declared `-- money:` wins; else a named column by kind priority (finding_columns.py:132); else first money-shaped column (not `prev_*`) as "spend".
 - `entity_spec` finding_columns.py:169-190; `row_noun` finding_columns.py:119-125; `TOTAL_ROW_COLUMN` / `ALT_BASIS_COLUMN` finding_columns.py:63, 68.
-- Called by: data.py (`finding_window_counts`, `aggregate_finding`), guide.py (`_money_column`). `entity_column` finding_columns.py:193-198 has no caller in app/ or tools/ (grep).
+- Called by: data.py (`finding_window_counts`, `aggregate_finding`), guide.py (`_money_column`).
 
 ## identity.py (on-screen user masking)
 
@@ -118,15 +118,15 @@ flowchart TD
 ## masking.py (export-time masking)
 
 - Purpose: replace chosen kinds of names with salted tokens in every parquet file and the manifest before anything is written (masking.py:1-22).
-- `parse_kinds` masking.py:111-122; `Masker.token` masking.py:170-180; `Masker.column_rule` masking.py:183-202; `Masker.cell` masking.py:208-228; `freeze`/`text` masking.py:231-251; `mask_folder` masking.py:322-341.
-- Called by: app.py `put_privacy_settings` (validation only, app.py:400) and `_privacy_body` (`MASK_KINDS`, app.py:378); the export (`tools/export_results.py`, tests/test_masking.py:172-176).
+- `parse_kinds` masking.py:115-126; `Masker.token` masking.py:174-184; `Masker.column_rule` masking.py:187-206; `Masker.cell` masking.py:212-232; `freeze`/`text` masking.py:244-264; `mask_folder` masking.py:334-353.
+- Called by: app.py `put_privacy_settings` (validation only, app.py:399) and `_privacy_body` (`MASK_KINDS`, app.py:377); the export (`tools/export_results.py`, tests/test_masking.py:172-176).
 
 ## tags.py (tag filter and tag index)
 
 - `TagFilter.from_params` tags.py:62-80; `TagFilterSet.from_params` tags.py:109-146.
 - `read_tag_index` tags.py:171 (GET /api/tags); 503 path via `TagModelsNotBuiltError` tags.py:45-48.
-- `tag_chain` tags.py:394-447: which tag lookups reach a finding's rows (row_tags / entity / none).
-- `tag_clause` tags.py:541-576, `tag_group_clause` tags.py:588-638, `tag_set_clause` tags.py:641-661.
+- `tag_chain` tags.py:386-439: which tag lookups reach a finding's rows (row_tags / entity / none).
+- `tag_clause` tags.py:533-568, `tag_group_clause` tags.py:580-630, `tag_set_clause` tags.py:633-653.
 - Called by: data.py `_build_filters`, app.py `_parse_tag_filter`, rollup.py, guide.py `_tag_reach`.
 
 ## tag_keys.py (tag vocabulary)
@@ -135,28 +135,28 @@ flowchart TD
 
 ## tag_spend.py (stub)
 
-- Every function returns "not available": `has_variant` False, `available` False, `origins` None, `table_sql` None (tag_spend.py:14-27). Kept so data.py and guide.py keep one code path (tag_spend.py:1-7). All `tag_prefiltered` branches in data.py are therefore never taken today (data.py:619-624).
+- Every function returns "not available": `has_variant` False, `available` False, `origins` None, `table_sql` None (tag_spend.py:14-22). Kept so data.py and guide.py keep one code path (tag_spend.py:1-7). All `tag_prefiltered` branches in data.py are therefore never taken today (data.py:619-624).
 
 ## tag_compliance.py (required tags)
 
-- `compliance` tag_compliance.py:144-240; `_universes` tag_compliance.py:49-89; `_spend` tag_compliance.py:100-141.
-- Reads tags.tag_entity, tags.tag_account, tags.cost_unit, tags.cost_unit_tag, dims.*, findings.f_sf_chg_tag_coverage. Called by app.py:1492. See logic/tags-and-cost-center.md.
+- `compliance` tag_compliance.py:148-244; `_universes` tag_compliance.py:49-93; `_spend` tag_compliance.py:104-145.
+- Reads tags.tag_entity, tags.tag_account, tags.cost_unit, tags.cost_unit_tag, dims.*, findings.f_sf_chg_tag_coverage. Called by app.py:1415. See logic/tags-and-cost-center.md.
 
 ## cost_center.py (which tag key means cost center)
 
-- `configured_keys` cost_center.py:28-35; `normalized_keys` cost_center.py:65-74; `is_default` cost_center.py:77-81; `_should_override` cost_center.py:102-112; `account_values` cost_center.py:115-148; `apply_alias` cost_center.py:151-183; `attribute_filter_sql` cost_center.py:186-210; `suggestions` cost_center.py:213-248.
-- Called by: data.read_dim_account (data.py:1562), data._build_filters (data.py:543-551), rollup._resolve_cost_center_alias, app._cost_center_body.
+- `configured_keys` cost_center.py:28-35; `normalized_keys` cost_center.py:37-46; `is_default` cost_center.py:49-53; `_should_override` cost_center.py:74-84; `account_values` cost_center.py:87-120; `apply_alias` cost_center.py:123-155; `attribute_filter_sql` cost_center.py:158-182; `suggestions` cost_center.py:185-220.
+- Called by: data.read_dim_account (data.py:1565), data._build_filters (data.py:543-551), rollup._resolve_cost_center_alias, app._cost_center_body.
 
 ## envmap.py (account name -> env)
 
 - `classify_env` envmap.py:31-42: lower-case, collapse `-_./` to a space, whole-word match in order prod, uat, dev; else `unknown`.
-  - Example (config/settings.yml:54-57): `"ACME-PRD-EU"` -> "acme prd eu" -> `prod`; `"FAKE_ACCOUNT"` -> `unknown` (tests/test_api.py:325-329 asserts env "unknown" for the fake account).
+  - Example (config/settings.yml:54-57): `"ACME-PRD-EU"` -> "acme prd eu" -> `prod`; `"FAKE_ACCOUNT"` -> `unknown` (tests/test_api.py:324-328 asserts env "unknown" for the fake account).
 - Called by: tools/load_results.py only (grep); the app reads the stored `env` column.
 
 ## snowflake_docs.py (docs links)
 
-- `parse_docs` snowflake_docs.py:29-45 (only `https://docs.snowflake.com/` URLs, unique keys); `load_docs` snowflake_docs.py:51-64 (cached on mtime/size); `url_for` snowflake_docs.py:67-70 has no caller (grep).
-- Called by: guide.py:515, registry.py:251.
+- `parse_docs` snowflake_docs.py:29-45 (only `https://docs.snowflake.com/` URLs, unique keys); `load_docs` snowflake_docs.py:51-64 (cached on mtime/size).
+- Called by: guide.py:520, registry.py:251.
 
 ## config/*.yml read by these modules
 

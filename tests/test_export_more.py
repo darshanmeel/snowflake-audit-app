@@ -94,9 +94,9 @@ def test_the_rate_sql_prices_only_consumption_and_leaves_out_ai_overage_and_reba
     sql = ex.org_rate_sql("ABC12345", NOW.date())
     assert "WHEN 'ai_compute' THEN 'ai'" in sql and "LOWER(billing_type) = 'consumption'" in sql
     assert "COALESCE(is_adjustment, FALSE) = FALSE" in sql
-    assert "'overage'" in sql and "(AI|CORTEX)" in sql
+    assert "'overage'" in sql and "(AI|CORTEX|COCO|COWORK)" in sql
     assert "usage_type ILIKE" not in sql, "the rate no longer guesses from the usage_type text"
-    pattern = re.compile(r"(^|_)(AI|CORTEX)(_|$)")
+    pattern = re.compile(r"(^|.*_)(AI|CORTEX|COCO|COWORK)(_.*|$)")
     assert pattern.search("CORTEX_FUNCTIONS") and pattern.search("AI_SERVICES") and not pattern.search("CLOUD_SERVICES")
     assert not pattern.search("WAREHOUSE_METERING") and not pattern.search("SNOWPIPE_STREAMING")
 
@@ -312,9 +312,9 @@ def test_validate_separates_unreadable_from_failed_and_gives_the_grant(tmp_path)
     summary = _validate(tmp_path, cur, only)
     groups = ex.validate_groups(summary)
     unreadable = groups["unreadable"]["no_access"]
-    assert CHECK in unreadable["checks"] and unreadable["grants"] == [
-        "GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE <audit_role>;"] + [
-        g for g in unreadable["grants"][1:]]
+    assert CHECK in unreadable["checks"]
+    assert unreadable["grants"][0] == "GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE <audit_role>;"
+    assert len(unreadable["grants"]) == len(set(unreadable["grants"])), "one GRANT each"
     assert summary["checks"][CHECK]["status"] == "unreadable" and summary["checks"][CHECK]["cause"] == "no_access"
     assert all(e["status"] != "failed" for e in summary["checks"].values() if e["cause"] == "no_access")
     text = (tmp_path / "v" / "validate.md").read_text(encoding="utf-8")
@@ -388,10 +388,6 @@ def test_first_run_passes_the_prices_to_the_export():
     cmd = first_run.export_argv(Path("out"), args)
     assert cmd[-4:] == ["--credit-price", "3.5", "--storage-price", "23.0"]
     assert "--credit-price" not in first_run.export_argv(Path("out"), first_run.parse_args([]))
-
-
-def test_first_run_still_refuses_a_credential_shaped_flag():
-    first_run.build_parser()  # the self-check inside raises for "token", "password", "secret", "credential"
 
 
 def test_first_run_and_refresh_name_the_folder_the_same_way_and_newest_is_last(tmp_path):

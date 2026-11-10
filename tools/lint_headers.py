@@ -44,6 +44,9 @@ STATUS_ENUM = {"OK", "WARN", "CRITICAL", "NOT_ASSESSED"}
 # Isolate ONLY the status CASE: the negative lookahead stops the span from crossing an earlier
 # column's `END AS <x>`, so we never harvest another column's THEN/ELSE literals.
 _STATUS_CASE_RE = re.compile(r"CASE\b((?:(?!\bEND\s+AS\b).)*?)\bEND\s+AS\s+status\b", re.I | re.S)
+# The last IFF before AS status: its two quoted branches (no ";" or "(" between, so it is one IFF).
+_STATUS_IFF_RE = re.compile(r"IFF\([^;()]*(?:\([^;()]*\)[^;()]*)*,\s*'([^']*)'\s*,\s*'([^']*)'\s*\)\s+AS\s+status\b", re.I)
+_STATUS_LITERAL_RE = re.compile(r"'([^']*)'\s+AS\s+status\b", re.I)
 _STATUS_VALUE_RE = re.compile(r"\b(?:THEN|ELSE)\s+'([^']*)'", re.I)
 _NESTED_CASE_RE = re.compile(r"\bCASE\b(?:(?!\bCASE\b|\bEND\b).)*?\bEND\b", re.I | re.S)
 
@@ -98,7 +101,8 @@ def lint_file(path: Path, all_ids: set[str]) -> list[str]:
     for f in hs.FIELDS:
         if f == "domain":
             continue  # domain + tier ride on the combined 'domain:' line, validated below
-        if not str(hdr.get(f, "")).strip():
+        # the raw text: a parsed empty list reads "[]", which is not empty
+        if not str(hdr["_raw"].get(f, "")).strip():
             errs.append(f"{rel}: field '{f}' is empty")
 
     # The export probes what reads lists: a view left out fails for a blocked role instead of reading not assessed.
@@ -163,7 +167,7 @@ def lint_file(path: Path, all_ids: set[str]) -> list[str]:
     if hdr["windowed"] != ("period_days" in param_names):
         errs.append(f"{rel}: 'windowed' and a :period_days param must go together")
 
-    for qid, cond in [(n["query_id"], n["if"]) for n in hdr["next"]]:
+    for qid in [n["query_id"] for n in hdr["next"]]:
         if qid not in all_ids:
             errs.append(f"{rel}: next target '{qid}' is not a real query_id")
 
@@ -173,10 +177,13 @@ def lint_file(path: Path, all_ids: set[str]) -> list[str]:
 
     # H4: any query that emits a `status` column may only emit the runner's four band labels,
     # so the scorecard (which tallies exactly this set) can never silently drop an off-band value.
-    for span in _STATUS_CASE_RE.findall(body):
-        for lit in status_labels(span):
-            if lit not in STATUS_ENUM:
-                errs.append(f"{rel}: status label '{lit}' not in status enum {sorted(STATUS_ENUM)}")
+    labels = [lit for span in _STATUS_CASE_RE.findall(body) for lit in status_labels(span)]
+    # IFF(cond, 'A', 'B') AS status and 'A' AS status build a status too.
+    labels += [lit for pair in _STATUS_IFF_RE.findall(body) for lit in pair]
+    labels += _STATUS_LITERAL_RE.findall(body)
+    for lit in labels:
+        if lit not in STATUS_ENUM:
+            errs.append(f"{rel}: status label '{lit}' not in status enum {sorted(STATUS_ENUM)}")
 
     return errs
 

@@ -39,7 +39,9 @@ WITH s AS (
 sec AS (
   SELECT UPPER(name) AS share_key,
          BOOLAND_AGG(IFF(LOWER(TO_VARCHAR(secure_objects_only)) IN ('true', 'yes'), TRUE,
-                         IFF(LOWER(TO_VARCHAR(secure_objects_only)) IN ('false', 'no'), FALSE, NULL))) AS secure_objects_only
+                         IFF(LOWER(TO_VARCHAR(secure_objects_only)) IN ('false', 'no'), FALSE, NULL))) AS secure_objects_only,
+         -- the full consumer list: SHOW SHARES "to" lists at most 3
+         MAX(IFF(NULLIF(TRIM(target_accounts), '') IS NULL, 0, ARRAY_SIZE(SPLIT(target_accounts, ',')))) AS target_count
   FROM SNOWFLAKE.ACCOUNT_USAGE.SHARES
   WHERE deleted_on IS NULL
   GROUP BY 1
@@ -57,8 +59,8 @@ lah AS (
 ),
 j AS (
   SELECT s.*,
-         IFF(NULLIF(TRIM(s.consumer_accounts), '') IS NULL, 0,
-             ARRAY_SIZE(SPLIT(s.consumer_accounts, ','))) AS consumer_count,
+         COALESCE(sec.target_count, IFF(NULLIF(TRIM(s.consumer_accounts), '') IS NULL, 0,
+             ARRAY_SIZE(SPLIT(s.consumer_accounts, ',')))) AS consumer_count,
          sec.secure_objects_only,
          l.listing_queries, l.listing_consumer_accounts, l.last_listing_access
   FROM s

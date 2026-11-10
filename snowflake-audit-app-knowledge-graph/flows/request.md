@@ -8,7 +8,7 @@ How one page request travels through the backend, shown for GET /api/findings (t
 sequenceDiagram
   participant UI as Browser (web/src/api.ts)
   participant API as app.py
-  UI->>API: GET /api/status (app.py:446-473)
+  UI->>API: GET /api/status (app.py:445-472)
   alt state != ready
     API-->>UI: settings_invalid | no_database | build_incomplete -> friendly screen
   else ready
@@ -18,39 +18,39 @@ sequenceDiagram
   end
 ```
 
-- `/api/status` is called first and never raises (app.py:440-473; api.ts:199).
-- `open_window` = settings.default_window if this db has it, else the largest available window (app.py:202-208).
+- `/api/status` is called first and never raises (app.py:439-472; api.ts:196).
+- `open_window` = settings.default_window if this db has it, else the largest available window (app.py:203-209).
 
 ## GET /api/findings (list)
 
 ```mermaid
 sequenceDiagram
   participant UI as Browser
-  participant MW as cache middleware<br/>app.py:144-170
-  participant R as get_findings<br/>app.py:915-953
-  participant S as service.list_findings<br/>service.py:614-794
+  participant MW as cache middleware<br/>app.py:140-171
+  participant R as get_findings<br/>app.py:870-908
+  participant S as service.list_findings<br/>service.py:623-806
   participant D as data.py
   participant DB as DuckDB (read-only)
   UI->>MW: GET /api/findings?window=30
   Note over MW: not a cached prefix -> pass through
   MW->>R: request
-  R->>R: _resolve_window, _read_attribute_filters,<br/>_parse_tag_filter (app.py:931-936)
+  R->>R: _resolve_window, _read_attribute_filters,<br/>_parse_tag_filter (app.py:886-891)
   R->>S: list_findings(30, accounts, env, attributes, tag, owner, dims)
   alt same data_stamp + args seen before
-    S-->>R: deep copy from _LIST_CACHE (service.py:617-625)
+    S-->>R: deep copy from _LIST_CACHE (service.py:626-637)
   else
-    S->>D: run_results() once (service.py:663)
-    S->>S: failed -> model_failed; window not exported -> not_exported (service.py:664-679)
-    S->>D: finding_window_counts(pairs, filters) (service.py:687-689)
-    D->>DB: one connection: columns of every findings.f_* table, summary counts,<br/>per check: count, effective-status GROUP BY, money SUM, entity counts (data.py:991-1251)
+    S->>D: run_results() once (service.py:675)
+    S->>S: failed -> model_failed; window not exported -> not_exported (service.py:676-691)
+    S->>D: finding_window_counts(pairs, filters) (service.py:699-701)
+    D->>DB: one connection: columns of every findings.f_* table, summary counts,<br/>per check: count, effective-status GROUP BY, money SUM, entity counts (data.py:991-1254)
     DB-->>D: rows
-    S->>D: not_assessed_status per check (service.py:697-704)
-    S->>S: build FindingRow per check (outcome ladder, service.py:706-784)
-    S->>D: visibility_summary, fallback_sources (service.py:707, 786)
-    S->>S: _mark_storage_overlap (service.py:793, 799-844)
+    S->>D: not_assessed_status per check (service.py:709-716)
+    S->>S: build FindingRow per check (outcome ladder, service.py:718-796)
+    S->>D: visibility_summary, fallback_sources (service.py:719, 786)
+    S->>S: _mark_storage_overlap (service.py:805, 799-844)
   end
   S-->>R: list[FindingRow]
-  R->>D: checks_ran_summary(), price_basis(), discount_info() (app.py:949-951)
+  R->>D: checks_ran_summary(), price_basis(), discount_info() (app.py:904-906)
   R-->>UI: JSON {window_days, count, checks_ran, price_basis, discount, findings[]}
 ```
 
@@ -60,7 +60,7 @@ sequenceDiagram
 sequenceDiagram
   participant UI as Browser
   participant MW as cache middleware
-  participant R as get_finding<br/>app.py:1003-1148
+  participant R as get_finding<br/>app.py:926-1071
   participant S as service.load_outcome<br/>service.py:277-425
   participant D as data.py
   participant DB as DuckDB
@@ -82,14 +82,14 @@ sequenceDiagram
       S-->>R: ok_empty_filters or ok_rows (+ window_coverage)
     end
   end
-  R->>R: header params substituted (service.py:172-205), prose cleaned (app.py:993-1000)
-  R->>R: ok_rows: pricing.apply(df, effective discount) -> *_disc columns,<br/>page slice, classify_columns, records (masking) (app.py:1107-1114)
+  R->>R: header params substituted (service.py:172-205), prose cleaned (app.py:916-923)
+  R->>R: ok_rows: pricing.apply(df, effective discount) -> *_disc columns,<br/>page slice, classify_columns, records (masking) (app.py:1030-1037)
   R-->>MW: 200 JSON
-  MW->>MW: store if body <= cap (app.py:162-168)
+  MW->>MW: store if body <= cap (app.py:163-169)
   MW-->>UI: JSON
 ```
 
-- The API layer never builds finding SQL; paging is a Python slice of the already capped frame (app.py:1104-1109).
+- The API layer never builds finding SQL; paging is a Python slice of the already capped frame (app.py:1027-1032).
 - Filters a check cannot apply are ignored and reported (`scope.*_applied`, `dim_applied`), never an empty result (data.py:408-421, 572-599).
 
 ## Real example (tests/db_audit_test.duckdb, fake account, as of 2026-09-21)
@@ -130,8 +130,8 @@ Request: `GET /api/finding/sf_wh_idle_minutes/aggregate?window=30&agg=sum&value=
  "truncated": false, "truncated_max_rows": 50000}
 ```
 
-- The list's `money.usd` (13,827.60) equals the aggregate `total_value` over WARN+CRITICAL rows; tests/test_totals_agree.py:103-130 checks this for every priced check.
-- `group=warehouse_name` on this check returns 422 `unknown group column` because the table carries `warehouse_id` only; names come from GET /api/dims (app.py:599-673; data.py:1403-1407).
+- The list's `money.usd` (13,827.60) equals the aggregate `total_value` over WARN+CRITICAL rows; tests/test_totals_agree.py:101-128 checks this for every priced check.
+- `group=warehouse_name` on this check returns 422 `unknown group column` because the table carries `warehouse_id` only; names come from GET /api/dims (app.py:595-669; data.py:1406-1410).
 
 Request: `GET /api/finding/sf_org_dormant_accounts?window=30` (failed on purpose in the fixture, tests/fixtures/build_fixtures.py:46-48):
 
@@ -141,6 +141,6 @@ Request: `GET /api/finding/sf_org_dormant_accounts?window=30` (failed on purpose
    "message": "SQL access control error: Insufficient privileges to operate on view 'ORGANIZATION_USAGE.ACCOUNTS'"}}
 ```
 
-No `rows`, `rows_total` or `columns` keys: tests/test_api.py:491-497.
+No `rows`, `rows_total` or `columns` keys: tests/test_api.py:490-496.
 
 Shapes captured by running FastAPI TestClient against tests/db_audit_test.duckdb with a copy of config/ (values rounded here).

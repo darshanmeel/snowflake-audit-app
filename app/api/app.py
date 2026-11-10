@@ -4,7 +4,7 @@ The FastAPI application. Every route returns JSON, never HTML; the store is read
 app/core/data.py's functions, and this module never builds SQL itself. app/web's static files are
 served from the same process, so `python -m app.api` serves both the API and the front end.
 
-Account ids, filters and fields are the Snowflake account (account_id, account_ids); the legacy workspace_ids parameter and /api/workspaces path still answer.
+Account ids, filters and fields are the Snowflake account (account_id, account_ids).
 
 Routes:
     GET /api/status                     {state, settings_error, database, brand}: the one route the
@@ -35,12 +35,10 @@ Routes:
     GET /api/access/names, /api/access/explore
                                          app/api/explorer.py: the Access explorer's paths from
                                          user through roles to objects.
-    GET /api/rollup, /api/rollup/top, /api/rollup/keys
+    GET /api/rollup, /api/rollup/keys
                                          the nested cost or performance rollup for one tag key.
                                          area=cost (default) or performance; 422 for a bad area, a
                                          missing key or an unknown window.
-    GET /api/tag_origins                the dollars the active tag filter keeps, by where each
-                                         dollar's value was set; keys [] with no tag filter.
     GET /api/tags                       every tag key/value seen, ?search=, optional ?tag_key=;
                                          503 with a plain detail when the tag tables were not loaded.
     GET /api/findings                   one row per executable registry query: query_id, title,
@@ -69,9 +67,7 @@ Routes:
     GET /api/tags/compliance            mandatory-tag compliance: objects missing each required tag and the $
                                          of untagged spend; with no required tags, tag coverage by object type.
     GET/PUT /api/settings/required-tags {keys, default}: the tag names every object must carry.
-    GET /api/fix-first                  the "Fix these first" ranking: priced findings, and CRITICAL findings
-                                         with no $, in labelled groups.
-    /api/findings, /api/finding, /aggregate, rows.csv, /api/fix-first also take warehouse, database and
+    /api/findings, /api/finding, /aggregate, rows.csv also take warehouse, database and
                                          schema (repeatable); a check with no such column is left unfiltered
                                          and says so (scope.warehouse_applied / dim_applied).
     GET /                               app/web/dist/index.html (the Vite build of web/; StaticFiles,
@@ -267,10 +263,9 @@ def _tag_json(tag: "app_core_tags.TagFilterSet | None") -> dict | None:
 
 def account_scope(
     account_ids: list[str] = Query(default=[]),
-    workspace_ids: list[str] = Query(default=[], include_in_schema=False),  # legacy spelling of account_ids
 ) -> list[str]:
-    """The account ids a request is scoped to (repeated account_ids, or the legacy workspace_ids)."""
-    return list(dict.fromkeys([*account_ids, *workspace_ids]))
+    """The account ids a request is scoped to (repeated account_ids)."""
+    return list(dict.fromkeys(account_ids))
 
 
 def dim_scope(
@@ -563,7 +558,7 @@ def get_meta() -> dict:
 
 
 # -------------------------------------------------------------------------------------------
-# GET /api/accounts (legacy path /api/workspaces)
+# GET /api/accounts
 # -------------------------------------------------------------------------------------------
 
 
@@ -571,7 +566,6 @@ _ACCOUNT_FIXED_COLUMNS = ("account_id", "name", "url", "env", "env_source", "env
 
 
 @app.get("/api/accounts")
-@app.get("/api/workspaces")  # legacy path of /api/accounts
 def get_accounts() -> list[dict]:
     # A missing or corrupt db, or a load that never reached dims.dim_account, gets a clear 503
     # rather than an opaque 500. The shell checks GET /api/status first and never reaches this
@@ -587,7 +581,6 @@ def get_accounts() -> list[dict]:
     for _, row in df.iterrows():
         rec = {
             "account_id": str(row["account_id"]),
-            "workspace_id": str(row["account_id"]),  # legacy key of account_id
             "name": service._json_scalar(row.get("name")),
             "url": service._json_scalar(row.get("url")),
             "env": service._json_scalar(row.get("env")),
@@ -782,47 +775,6 @@ def get_rollup(
     return body
 
 
-@app.get("/api/rollup/top")
-def get_rollup_top(
-    request: Request,
-    area: str = Query(default="cost"),
-    tag_key: str = Query(...),
-    window: int | None = Query(default=None),
-    top: int = Query(default=10, ge=1, le=100),
-    account_ids: list[str] = Depends(account_scope),
-    env: list[str] = Query(default=[]),
-    tag: list[str] = Query(default=[]),
-) -> dict:
-    settings = app_config.load_settings()
-    eff_window = _resolve_window(window, settings)
-    attributes = _read_attribute_filters(request, _canonical_keys()) or None
-    tag_filter = _parse_tag_filter(None, None, tag)
-    try:
-        return app_rollup.by_tag_top(
-            area, tag_key, eff_window, top=top,
-            account_ids=account_ids or None, env=env or None, attributes=attributes,
-            tag_filter=tag_filter,
-        )
-    except app_rollup.RollupError as exc:
-        raise HTTPException(422, str(exc))
-
-
-@app.get("/api/tag_origins")
-def get_tag_origins(
-    request: Request,
-    window: int | None = Query(default=None),
-    account_ids: list[str] = Depends(account_scope),
-    env: list[str] = Query(default=[]),
-    tag: list[str] = Query(default=[]),
-) -> dict:
-    eff_window = _resolve_window(window, app_config.load_settings())
-    attributes = _read_attribute_filters(request, _canonical_keys()) or None
-    tag_filter = _parse_tag_filter(None, None, tag)
-    scope = app_rollup._resolve_account_scope(account_ids or None, env or None, attributes)
-    found = app_core_data.read_tag_origins(tag_filter, eff_window, scope)
-    return found or {"window_days": eff_window, "usd": 0.0, "keys": []}
-
-
 @app.get("/api/rollup/keys")
 def get_rollup_keys(
     area: str = Query(default="cost"),
@@ -955,38 +907,6 @@ def get_findings(
         "discount": app_core_data.discount_info(settings["discount_pct"]),
         "findings": [_finding_json(r) for r in rows],
     }
-
-
-# -------------------------------------------------------------------------------------------
-# GET /api/fix-first: what to do first. Priced findings (by $), and CRITICAL findings with no $ figure
-# (an admin without MFA), in labelled groups that are never added together.
-# -------------------------------------------------------------------------------------------
-
-
-@app.get("/api/fix-first")
-def get_fix_first(
-    request: Request,
-    window: int | None = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=1000),
-    account_ids: list[str] = Depends(account_scope),
-    env: list[str] = Query(default=[]),
-    tag_key: str | None = Query(default=None),
-    tag_value: str | None = Query(default=None),
-    tag: list[str] = Query(default=[]),
-    owner: str | None = Query(default=None),
-    dims: "app_core_data.DimFilter | None" = Depends(dim_scope),
-) -> dict:
-    settings = app_config.load_settings()
-    eff_window = _resolve_window(window, settings)
-    attributes = _read_attribute_filters(request, _canonical_keys()) or None
-    tag_filter = _parse_tag_filter(tag_key, tag_value, tag)
-    rows = service.list_findings(
-        eff_window, account_ids or None, env or None, attributes, tag=tag_filter, owner=owner, dims=dims,
-    )
-    body = service.fix_first(rows, limit)
-    body.update({"window_days": eff_window, "price_basis": app_core_data.price_basis(),
-                 "discount": app_core_data.discount_info(settings["discount_pct"])})
-    return body
 
 
 # -------------------------------------------------------------------------------------------

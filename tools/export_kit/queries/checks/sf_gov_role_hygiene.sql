@@ -32,11 +32,16 @@ sf_sec_role_reach AS (
   FROM SNOWFLAKE.ACCOUNT_USAGE.ROLES
   WHERE deleted_on IS NULL
   UNION ALL
-  SELECT r.top_role, g.name, r.depth + 1, r.path || ' > ' || g.name
+  -- A database role is named DATABASE.ROLE, as in the Access Explorer, so it never clashes with an account role.
+  SELECT r.top_role, g.child, r.depth + 1, r.path || ' > ' || g.child
   FROM sf_sec_role_reach r
-  JOIN SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES g
-    ON g.grantee_name = r.role_name AND g.granted_on = 'ROLE' AND g.granted_to IN ('ROLE', 'ACCOUNT ROLE')
-   AND g.privilege = 'USAGE' AND g.deleted_on IS NULL
+  JOIN (SELECT IFF(granted_on = 'DATABASE_ROLE' AND NOT CONTAINS(name, '.'), table_catalog || '.' || name, name) AS child,
+               IFF(granted_to = 'DATABASE_ROLE' AND NOT CONTAINS(grantee_name, '.'),
+                   table_catalog || '.' || grantee_name, grantee_name) AS parent
+        FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
+        WHERE granted_on IN ('ROLE', 'DATABASE_ROLE') AND granted_to IN ('ROLE', 'ACCOUNT ROLE', 'DATABASE_ROLE')
+          AND privilege = 'USAGE' AND deleted_on IS NULL) g
+    ON g.parent = r.role_name
   -- Snowflake forbids cycles; the cap only guards against a malformed history.
   WHERE r.depth < 20
 ),

@@ -42,10 +42,10 @@ SELECT :period_days AS window_days, day, __ACCOUNT_ID__ AS account_id, compute_t
        COUNT(*) AS query_count,
        SUM(total_elapsed_time) AS total_duration_ms_sum,
        SUM(execution_time) AS execution_duration_ms_sum,
-       -- the latest error, de-valued: emails, then single-quoted literals
-       REGEXP_REPLACE(
+       -- the latest error, de-valued: emails, quoted values and numbers
+       LEFT(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(
          REGEXP_REPLACE(MAX_BY(error_message, start_time), '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}', '<email>'),
-         '''[^'']*''', '?') AS error_message_sample,
+         '''[^'']*''', '?'), '"[^"]*"', '?'), '[0-9]+', 'N'), 500) AS error_message_sample,
        CASE
          WHEN COUNT(*) >= :crit_failed_count THEN 'CRITICAL'
          WHEN COUNT(*) >= :warn_failed_count THEN 'WARN'

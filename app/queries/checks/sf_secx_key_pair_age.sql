@@ -43,7 +43,7 @@ k AS (
   WHERE UPPER(c.type) = 'KEYPAIR' OR UPPER(c.domain) = 'KEYPAIR'
 ),
 j AS (
-  SELECT k.credential_id, k.credential_name, u.user_name, u.user_id, u.user_type, u.is_disabled, u.has_password,
+  SELECT k.credential_id, k.credential_name, COALESCE(u.user_name, k.user_name) AS user_name, u.user_id, u.user_type, u.is_disabled, u.has_password,
          k.key_status, k.created_on, k.last_used_on, k.expiration_date, TRUE AS has_record
   FROM k
   LEFT JOIN sf_sec_users u ON u.user_name = k.user_name

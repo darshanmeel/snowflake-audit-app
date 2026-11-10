@@ -6,7 +6,6 @@ instead. A check with neither is unaffected, and reports scope.owner_applied Fal
 """
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.api.app import app

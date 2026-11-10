@@ -1000,67 +1000,6 @@ def floor_json(query_id: str, columns, rows_below: int) -> dict[str, Any] | None
     }
 
 
-
-# ---------------------------------------------------------------------------------------------
-# Fix these first: priced findings and CRITICAL findings with no dollar figure, labelled apart
-# ---------------------------------------------------------------------------------------------
-
-# Money kinds that are a saving or a waste (something to act on), by the period they are priced over.
-_FIX_WINDOW_KINDS = ("waste", "saving", "gap")
-_FIX_MONTH_KINDS = ("saving_month",)
-
-
-def _fix_item(row: FindingRow, group: str) -> dict:
-    counts = row.status_counts or {}
-    money = row.money or {}
-    return {
-        "query_id": row.query_id, "title": row.title, "domain": row.domain, "group": group,
-        "critical": int(counts.get("CRITICAL", 0)), "warn": int(counts.get("WARN", 0)),
-        "usd": money.get("usd"), "kind": money.get("kind"), "unit": money.get("unit"),
-        "column": money.get("column"), "basis": money.get("basis"), "price_basis": money.get("price_basis"),
-        "per": "month" if money.get("kind") in _FIX_MONTH_KINDS else ("window" if group != "critical_no_usd" else None),
-        "affected": row.affected, "money_reason": row.money_reason,
-    }
-
-
-def fix_first(rows: list[FindingRow], limit: int = 10) -> dict:
-    """The ranking behind "Fix these first". Three labelled groups, never added together:
-
-    priced_window   flagged waste, saving and gap findings by $ in the window (usd desc)
-    priced_month    flagged storage savings by $ per month (usd desc)
-    critical_no_usd CRITICAL findings that carry no $ at all (an admin without MFA, heavy spill): by
-                    CRITICAL rows, then domain governance_access first
-
-    `items` is the flat list a screen shows: the priced ones, then the CRITICAL ones with no $, each
-    carrying its `group`. A finding that is not assessed is in none of them."""
-    window, month, critical = [], [], []
-    for row in rows:
-        if row.outcome != OUTCOME_OK_ROWS or not row.is_finding:
-            continue
-        counts = row.status_counts or {}
-        flagged = int(counts.get("CRITICAL", 0)) + int(counts.get("WARN", 0))
-        money = row.money or {}
-        kind, usd = money.get("kind"), money.get("usd")
-        priced = kind in _FIX_WINDOW_KINDS + _FIX_MONTH_KINDS and usd is not None and usd > 0 and flagged > 0
-        if priced:
-            (month if kind in _FIX_MONTH_KINDS else window).append(_fix_item(row, "priced_month" if kind in _FIX_MONTH_KINDS else "priced_window"))
-        elif int(counts.get("CRITICAL", 0)) > 0 and not (usd and kind in ("spend", "context")):
-            # A spend or context $ is a view of money a priced check already ranks (idle credits by day).
-            critical.append(_fix_item(row, "critical_no_usd"))
-    window.sort(key=lambda i: (-i["usd"], i["title"]))
-    month.sort(key=lambda i: (-i["usd"], i["title"]))
-    critical.sort(key=lambda i: (-i["critical"], 0 if i["domain"] == "governance_access" else 1, i["title"]))
-    return {
-        "limit": limit,
-        "priced_window": window[:limit], "priced_month": month[:limit], "critical_no_usd": critical[:limit],
-        "items": window[:limit] + month[:limit] + critical[:limit],
-        "counts": {"priced_window": len(window), "priced_month": len(month), "critical_no_usd": len(critical),
-                   "unit": "findings"},
-        "note": "Dollars are possible waste or savings in the window (or per month for storage); a CRITICAL "
-                "finding with no dollar figure is listed apart. Groups are never added together.",
-    }
-
-
 def rows_csv(outcome: "Outcome", discount: float) -> str:
     """Every row of a finding (the filters applied, no row cap) as CSV, user names masked when masking
     is on, money columns discounted the way the table shows them."""

@@ -20,8 +20,8 @@
 -- actions: 1) revoke the roles of dormant and disabled users (free); 2) mask the sensitive columns
 --   (config); 3) move write access to a service user that loads the table (free)
 -- next: sf_gov_sensitive_data_access
--- caveats: "can" means a grant path exists; USAGE on the database and schema is not checked, and
---   database roles are not followed. Who did read it is in sf_gov_sensitive_data_access. Lags up to 2
+-- caveats: "can" means a grant path exists; USAGE on the database and schema is not checked.
+--   Who did read it is in sf_gov_sensitive_data_access. Lags up to 2
 --   hours.
 WITH __INCLUDE_sf_gov_sensitive_columns__,
 __INCLUDE_sf_sec_users__,
@@ -35,19 +35,22 @@ tables_ AS (
   GROUP BY 1, 2, 3
 ),
 obj AS (
-  SELECT grantee_name AS role_name, UPPER(table_catalog) AS database_name, UPPER(table_schema) AS schema_name,
+  SELECT IFF(granted_to = 'DATABASE_ROLE' AND NOT CONTAINS(grantee_name, '.'), table_catalog || '.' || grantee_name,
+             grantee_name) AS role_name, UPPER(table_catalog) AS database_name, UPPER(table_schema) AS schema_name,
          UPPER(name) AS table_name,
          BOOLOR_AGG(privilege IN ('SELECT', 'OWNERSHIP')) AS can_read,
          BOOLOR_AGG(privilege IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'OWNERSHIP')) AS can_write
   FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
-  WHERE deleted_on IS NULL AND granted_to IN ('ROLE', 'ACCOUNT ROLE')
+  WHERE deleted_on IS NULL AND granted_to IN ('ROLE', 'ACCOUNT ROLE', 'DATABASE_ROLE')
     AND granted_on IN ('TABLE', 'VIEW', 'MATERIALIZED_VIEW', 'MATERIALIZED VIEW', 'DYNAMIC_TABLE',
                        'EXTERNAL_TABLE', 'ICEBERG_TABLE', 'EVENT_TABLE')
   GROUP BY 1, 2, 3, 4
 ),
--- Every user holds PUBLIC without a grant row.
+-- Every user holds PUBLIC without a grant row, and every role granted to PUBLIC with it.
 user_roles AS (
   SELECT user_name, role_name FROM sf_sec_user_roles
+  UNION
+  SELECT u.user_name, r.role_name FROM sf_sec_users u JOIN sf_sec_role_reach r ON r.top_role = 'PUBLIC'
   UNION
   SELECT user_name, 'PUBLIC' FROM sf_sec_users
 ),

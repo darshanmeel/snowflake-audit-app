@@ -21,7 +21,6 @@ client = TestClient(app)
 TOTAL_SPEND = [
     ("cost_chargeback_by_account", "usd_list"),
     ("cost_chargeback_by_service", "usd_list"),
-    ("cost_chargeback_by_service", "usd_list"),
     ("cost_period_over_period", "est_current_usd_list"),
     ("cost_daily_spikes", "est_day_usd_list"),
 ]

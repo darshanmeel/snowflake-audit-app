@@ -1,6 +1,6 @@
 # README.md
 
-The user manual: what the audit is, how to install, grant, export, load, run (locally or in Streamlit in Snowflake), read the numbers, configure, mask, troubleshoot and test (README.md:1-921).
+The user manual: what the audit is, how to install, grant, export, load, run (locally or in Streamlit in Snowflake), read the numbers, configure, mask, troubleshoot and test (README.md:1-923).
 
 ## Map of sections
 
@@ -48,20 +48,20 @@ flowchart LR
 
 ## Key facts it states
 
-- Read-only: checks are `SELECT`, `WITH`, `SHOW`; deploy to Streamlit is the only step that creates objects (README.md:8-11). Enforced in code by `assert_read_only` (tools/export_results.py:642-647).
-- A check that did not run shows "–" and the reason, never $0 (README.md:587-588, 636).
-- Spend, change, waste and savings are never added together (README.md:581, 647-650).
-- Prices: CLI → rate sheet → 90-day invoice rate → settings 3.00 / 2.00 (README.md:376-394).
-- Data lives outside the repo; export / load refuse a folder inside it (README.md:477-494, 838).
+- Read-only: checks are `SELECT`, `WITH`, `SHOW`; deploy to Streamlit is the only step that creates objects (README.md:8-11). Enforced in code by `assert_read_only` (tools/export_results.py:660-665).
+- A check that did not run shows "–" and the reason, never $0 (README.md:589-590, 636).
+- Spend, change, waste and savings are never added together (README.md:583, 647-650).
+- Prices: CLI → rate sheet → 90-day invoice rate → settings 3.00 / 2.00 (README.md:378-396).
+- Data lives outside the repo; export / load refuse a folder inside it (README.md:479-496, 838).
 
 ## Who uses it
 
 - The person running the audit (Quick start to Run), an admin (Roles and privileges), a viewer (What the app shows / numbers mean), a developer (Repository, Tests).
-- `tools/make_export_kit.py` reads its "Roles and privileges" section to build the kit README and `grants.sql`, so editing that section changes shipped files (tools/make_export_kit.py:110-130).
+- `tools/make_export_kit.py` reads its "Roles and privileges" section to build the kit README and `grants.sql`, so editing that section changes shipped files (tools/make_export_kit.py:112-132).
 
 ## Inconsistencies noticed
 
-- Title is the brand "Crosshire" (README.md:1); the project and Streamlit app are called "Snowflake audit" elsewhere (CLAUDE.md:1; tools/streamlit_deploy/deploy.py:25, 139). Brand is a setting (README.md:712).
-- "`first_run.py` takes `--windows` and the three prices" (README.md:354) but it also takes `--workers` (tools/first_run.py:84-87).
+- Title is the brand "Crosshire" (README.md:1); the project and Streamlit app are called "Snowflake audit" elsewhere (CLAUDE.md:1; tools/streamlit_deploy/deploy.py:25, 139). Brand is a setting (README.md:714).
+- "`first_run.py` takes `--windows` and the three prices" (README.md:356) but it also takes `--workers` (tools/first_run.py:84-87).
 - `SNOWFLAKE_AUTHENTICATOR` is read by the export (tools/export_results.py:49, 692) but not documented in README or `.env.example`.
-- Network allowlist: README says `*.snowflake.app` and WebSockets (README.md:533); the deploy README adds `*.snowflake.com` and `*.snowflakecomputing.app` (tools/streamlit_deploy/README.md:50).
+- Network allowlist: README says `*.snowflake.app` and WebSockets (README.md:535); the deploy README adds `*.snowflake.com` and `*.snowflakecomputing.app` (tools/streamlit_deploy/README.md:50).

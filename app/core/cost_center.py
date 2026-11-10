@@ -35,40 +35,12 @@ def configured_keys() -> list[str]:
     return list(settings.get("cost_center_tag_keys") or DEFAULT_KEYS)
 
 
-_STORED: dict = {}
-
-
-def _stored_under() -> dict[str, str]:
-    """{raw key spelling, lower-case: the tag_key it is stored under}. A tag alias can file a raw
-    key such as team_space_name under another name, so a configured raw key still finds it."""
-    from app.core import data as app_core_data  # local: data imports this module
-
-    path = app_core_data._db_path()
-    try:
-        cache_key = (str(path), path.stat().st_mtime_ns)
-    except OSError:
-        return {}
-    if cache_key not in _STORED:
-        try:
-            con = app_core_data._connect()
-            try:
-                rows = con.execute("SELECT DISTINCT lower(display_key), tag_key FROM tags.tag_index").fetchall()
-            finally:
-                con.close()
-        except duckdb.Error:
-            rows = []
-        _STORED.clear()
-        _STORED[cache_key] = {spelling: key for spelling, key in rows if spelling}
-    return _STORED[cache_key]
-
-
 def normalized_keys() -> list[str]:
     """configured_keys() as the tag_key each is stored under, in order, de-duplicated -- the form
     tags.tag_account's own tag_key column is already stored in."""
     seen: dict[str, None] = {}
-    stored = _stored_under()
     for key in configured_keys():
-        norm = stored.get(key.strip().lower()) or tag_keys.normalize_tag_key(key)
+        norm = tag_keys.normalize_tag_key(key)
         if norm:
             seen.setdefault(norm, None)
     return list(seen)

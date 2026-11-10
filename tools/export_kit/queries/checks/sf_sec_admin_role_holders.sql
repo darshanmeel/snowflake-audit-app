@@ -24,6 +24,8 @@
 --   MFA with an authentication policy on admin users (config)
 -- next: none
 -- caveats: MFA via an external IdP is not visible, so an SSO user with no password counts as covered;
+--   a passkey or TOTP enrolled in CREDENTIALS is not read here (the INFORMATION_SCHEMA fallback has no
+--   stand-in for it), so such a holder can read "password without MFA";
 --   disabled holders are listed as OK for completeness. Lags up to 2 hours.
 WITH -- Live users with the auth flags normalised: DISABLED and EXT_AUTHN_DUO can come back as VARIANT
 -- text, and a NULL TYPE behaves as PERSON.
@@ -49,11 +51,16 @@ sf_sec_role_reach AS (
   FROM SNOWFLAKE.ACCOUNT_USAGE.ROLES
   WHERE deleted_on IS NULL
   UNION ALL
-  SELECT r.top_role, g.name, r.depth + 1, r.path || ' > ' || g.name
+  -- A database role is named DATABASE.ROLE, as in the Access Explorer, so it never clashes with an account role.
+  SELECT r.top_role, g.child, r.depth + 1, r.path || ' > ' || g.child
   FROM sf_sec_role_reach r
-  JOIN SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES g
-    ON g.grantee_name = r.role_name AND g.granted_on = 'ROLE' AND g.granted_to IN ('ROLE', 'ACCOUNT ROLE')
-   AND g.privilege = 'USAGE' AND g.deleted_on IS NULL
+  JOIN (SELECT IFF(granted_on = 'DATABASE_ROLE' AND NOT CONTAINS(name, '.'), table_catalog || '.' || name, name) AS child,
+               IFF(granted_to = 'DATABASE_ROLE' AND NOT CONTAINS(grantee_name, '.'),
+                   table_catalog || '.' || grantee_name, grantee_name) AS parent
+        FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
+        WHERE granted_on IN ('ROLE', 'DATABASE_ROLE') AND granted_to IN ('ROLE', 'ACCOUNT ROLE', 'DATABASE_ROLE')
+          AND privilege = 'USAGE' AND deleted_on IS NULL) g
+    ON g.parent = r.role_name
   -- Snowflake forbids cycles; the cap only guards against a malformed history.
   WHERE r.depth < 20
 ),
@@ -63,14 +70,18 @@ sf_sec_user_roles AS (
   JOIN sf_sec_role_reach r ON r.top_role = gu.role
   WHERE gu.deleted_on IS NULL
 ),
-held AS (
-  SELECT user_name, role_name AS admin_role, MIN(depth) AS depth,
-         MIN_BY(path, depth) AS grant_path, MIN_BY(granted_role, depth) AS granted_role
+-- The shortest path per user and admin role; on a tie, through a system admin role, then by name, so a rerun
+-- picks the same path.
+best AS (
+  SELECT user_name, role_name AS admin_role, depth, path AS grant_path, granted_role
   FROM sf_sec_user_roles
   WHERE role_name IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'ORGADMIN', 'USERADMIN')
-  GROUP BY user_name, role_name
-  -- A role implied by a higher system admin role (ACCOUNTADMIN > SECURITYADMIN > USERADMIN) is not a new fact.
-  HAVING NOT (MIN(depth) > 0 AND MIN_BY(granted_role, depth) IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'ORGADMIN', 'USERADMIN'))
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY user_name, role_name
+                             ORDER BY depth, IFF(granted_role IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'ORGADMIN', 'USERADMIN'), 0, 1), granted_role, path) = 1
+),
+-- A role implied by a higher system admin role (ACCOUNTADMIN > SECURITYADMIN > USERADMIN) is not a new fact.
+held AS (
+  SELECT * FROM best WHERE NOT (depth > 0 AND granted_role IN ('ACCOUNTADMIN', 'SECURITYADMIN', 'ORGADMIN', 'USERADMIN'))
 ),
 j AS (
   SELECT h.*, u.user_id, u.email, u.user_type, u.is_disabled, u.has_password, u.has_mfa, u.has_duo, u.has_rsa_key,

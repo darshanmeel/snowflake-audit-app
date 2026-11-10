@@ -20,8 +20,8 @@
 -- actions: 1) revoke the roles of dormant and disabled users (free); 2) mask the sensitive columns
 --   (config); 3) move write access to a service user that loads the table (free)
 -- next: sf_gov_sensitive_data_access
--- caveats: "can" means a grant path exists; USAGE on the database and schema is not checked, and
---   database roles are not followed. Who did read it is in sf_gov_sensitive_data_access. Lags up to 2
+-- caveats: "can" means a grant path exists; USAGE on the database and schema is not checked.
+--   Who did read it is in sf_gov_sensitive_data_access. Lags up to 2
 --   hours.
 WITH -- Columns marked sensitive by a tag (Snowflake's SEMANTIC_CATEGORY / PRIVACY_CATEGORY system tags, or a
 -- custom tag whose name says PII, sensitive, confidential, PHI, PCI, GDPR, personal or restricted), with
@@ -136,11 +136,16 @@ sf_sec_role_reach AS (
   FROM SNOWFLAKE.ACCOUNT_USAGE.ROLES
   WHERE deleted_on IS NULL
   UNION ALL
-  SELECT r.top_role, g.name, r.depth + 1, r.path || ' > ' || g.name
+  -- A database role is named DATABASE.ROLE, as in the Access Explorer, so it never clashes with an account role.
+  SELECT r.top_role, g.child, r.depth + 1, r.path || ' > ' || g.child
   FROM sf_sec_role_reach r
-  JOIN SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES g
-    ON g.grantee_name = r.role_name AND g.granted_on = 'ROLE' AND g.granted_to IN ('ROLE', 'ACCOUNT ROLE')
-   AND g.privilege = 'USAGE' AND g.deleted_on IS NULL
+  JOIN (SELECT IFF(granted_on = 'DATABASE_ROLE' AND NOT CONTAINS(name, '.'), table_catalog || '.' || name, name) AS child,
+               IFF(granted_to = 'DATABASE_ROLE' AND NOT CONTAINS(grantee_name, '.'),
+                   table_catalog || '.' || grantee_name, grantee_name) AS parent
+        FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
+        WHERE granted_on IN ('ROLE', 'DATABASE_ROLE') AND granted_to IN ('ROLE', 'ACCOUNT ROLE', 'DATABASE_ROLE')
+          AND privilege = 'USAGE' AND deleted_on IS NULL) g
+    ON g.parent = r.role_name
   -- Snowflake forbids cycles; the cap only guards against a malformed history.
   WHERE r.depth < 20
 ),
@@ -159,19 +164,22 @@ tables_ AS (
   GROUP BY 1, 2, 3
 ),
 obj AS (
-  SELECT grantee_name AS role_name, UPPER(table_catalog) AS database_name, UPPER(table_schema) AS schema_name,
+  SELECT IFF(granted_to = 'DATABASE_ROLE' AND NOT CONTAINS(grantee_name, '.'), table_catalog || '.' || grantee_name,
+             grantee_name) AS role_name, UPPER(table_catalog) AS database_name, UPPER(table_schema) AS schema_name,
          UPPER(name) AS table_name,
          BOOLOR_AGG(privilege IN ('SELECT', 'OWNERSHIP')) AS can_read,
          BOOLOR_AGG(privilege IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'OWNERSHIP')) AS can_write
   FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
-  WHERE deleted_on IS NULL AND granted_to IN ('ROLE', 'ACCOUNT ROLE')
+  WHERE deleted_on IS NULL AND granted_to IN ('ROLE', 'ACCOUNT ROLE', 'DATABASE_ROLE')
     AND granted_on IN ('TABLE', 'VIEW', 'MATERIALIZED_VIEW', 'MATERIALIZED VIEW', 'DYNAMIC_TABLE',
                        'EXTERNAL_TABLE', 'ICEBERG_TABLE', 'EVENT_TABLE')
   GROUP BY 1, 2, 3, 4
 ),
--- Every user holds PUBLIC without a grant row.
+-- Every user holds PUBLIC without a grant row, and every role granted to PUBLIC with it.
 user_roles AS (
   SELECT user_name, role_name FROM sf_sec_user_roles
+  UNION
+  SELECT u.user_name, r.role_name FROM sf_sec_users u JOIN sf_sec_role_reach r ON r.top_role = 'PUBLIC'
   UNION
   SELECT user_name, 'PUBLIC' FROM sf_sec_users
 ),

@@ -189,10 +189,3 @@ def entity_spec(columns, declared: dict | None = None) -> dict | None:
             dim_table, dim_key = wanted_table, key
     return {"noun": noun, "columns": ent_cols, "dim_table": dim_table, "dim_key": dim_key}
 
-
-def entity_column(columns) -> tuple[str, str, str | None] | None:
-    """(column, noun, dim_table) of the automatic entity, kept for callers that want one column."""
-    spec = entity_spec(columns)
-    if spec is None:
-        return None
-    return spec["columns"][-1], spec["noun"], spec["dim_table"]

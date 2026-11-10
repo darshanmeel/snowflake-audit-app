@@ -1,12 +1,12 @@
 # Role lenses
 
-A lens ("View as") picks which pages the rail lists, their grouping and the landing page. It is a persona, never a permission: every lens reads the same data (`web/src/App.tsx:111-114`, `web/src/App.tsx:211`).
+A lens ("View as") picks which pages the rail lists, their grouping and the landing page. It is a persona, never a permission: every lens reads the same data (`web/src/App.tsx:111-114`, `web/src/App.tsx:205`).
 
 ## Lens → home → pages
 
 ```mermaid
 flowchart LR
-  R{role<br/>hash role= > localStorage > finops<br/>App.tsx:776-780} --> FO[finops -> overview]
+  R{role<br/>hash role= > localStorage > finops<br/>App.tsx:771-775} --> FO[finops -> overview]
   R --> GV[governance -> overview]
   R --> DE[data_engineer -> overview]
   R --> CT[cto -> overview]
@@ -19,8 +19,8 @@ flowchart LR
 ```
 
 - Roles: `finops`, `data_engineer`, `governance`, `cto`, `cfo` (`App.tsx:115`). Labels come from `LENS_LABEL` (`web/src/components/lens_nav.ts:10`).
-- Home: `cfo` → `money`, every other role → `overview` (`App.tsx:125-128`). Which Overview renders depends on the role: CTO and data engineer get their own pages outside AreaPage (`App.tsx:1110-1150`); finops and governance get `OverviewContent` (`web/src/tabs/tab_overview.tsx:454-456`).
-- Stored in the hash as `role=`, left out for finops (`App.tsx:806`), and in localStorage `role` (`App.tsx:791-797`). Switching lens jumps to the new lens's home (`App.tsx:791-797`).
+- Home: `cfo` → `money`, every other role → `overview` (`App.tsx:125-128`). Which Overview renders depends on the role: CTO and data engineer get their own pages outside AreaPage (`App.tsx:1105-1145`); finops and governance get `OverviewContent` (`web/src/tabs/tab_overview.tsx:421-423`).
+- Stored in the hash as `role=`, left out for finops (`App.tsx:801`), and in localStorage `role` (`App.tsx:786-792`). Switching lens jumps to the new lens's home (`App.tsx:786-792`).
 
 ## Pages per lens (`LENS_NAV`, `lens_nav.ts:20-57`)
 
@@ -40,17 +40,17 @@ flowchart LR
 
 | Rule | Plain words | Example (test) | Code |
 |---|---|---|---|
-| Sidebar keys | Each page once, in sidebar order | cfo → `[money, actions, cost, waste, coverage, findings, guide]` (`web/src/test/roles.test.ts:7-10`) | `lensTabs` `lens_nav.ts:63-68`, `sidebarKeysForRole` `App.tsx:148-150` |
+| Sidebar keys | Each page once, in sidebar order | cfo → `[money, actions, cost, waste, coverage, findings, guide]` (`web/src/test/roles.test.ts:7-10`) | `lensTabs` `lens_nav.ts:63-68`, `sidebarKeysForRole` `App.tsx:142-144` |
 | Same frame | Every non-CFO lens starts with overview, actions and ends with coverage, findings, guide | `roles.test.ts:12-19` | `lens_nav.ts:15-18` |
 | Groups | Group labels per lens | finops → `[Spend, Waste, Reference]` (`roles.test.ts:21-28`) | `lens_nav.ts:20-57` |
-| Role areas | Actions and All findings filter to the lens's content areas. The CFO's also include `ai` | governance → `[actions, access, pii, lineage, activity, sharing, storage, audit, coverage]`; unknown role → finops (`roles.test.ts:30-33`) | `ROLE_AREAS` `App.tsx:137-146`, used by `useActions` `tab_actions.tsx:308-309` |
+| Role areas | Actions and All findings filter to the lens's content areas. The CFO's also include `ai` | governance → `[actions, access, pii, lineage, activity, sharing, storage, audit, coverage]`; unknown role → finops (`roles.test.ts:30-33`) | `ROLE_AREAS` `App.tsx:131-140`, used by `useActions` `tab_actions.tsx:304-305` |
 | Lit entry | The sub-tab entry wins over the area entry | governance + access/users → "Users & sign-ins"; cfo + cost/trend → the plain Cost entry (`roles.test.ts:35-38`) | `activeNavItem` `lens_nav.ts:86-89` |
-| Clamp | A tab the lens doesn't list goes to the lens's home | `queries` under finops → `overview`; under data_engineer → `queries`; `tasks` under cfo → `money` (`roles.test.ts:40-44`) | `clampTabForRole` `App.tsx:152-154`; applied on load `App.tsx:785`, on role change `App.tsx:805-811`, as a safety net `App.tsx:800-804` |
-| Old links | Old tab keys are still accepted | `roles.test.ts:46-48` | `OLD_TAB_REDIRECTS` `tab_registry.tsx:546-549` |
+| Clamp | A tab the lens doesn't list goes to the lens's home | `queries` under finops → `overview`; under data_engineer → `queries`; `tasks` under cfo → `money` (`roles.test.ts:40-44`) | `clampTabForRole` `App.tsx:146-148`; applied on load `App.tsx:780`, on role change `App.tsx:800-806`, as a safety net `App.tsx:795-799` |
+| Old links | Old tab keys are still accepted | `roles.test.ts:46-48` | `OLD_TAB_REDIRECTS` `tab_registry.tsx:532-535` |
 
-- `money` and `tags` are accepted in the hash for every lens (`App.tsx:100-104`). The clamp still sends them home in any lens that doesn't list them, so a CFO `money` link pasted under FinOps lands on Overview (`App.tsx:152-154`, `lens_nav.ts:37-42`). The comment "still a real, linkable tab" (`App.tsx:100-101`) only holds within lenses that list it.
-- README's lens table matches `LENS_NAV` (`README.md:597-605`).
+- `money` and `tags` are accepted in the hash for every lens (`App.tsx:100-104`). The clamp still sends them home in any lens that doesn't list them, so a CFO `money` link pasted under FinOps lands on Overview (`App.tsx:146-148`, `lens_nav.ts:37-42`). The comment "still a real, linkable tab" (`App.tsx:100-101`) only holds within lenses that list it.
+- README's lens table matches `LENS_NAV` (`README.md:599-607`).
 
 ## Issues
 
-- The comment at `App.tsx:111-113` says the CTO lens decides "whether an area opens its summary or its full drill-down". `summaryOnly` is always `false` (`App.tsx:1128`), so every lens gets the full drill-down. Only the Overview page differs per lens.
+- The comment at `App.tsx:111-113` says the CTO lens decides "whether an area opens its summary or its full drill-down". `summaryOnly` is always `false` (`App.tsx:1123`), so every lens gets the full drill-down. Only the Overview page differs per lens.

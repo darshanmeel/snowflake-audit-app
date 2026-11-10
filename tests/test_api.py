@@ -165,11 +165,10 @@ def _write_settings(cfg_dir: Path, text: str) -> None:
 
 
 @pytest.mark.parametrize("url", [
-    "/api/status", "/api/meta", "/api/workspaces", "/api/dims", "/api/coverage", "/api/guide",
+    "/api/status", "/api/meta", "/api/accounts", "/api/dims", "/api/coverage", "/api/guide",
     "/api/findings", "/api/findings?window=7", "/api/findings?window=90", "/api/refresh",
-    "/api/settings/cost-center", "/api/tag_origins", "/api/rollup/keys?area=cost&window=30",
+    "/api/settings/cost-center", "/api/rollup/keys?area=cost&window=30",
     "/api/rollup?area=cost&tag_key=cost_center&window=30",
-    "/api/rollup/top?area=cost&tag_key=cost_center&window=30",
     f"/api/finding/{WINDOWED_CHECK}", f"/api/finding/{WINDOWED_CHECK}/aggregate?agg=count",
     "/", "/index.html",
 ])
@@ -283,13 +282,13 @@ def test_other_routes_503_with_a_structured_body_on_broken_settings(bad_settings
         assert body["state"] == "settings_invalid" and body["key"] == "discount_pct" and body["detail"]
 
 
-def test_workspaces_503_not_500_on_a_missing_or_corrupt_database(no_database_env):
-    resp = client.get("/api/workspaces")
+def test_accounts_503_not_500_on_a_missing_or_corrupt_database(no_database_env):
+    resp = client.get("/api/accounts")
     assert resp.status_code == 503 and "dim_account" in resp.json()["detail"]
 
 
-def test_workspaces_503_on_a_corrupt_database(corrupt_db_env):
-    assert client.get("/api/workspaces").status_code == 503
+def test_accounts_503_on_a_corrupt_database(corrupt_db_env):
+    assert client.get("/api/accounts").status_code == 503
 
 
 def test_finding_detail_and_list_read_error_on_a_corrupt_db(corrupt_db_env):
@@ -300,7 +299,7 @@ def test_finding_detail_and_list_read_error_on_a_corrupt_db(corrupt_db_env):
 
 
 # -------------------------------------------------------------------------------------------
-# /api/meta, /api/workspaces, /api/dims
+# /api/meta, /api/accounts, /api/dims
 # -------------------------------------------------------------------------------------------
 
 
@@ -322,8 +321,8 @@ def test_meta_endpoint():
     assert Path(body["db_path"]) == app_core_data._db_path()
 
 
-def test_workspaces_endpoint_lists_the_account_by_name_with_an_env():
-    rows = client.get("/api/workspaces").json()
+def test_accounts_endpoint_lists_the_account_by_name_with_an_env():
+    rows = client.get("/api/accounts").json()
     assert [r["account_id"] for r in rows] == [ACCOUNT]
     assert rows[0]["name"] == "FAKE_ACCOUNT" and rows[0]["env"] == "unknown" and rows[0]["env_reason"]
     assert set(rows[0]) >= {"account_id", "name", "url", "env", "env_source", "env_reason"}
@@ -534,7 +533,7 @@ def test_findings_money_and_affected_shapes(findings_by_window):
     assert money["usd"] == pytest.approx(13827.60, abs=0.01)
     assert rows[WINDOWED_CHECK]["affected"] == {"column": "warehouse_id", "columns": ["warehouse_id"], "noun": "warehouses",
                                                   "flagged": 5, "total": 12, "flagged_other": 0,
-                                                  "not_assessed": rows[WINDOWED_CHECK]["affected"].get("not_assessed")}
+                                                  "not_assessed": 1}
     assert rows[INVENTORY_CHECK]["money"] is None
     for r in rows.values():
         if r["money"]:
@@ -827,7 +826,7 @@ def test_no_run_results_sidecar_still_reads_a_table_that_exists(tmp_path, monkey
 
 
 def test_aggregate_sum_matches_direct_sql():
-    expected = _raw(f'SELECT sum(usd_list), count(*) FROM findings.f_cost_chargeback_by_service WHERE window_days = 30')[0]
+    expected = _raw('SELECT sum(usd_list), count(*) FROM findings.f_cost_chargeback_by_service WHERE window_days = 30')[0]
     body = _agg("cost_chargeback_by_service", agg="sum", value="usd_list")
     assert body["outcome"] == "ok_rows" and body["total_value"] == pytest.approx(expected[0])
     assert body["matched_rows"] == expected[1] and body["group"] == [] and body["null_value_rows"] == 0

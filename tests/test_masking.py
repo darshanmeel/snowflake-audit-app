@@ -123,7 +123,7 @@ def test_no_real_name_is_left_anywhere_in_a_masked_export(exports):
     learn = masking.Masker(list(masking.MASK_KINDS), "x")
     for f in (base / "plain").rglob("*.parquet"):
         learn.collect(pq.read_table(f))
-    names = {k for kind in masking.MASK_KINDS if kind != "user" for k in learn.names[kind] if len(k) >= 3}
+    names = {k for kind in masking.MASK_KINDS for k in learn.names[kind] if len(k) >= 3}
     assert len(names) > 20, "the fake account has names to hide"
     pattern = re.compile(r"(?<![A-Za-z0-9_$])(?:" + "|".join(map(re.escape, sorted(names, key=len, reverse=True)))
                          + r")(?![A-Za-z0-9_$])", re.IGNORECASE)

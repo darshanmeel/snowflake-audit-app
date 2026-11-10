@@ -64,7 +64,8 @@ rate AS (
   SELECT account_locator, MAX(currency) AS currency,
          SUM(usage_in_currency) / NULLIF(SUM(usage), 0) AS credit_rate
   FROM SNOWFLAKE.ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY
-  WHERE NOT (usage_type ILIKE '%storage%' OR usage_type ILIKE '%transfer%')
+  -- credit-rated consumption only: rebates, support and per-TB lines are not the price of a credit
+  WHERE LOWER(billing_type) = 'consumption' AND LOWER(rating_type) IN ('compute', 'ai_compute')
     AND usage_date >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__)
     AND usage_date < DATEADD(day, -:settle_days, __AS_OF_DATE__)
   GROUP BY account_locator

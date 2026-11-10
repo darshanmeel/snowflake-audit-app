@@ -22,7 +22,7 @@ flowchart LR
   - the status filter (data.py:612-616);
   - the ORDER BY (worst effective status first, data.py:676-685);
   - findings-list status counts, money and floor info (data.py:1086-1110);
-  - aggregate `group=status`, `below_floor=true` and `pick=status` (data.py:1435-1453, 1490-1496).
+  - aggregate `group=status`, `below_floor=true` and `pick=status` (data.py:1438-1456, 1490-1496).
 - The exported `status` column on disk is never rewritten (config/materiality.yml:1-6).
 
 ## Rules
@@ -59,17 +59,17 @@ flowchart LR
 | query_cache_coldstart | query_count | 20 | count |
 
 - Left out on purpose: checks already gated by their own `:min_*` param, governance/existence checks, and checks whose status already uses that column (config/materiality.yml:10-15).
-- Validation: unknown query_id, missing/unknown field, non-positive min and bad column are rejected (tests/test_materiality.py:242-293; config.py:583-626).
+- Validation: unknown query_id, missing/unknown field, non-positive min and bad column are rejected (tests/test_materiality.py:242-293; config.py:585-628).
 - Cached on the file's (mtime, size); a change is picked up on the next request (materiality.py:102-130; tests/test_materiality.py:103-122).
 
 ### Severity cap for reports
 - 45 ids in `REPORT_IDS_CAPPED_AT_WARN` (materiality.py:48-95): period-over-period, chargebacks, spikes, spend-only checks. Reason: CRITICAL means broken, wasting money or exposing data; a spend swing is WARN at most (materiality.py:20-24).
-- Example (tests/test_materiality.py:404-421): `cost_period_over_period` has raw CRITICAL rows in the fixture -> `status_counts` has no CRITICAL; rows read `status: WARN`, `status_raw: CRITICAL`; `/api/findings` row carries `severity_cap: "WARN"` (app.py:889-891).
+- Example (tests/test_materiality.py:404-421): `cost_period_over_period` has raw CRITICAL rows in the fixture -> `status_counts` has no CRITICAL; rows read `status: WARN`, `status_raw: CRITICAL`; `/api/findings` row carries `severity_cap: "WARN"` (app.py:844-846).
 
 ## What the API reports
 
 - `/api/findings` row `floor`: `{column, min, unit, label, rows_below}`; `rows_below` = rows moved from CRITICAL/WARN to OK (data.py:1100-1108).
   - Example (test DB): `sf_wh_idle_minutes` -> `{"min": 50, "unit": "USD", "label": "$50 possible waste per 30 days", "rows_below": 0}`.
-- `/api/finding/{id}`: `floor` with `rows_below` out of `rows_total` (service.py:976-988; data.py:741-752).
-- `/aggregate?below_floor=true`: sums only the hidden rows; a check with no floor matches nothing (data.py:1435-1440; tests/test_materiality.py:359-371).
+- `/api/finding/{id}`: `floor` with `rows_below` out of `rows_total` (service.py:988-1000; data.py:741-752).
+- `/aggregate?below_floor=true`: sums only the hidden rows; a check with no floor matches nothing (data.py:1438-1443; tests/test_materiality.py:359-371).
 - Guide adds the "floors" trap line to a check with a floor (guide.py:45, 355-356).

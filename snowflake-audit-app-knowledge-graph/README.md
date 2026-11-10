@@ -31,14 +31,14 @@ python snowflake-audit-app-knowledge-graph/_scripts/merge_extras.py   # + graph/
 
 ## Counts (recomputed from graph/*.jsonl)
 
-5,429 nodes, 10,702 edges.
+5,309 nodes, 10,532 edges.
 
 | Node type | n | Node type | n |
 |---|---|---|---|
-| function | 2665 | endpoint | 31 |
-| file | 726 | cli_command | 31 |
-| table | 470 | folder | 29 |
-| test_case | 426 | example_data | 28 |
+| function | 2552 | cli_command | 31 |
+| file | 726 | folder | 29 |
+| table | 470 | example_data | 28 |
+| test_case | 423 | endpoint | 27 |
 | query | 388 | sql_include | 21 |
 | module | 168 | role | 19 |
 | ui_screen | 102 | config | 17 |
@@ -49,15 +49,15 @@ python snowflake-audit-app-knowledge-graph/_scripts/merge_extras.py   # + graph/
 
 | Edge type | n | Edge type | n |
 |---|---|---|---|
-| contains | 4099 | documents | 98 |
-| calls | 2262 | triggers | 43 |
-| reads | 1267 | exposes | 31 |
-| imports | 903 | configures | 30 |
-| illustrates | 587 | grants | 15 |
-| implements | 545 | derived_from | 15 |
+| contains | 3986 | documents | 98 |
+| calls | 2211 | triggers | 43 |
+| reads | 1269 | configures | 30 |
+| imports | 893 | exposes | 27 |
+| illustrates | 593 | grants | 15 |
+| implements | 544 | derived_from | 15 |
 | writes | 321 | fk | 6 |
 | part_of | 306 | deploys | 4 |
-| depends_on | 170 |  |  |
+| depends_on | 171 |  |  |
 
 ## Coverage
 

@@ -183,6 +183,7 @@ export function ChecksList({ findings, refIds, filters, meta, goTo, openId, titl
                       <span role="cell" className="cx-ck-impact">
                         {g === "priced" && <span className="cx-ck-track" aria-hidden="true"><span className={`cx-ck-fill k-${kind}`} style={{ width: `${pct}%` }} /></span>}
                         <span className="cx-ck-usd">{`${upToWord(f)}${r.impact > 0 && g === "change" ? "+" : ""}${moneyText(m, r.impact)}`}</span>
+                        {m && m.unpriced_rows > 0 && <span className="faint">{` · ${fmtInt(m.unpriced_rows)} without a figure`}</span>}
                         <span className="cx-ck-kind">{IMPACT_WORD[kind]}</span>
                       </span>
                     ) : <span role="cell" className="cx-ck-impact none">{noImpactText(r)}</span>}

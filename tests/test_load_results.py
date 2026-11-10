@@ -539,3 +539,32 @@ def test_a_tag_source_parquet_loads_in_duckdb_with_timestamps_as_naive_utc(tmp_p
     lr._create_from_parquet(con, 'tags_src."tag_refs"', path)
     assert con.execute('SELECT tag_name, created FROM tags_src."tag_refs"').fetchall() == [
         ("COST_CENTER", dt.datetime(2026, 9, 2, 1, 30))]
+
+
+def test_an_export_that_keeps_today_shows_it_as_partial(tmp_path, monkeypatch):
+    export = _make_export(tmp_path, {WINDOWED: {"table": _table(30)}},
+                          extra_manifest={"includes_today": True, "as_of_date": "2026-09-22"})
+    db = tmp_path / "today.duckdb"
+    lr.load_folder(export, db)
+    monkeypatch.setenv("AUDIT_DB", str(db))
+    monkeypatch.delenv("AUDIT_RUN_RESULTS", raising=False)
+    # one cut-off: through the last full day, today (the export's day) partial until the export time
+    assert client.get("/api/meta").json()["cost_cutoff"] == {
+        "data_through": "2026-09-20", "partial_day": "2026-09-21", "partial_until": "12:00",
+        "partial_from": "2026-09-21"}
+
+
+def test_a_money_check_nothing_priced_reads_unpriced_never_zero(tmp_path, monkeypatch):
+    table = _table(30, task_full_name=["DB.S.T0", "DB.S.T1", "DB.S.T2"],
+                   est_task_usd_list=pa.array([None, None, None], pa.float64()),
+                   price_basis=["unpriced"] * 3)
+    export = _make_export(tmp_path, {"sf_task_cost": {"table": table}},
+                          extra_manifest={"pricing": {"source": None, "credit_price_usd": None,
+                                                      "storage_price_usd_tb_month": None}})
+    db = tmp_path / "unpriced.duckdb"
+    lr.load_folder(export, db)
+    monkeypatch.setenv("AUDIT_DB", str(db))
+    monkeypatch.delenv("AUDIT_RUN_RESULTS", raising=False)
+    row = next(f for f in client.get("/api/findings", params={"window": 30}).json()["findings"]
+               if f["query_id"] == "sf_task_cost")
+    assert row["money"]["usd"] is None and row["money_reason"] == "unpriced"

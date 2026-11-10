@@ -104,7 +104,7 @@ k AS (
                   TO_VARCHAR(GET(tag, 'report')), TO_VARCHAR(GET(tag, 'report_name')),
                   TO_VARCHAR(GET(looker_ctx, 'dashboard_id')),
                   IFF(looker_ctx IS NOT NULL, 'explore:' || TO_VARCHAR(GET(looker_ctx, 'history_slug')), NULL),
-                  TO_VARCHAR(GET(sigma_ctx, 'workbook-id')), TO_VARCHAR(GET(sigma_ctx, 'url')),
+                  TO_VARCHAR(GET(sigma_ctx, 'workbook-id')), SHA2(TO_VARCHAR(GET(sigma_ctx, 'url'))),  -- a URL names the org path: hashed
                   IFF(tag IS NULL, NULLIF(TRIM(query_tag), ''), NULL)) AS dashboard_key
   FROM t
   WHERE bi_tool IS NOT NULL

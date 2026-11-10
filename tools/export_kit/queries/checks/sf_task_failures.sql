@@ -92,7 +92,8 @@ scored AS (
 SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id,
        task_full_name, task_name, task_id, database_name, schema_name, root_task_id, root_task_full_name,
        SPLIT_PART(root_task_full_name, '.', 3) AS root_task_name,
-       COALESCE(task_warehouse_name, 'SERVERLESS') AS compute,
+       -- no task row means unknown, not serverless
+       COALESCE(task_warehouse_name, IFF(task_id IS NULL, NULL, 'SERVERLESS')) AS compute,
        runs, succeeded_runs, failed_runs, cancelled_runs, skipped_runs,
        failure_rate_pct, consecutive_failures, last_state, last_run_time, last_success_time,
        last_failure_time, last_error_code,

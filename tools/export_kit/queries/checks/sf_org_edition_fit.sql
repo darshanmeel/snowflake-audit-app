@@ -50,8 +50,8 @@ m AS (
 ),
 c AS (
   SELECT account_locator, MAX(currency) AS currency, SUM(usage_in_currency) AS amount,
-         SUM(IFF(usage_type ILIKE 'compute', usage_in_currency, 0))
-           / NULLIF(SUM(IFF(usage_type ILIKE 'compute', usage, 0)), 0) AS compute_rate
+         SUM(IFF(LOWER(rating_type) = 'compute' AND LOWER(billing_type) = 'consumption' AND service_type = 'WAREHOUSE_METERING', usage_in_currency, 0))
+           / NULLIF(SUM(IFF(LOWER(rating_type) = 'compute' AND LOWER(billing_type) = 'consumption' AND service_type = 'WAREHOUSE_METERING', usage, 0)), 0) AS compute_rate
   FROM SNOWFLAKE.ORGANIZATION_USAGE.USAGE_IN_CURRENCY_DAILY
   WHERE usage_date >= DATEADD(day, -(:period_days + :settle_days), __AS_OF_DATE__)
     AND usage_date < DATEADD(day, -:settle_days, __AS_OF_DATE__)

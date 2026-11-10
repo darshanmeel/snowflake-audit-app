@@ -60,7 +60,7 @@ sequenceDiagram
 
 ## UI side
 
-- `HOSTED = !!window.APP_HOSTED` hides the Refresh button and the settings gear (web/src/api.ts:7-10; web/src/App.tsx:282, 490, 646).
+- `HOSTED = !!window.APP_HOSTED` hides the Refresh button and the settings gear (web/src/api.ts:7-10; web/src/App.tsx:277, 490, 646).
 - `tests/test_build_web.py:57-60` forbids `window.__` in `web/src`; the bridge's `window.__auditBridge` lives in `tools/streamlit_deploy`, outside that rule.
 
 ## Status

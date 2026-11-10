@@ -124,3 +124,23 @@ def test_explore_unknown_names_and_kind():
     for kind in ("user", "role", "object"):
         assert client.get("/api/access/explore", params={"kind": kind, "name": "NO_SUCH_THING"}).status_code == 404
     assert client.get("/api/access/explore", params={"kind": "table", "name": "X"}).status_code == 422
+
+
+def test_masking_on_hides_user_names_in_the_explorer_and_in_aggregate_keys():
+    real = [u["name"] for u in client.get("/api/access/names").json()["users"]]
+    assert real
+    before = client.get("/api/settings/privacy").json()["mask_user_identities"]
+    client.put("/api/settings/privacy", json={"mask_user_identities": True})
+    try:
+        names = client.get("/api/access/names").json()
+        agg = client.get("/api/finding/sf_chg_by_warehouse_and_user_daily/aggregate",
+                         params={"window": 30, "group": "user_name", "agg": "count"})
+        assert agg.status_code == 200, agg.text
+        for text in (str(names), agg.text):
+            assert not [n for n in real if len(n) >= 4 and n in text], "a real user name is on screen"
+        assert len(names["users"]) == len(real), (len(names["users"]), len(real))
+        masked = names["users"][0]["name"]
+        mine = client.get("/api/access/explore", params={"kind": "user", "name": masked})
+        assert mine.status_code == 200, mine.text   # a masked name still finds its user
+    finally:
+        client.put("/api/settings/privacy", json={"mask_user_identities": before})

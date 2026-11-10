@@ -155,25 +155,22 @@ def test_tag_filter_follows_the_warehouse_tag_and_the_account_tag_order():
     r = client.get("/api/findings", params={"window": 30, "tag_key": "costcenter", "tag_value": "ANALYTICS"}).json()
     row = next(x for x in r["findings"] if x["query_id"] == "sf_wh_idle_minutes")
     assert row["outcome"] == "ok_rows" and row["tag_chain"][:1] == ["compute"] and row["tag_chain"][-1] == "account"
-    assert row["affected"]["flagged"] >= 1 and row["affected"]["total"] > row["affected"]["flagged"] - 1
-    chain = registry and __import__("app.core.tags", fromlist=["tag_chain"]).tag_chain(
+    everything = client.get("/api/findings", params={"window": 30}).json()
+    unfiltered = next(x for x in everything["findings"] if x["query_id"] == "sf_wh_idle_minutes")
+    assert row["affected"]["flagged"] >= 1 and row["affected"]["total"] < unfiltered["affected"]["total"]
+    from app.core import tags
+    chain = tags.tag_chain(
         "x", ["query_tag", "table_name", "database_name", "schema_name", "warehouse_id", "user_name", "role_name", "account_id"], "cost")
     assert chain.chain_words == ["query", "object", "object", "object", "compute", "user", "role", "account"]
 
 
 def test_cost_center_filter_and_rollup_have_data():
     accounts = client.get("/api/accounts").json()
-    assert accounts[0]["cost_center"] == "DATA_PLATFORM" and accounts[0]["workspace_id"] == accounts[0]["account_id"]
+    assert accounts[0]["cost_center"] == "DATA_PLATFORM"
     keys = client.get("/api/rollup/keys", params={"area": "cost", "window": 30}).json()["keys"]
     assert any(k["tag_key"] == "costcenter" and k["compute"]["usd"] > 0 for k in keys)
     body = client.get("/api/rollup", params={"area": "cost", "window": 30, "tag_key": "costcenter"}).json()
     assert body["reconciliation"]["reconciled"] is True
-
-
-def test_the_legacy_workspace_parameter_still_filters():
-    a = client.get("/api/findings", params={"window": 30, "account_ids": "NO_SUCH"}).json()
-    b = client.get("/api/findings", params={"window": 30, "workspace_ids": "NO_SUCH"}).json()
-    assert a["account_ids"] == b["account_ids"] == ["NO_SUCH"]
 
 
 # ---- masking --------------------------------------------------------------------------------------------------------

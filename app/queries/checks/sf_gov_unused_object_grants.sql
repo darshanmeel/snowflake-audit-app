@@ -4,7 +4,7 @@
 -- windowed: yes
 -- entity: roles = role_name
 -- reads: SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES, SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY,
---   SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+--   SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY, SNOWFLAKE.ACCOUNT_USAGE.ROLES, SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS
 -- requires: IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise Edition (Access History)
 -- params: :period_days (default 30) days of history the check looks at, counted back from the export
 --   date; :min_grants (default 10) table grants a role must hold before it is judged; :warn_pct (default
@@ -29,8 +29,9 @@
 -- next: sf_gov_role_hygiene, access_broad_grants
 -- caveats: heavy: reads ACCESS_HISTORY and QUERY_HISTORY for the window (period_days only), so a grant
 --   used monthly or quarterly can read as unused; the window is the export's, not 90 days. Grants to
---   database roles and through role inheritance are not followed. ACCESS_HISTORY lags up to 3 hours.
-WITH qr AS (
+--   database roles are not checked. ACCESS_HISTORY lags up to 3 hours.
+WITH __INCLUDE_sf_sec_user_roles__,
+qr AS (
   SELECT query_id, role_name, secondary_role_stats IS NOT NULL AS has_secondary
   FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
   WHERE start_time >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
@@ -50,8 +51,11 @@ objs AS (
   FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah, LATERAL FLATTEN(input => ah.objects_modified) o
   WHERE ah.query_start_time >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND ah.query_start_time < __AS_OF_DATE__
 ),
+-- a use counts for every role the query's role inherits, so a child role's grants used through a parent are used
 used AS (
-  SELECT DISTINCT qr.role_name, objs.object_fqn FROM objs JOIN qr ON qr.query_id = objs.query_id
+  SELECT DISTINCT r.role_name, objs.object_fqn
+  FROM objs JOIN qr ON qr.query_id = objs.query_id
+  JOIN sf_sec_role_reach r ON r.top_role = qr.role_name
 ),
 used_any AS (
   -- touched by a query with secondary roles: not credited to one role, so never called unused
@@ -62,7 +66,7 @@ gr AS (
          UPPER(g.table_catalog || '.' || g.table_schema || '.' || g.name) AS object_fqn, UPPER(g.privilege) AS privilege
   FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES g
   JOIN active a ON a.role_name = g.grantee_name
-  WHERE g.deleted_on IS NULL AND UPPER(g.granted_to) = 'ROLE'
+  WHERE g.deleted_on IS NULL AND UPPER(g.granted_to) IN ('ROLE', 'ACCOUNT ROLE')
     AND UPPER(g.granted_on) IN ('TABLE', 'VIEW', 'MATERIALIZED_VIEW', 'MATERIALIZED VIEW', 'DYNAMIC_TABLE', 'EXTERNAL_TABLE')
     AND UPPER(g.privilege) IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
     AND g.created_on < DATEADD(day, -:period_days, __AS_OF_DATE__)

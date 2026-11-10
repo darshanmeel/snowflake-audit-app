@@ -4,9 +4,6 @@ reviews/
 data/
 .env
 config/settings.local.yml
-tests/db_audit_test.duckdb
-tests/db_audit_test.duckdb.wal
-tests/fixtures/parquet/
 
 # standard Python / OS ignores
 .venv/

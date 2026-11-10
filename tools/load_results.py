@@ -276,7 +276,8 @@ def _zip_data_as_of(zip_path: Path) -> str | None:
                 latest = info.date_time
     if latest is None:
         return None
-    return dt.datetime(*latest, tzinfo=dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Zip times are the zipping machine's local time with no zone: read them as this machine's local time.
+    return dt.datetime(*latest).astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _write_run_results(
@@ -548,6 +549,8 @@ def _load_root(root: Path, db_path: Path, *, zip_as_of: str | None = None) -> di
                 data_path = _find_data_file(checks_dir, qid)
                 if data_path is None:
                     missing_file.append(qid)
+                    # it ran but its file is gone: a failed load, not "newer than the export"
+                    failed_in_export[qid] = "the result file is missing from the export"
                     continue
                 try:
                     table = normalise_timestamps(_read_table(data_path))
@@ -555,6 +558,7 @@ def _load_root(root: Path, db_path: Path, *, zip_as_of: str | None = None) -> di
                         table = apply_masking(table)
                 except Exception as exc:  # noqa: BLE001 -- a bad file must not stop the rest of the load
                     failed_load.append(qid)
+                    failed_in_export[qid] = f"could not read {data_path.name}: {exc}"
                     print(f"warning: could not read {data_path} ({exc}) -- skipped", file=sys.stderr)
                     continue
                 problem = _validate_check_table(table)
@@ -741,6 +745,10 @@ def main(argv: list[str] | None = None) -> int:
         result = load_folder(src, db_path)
     except LoadConfigError as e:
         print(f"error: {e}", file=sys.stderr)
+        return 2
+    except PermissionError:
+        # Windows: the running app holds the db open, so it cannot be replaced.
+        print(f"error: {db_path} is open in the running app; stop the app, or pass --db <new file>", file=sys.stderr)
         return 2
 
     # Loaded into the data folder: point the app at it, so a stale Refresh pointer never shadows

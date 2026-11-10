@@ -5,7 +5,8 @@
   "credit_price_usd": 3.0,
   "ai_credit_price_usd": 2.0,
   "storage_price_usd_tb_month": null,
-  "query_tag": "crosshire-audit"
+  "query_tag": "crosshire-audit",
+  "include_snowflake_tasks": false
  },
  "checks": {
   "access_broad_grants": {
@@ -2304,7 +2305,9 @@
    "sources": [
     "ACCOUNT_USAGE.GRANTS_TO_ROLES",
     "ACCOUNT_USAGE.ACCESS_HISTORY",
-    "ACCOUNT_USAGE.QUERY_HISTORY"
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.ROLES",
+    "ACCOUNT_USAGE.GRANTS_TO_USERS"
    ],
    "params": {
     "min_grants": 10,
@@ -5718,5 +5721,6 @@
   "dim_task",
   "dim_user",
   "dim_warehouse"
- ]
+ ],
+ "queries_sha256": "4e135b38ff5b2f33933c6175f01a53370d0ec3bfd8b9dbfb38a050d184afb549"
 }

@@ -19,9 +19,5 @@ def available(con) -> bool:
     return False
 
 
-def origins(con, tag_filter, window_days: int, workspace_scope: set[str] | None = None) -> dict | None:
-    return None
-
-
 def table_sql(con, query_id: str, window_days: int, tag_filter) -> str | None:
     return None

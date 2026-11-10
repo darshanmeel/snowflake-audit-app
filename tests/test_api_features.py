@@ -220,41 +220,6 @@ def test_an_unbuilt_tag_table_says_so_instead_of_reading_clean(monkeypatch):
     assert body["available"] is False and "not built" in body["reason"] and "object_types" not in body
 
 
-# ---- fix these first ---------------------------------------------------------------------------------
-
-
-def test_fix_first_labels_priced_and_critical_no_usd_apart():
-    body = client.get("/api/fix-first", params={**W, "limit": 50}).json()
-    assert set(body["counts"]) == {"priced_window", "priced_month", "critical_no_usd", "unit"}
-    priced = body["priced_window"]
-    assert priced and [i["usd"] for i in priced] == sorted((i["usd"] for i in priced), reverse=True)
-    assert all(i["group"] == "priced_window" and i["kind"] in ("waste", "saving", "gap") and i["per"] == "window"
-               for i in priced)
-    assert all(i["group"] == "priced_month" and i["kind"] == "saving_month" and i["per"] == "month"
-               for i in body["priced_month"])
-    critical = body["critical_no_usd"]
-    assert critical, "the fixture has CRITICAL findings with no waste or saving figure"
-    assert all(i["group"] == "critical_no_usd" and i["critical"] > 0 for i in critical)
-    ids = [i["query_id"] for g in ("priced_window", "priced_month", "critical_no_usd") for i in body[g]]
-    assert len(ids) == len(set(ids)), "a finding is in one group only"
-    assert [i["query_id"] for i in body["items"]] == ids
-    assert [i["critical"] for i in critical] == sorted((i["critical"] for i in critical), reverse=True)
-
-
-def test_fix_first_dollars_are_the_findings_own_dollars():
-    body = client.get("/api/fix-first", params={**W, "limit": 50}).json()
-    findings = _findings()
-    for item in body["priced_window"] + body["priced_month"]:
-        assert item["usd"] == findings[item["query_id"]]["money"]["usd"]
-
-
-def test_fix_first_limit_and_filters():
-    body = client.get("/api/fix-first", params={**W, "limit": 2}).json()
-    assert all(len(body[g]) <= 2 for g in ("priced_window", "priced_month", "critical_no_usd"))
-    assert client.get("/api/fix-first", params={**W, "limit": 0}).status_code == 422
-    assert client.get("/api/fix-first", params={**W, "warehouse": "WH_ETL"}).status_code == 200
-
-
 # ---- price basis and the discount what-if ------------------------------------------------------------
 
 
@@ -288,6 +253,7 @@ def test_a_discount_never_stacks_on_an_invoice_rate(monkeypatch):
 
 def test_the_discount_is_not_applied_to_the_test_db_because_its_rate_is_the_invoice(settings_restored):
     from app.core import config as app_config
+    before = _findings()[WH_CHECK]["money"]["usd"]
     app_config.save_settings_local({"discount_pct": 0.25})
     try:
         meta = client.get("/api/meta").json()
@@ -295,7 +261,7 @@ def test_the_discount_is_not_applied_to_the_test_db_because_its_rate_is_the_invo
         detail = client.get(f"/api/finding/{NAME_CHECK}", params=W).json()
         assert detail["discount_pct"] == 0.0 and detail["discount"]["configured"] == 0.25
         plain = _findings()[WH_CHECK]["money"]["usd"]
-        assert plain > 0, "the priced waste is the same with or without the what-if"
+        assert plain == before, "the priced waste is the same with or without the what-if"
     finally:
         app_config.save_settings_local({"discount_pct": 0.0})
 

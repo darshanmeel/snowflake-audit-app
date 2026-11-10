@@ -37,13 +37,13 @@ flowchart LR
 
 ## Lint rules (tools/lint_headers.py)
 
-- Every required field non-empty; `query_id` == filename (lint_headers.py:98-110).
-- `reads` must list every SNOWFLAKE.* view the SQL reads, includes (`__INCLUDE_x__` from common/ or dims/) too (lint_headers.py:69-85, 104-107).
-- `money` / `entity` columns and `not_assessed_reasons` codes must appear in the body (lint_headers.py:133-145).
-- No hard-coded windows (`INTERVAL n DAYS`, `dateadd(day, -7|-NN, ...)`); `windowed: yes` iff body uses `:period_days` iff params declares it (lint_headers.py:61-66, 147-164).
-- `status` CASE labels only OK, WARN, CRITICAL, NOT_ASSESSED, nested CASEs stripped (lint_headers.py:41-59, 174-179).
+- Every required field non-empty; `query_id` == filename (lint_headers.py:102-114).
+- `reads` must list every SNOWFLAKE.* view the SQL reads, includes (`__INCLUDE_x__` from common/ or dims/) too (lint_headers.py:73-89, 104-107).
+- `money` / `entity` columns and `not_assessed_reasons` codes must appear in the body (lint_headers.py:137-149).
+- No hard-coded windows (`INTERVAL n DAYS`, `dateadd(day, -7|-NN, ...)`); `windowed: yes` iff body uses `:period_days` iff params declares it (lint_headers.py:65-70, 147-164).
+- `status` CASE labels only OK, WARN, CRITICAL, NOT_ASSESSED, nested CASEs stripped (lint_headers.py:41-63, 174-179).
 - Forbidden words: collector, verifier, `--share`, `findings/`, `feeds:` (lint_headers.py:32-39, 170-172).
-- Ends with `build_manifest.py --check` (lint_headers.py:197-211).
+- Ends with `build_manifest.py --check` (lint_headers.py:204-218).
 
 ## Duplicate parser (by design)
 

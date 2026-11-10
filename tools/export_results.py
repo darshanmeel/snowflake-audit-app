@@ -203,7 +203,10 @@ def info_schema_db(cur) -> str | None:
         if current:
             return current
         cur.execute("SHOW TERSE DATABASES")
-        names = [r[1] for r in cur.fetchall()]
+        rows = cur.fetchall()
+        # A standard database first: a shared or application one may not run the table functions.
+        names = ([r[1] for r in rows if len(r) > 2 and str(r[2] or "").upper() == "STANDARD"]
+                 + [r[1] for r in rows])
     except Exception:  # noqa: BLE001 -- no database to use means no fallback, never a failed export
         return None
     return next((n for n in names if n.upper() != "SNOWFLAKE"), names[0] if names else None)
@@ -272,6 +275,15 @@ def params_for(qid: str, thresholds: dict) -> dict:
         if override is not None:
             values[name] = override
     return values
+
+
+EGRESS_CHECK = "sf_cost_data_transfer_egress"
+
+
+def transfer_rates(params: dict) -> dict:
+    """The egress check's $/TB, so cost_lines prices the same bytes at the same rate."""
+    return {"transfer_same_cloud_usd_tb": params.get("same_cloud_usd_per_tb"),
+            "transfer_other_cloud_usd_tb": params.get("other_cloud_usd_per_tb")}
 
 
 def _literal(value) -> str:
@@ -454,7 +466,9 @@ def run_shims(cur, ctx: dict, views: list[str], sql_dir: Path = SQL_DIR) -> None
     plans: dict[str, tuple[dict, str, list]] = {}
     for view in views:
         head, body = shims[view]
-        if fallback_blocked(head, ctx):
+        why = fallback_blocked(head, ctx)
+        if why:
+            ctx["shim_errors"][view] = why  # each check that needs it names the missing privilege
             continue
         try:
             items: list = [None]
@@ -613,6 +627,9 @@ def render(text: str, *, days: int, params: dict, ctx: dict, sql_dir: Path = SQL
         "__AI_CREDIT_PRICE__": _literal(ctx.get("ai_credit_price_usd")),
         "__INFO_SCHEMA__": '"' + str(ctx.get("info_schema_db") or "").replace('"', '""') + '".INFORMATION_SCHEMA',
         "__STORAGE_PRICE_TB_MONTH__": _literal(ctx.get("storage_price_usd_tb_month")),
+        # the egress check's defaults when the context has none
+        "__TRANSFER_SAME_CLOUD_USD_TB__": _literal(ctx.get("transfer_same_cloud_usd_tb") or 20),
+        "__TRANSFER_OTHER_CLOUD_USD_TB__": _literal(ctx.get("transfer_other_cloud_usd_tb") or 90),
         "__QUERY_SOURCE__": _literal(app_config.query_source()),
         # Task health checks leave out Snowflake's own tasks (SNOWFLAKE database) unless this is on.
         "__WITH_SNOWFLAKE_TASKS__": _literal(bool(ctx.get("include_snowflake_tasks", False))),
@@ -1175,6 +1192,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
         try:
             ctx = account_context(cur, as_of=as_of, credit_price=credit_price, storage_price=storage_price,
                                   ai_credit_price=ai_credit_price)
+            ctx.update(transfer_rates(params_for(EGRESS_CHECK, thresholds)))
         except Exception as exc:  # noqa: BLE001 -- the first statement failing is a session problem
             shutil.rmtree(work, ignore_errors=True)
             raise ExportConnectionError(explain_connection_error(exc)) from exc
@@ -1245,12 +1263,19 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int = DEFAULT_MAX_
                              "exported_rows": table.num_rows, "truncated": bool(truncated),
                              "truncated_windows": truncated, "columns": table.column_names,
                              "not_assessed_rows": not_assessed_rows(table), "error": None}
-                except Exception as exc:  # noqa: BLE001 -- the fallback failing reads as the role gap
-                    entry = {"status": "not_assessed", "exported_rows": None, "truncated": False,
-                             "truncated_windows": [], "columns": None, "not_assessed_rows": None,
-                             "not_assessed_reason": "role_cannot_see", "cause": "no_access",
-                             "error": (fallback_blocked(head, ctx) or
-                                       f"role_cannot_see; the INFORMATION_SCHEMA fallback failed too: {_short(exc, 300)}")}
+                except Exception as exc:  # noqa: BLE001 -- the fallback failing: the role gap, or a real failure
+                    why = fallback_blocked(head, ctx)
+                    cause = "no_access" if why or "role_cannot_see" in str(exc) else app_reasons.classify_error(str(exc), error_code(exc))
+                    if cause == "no_access":
+                        entry = {"status": "not_assessed", "exported_rows": None, "truncated": False,
+                                 "truncated_windows": [], "columns": None, "not_assessed_rows": None,
+                                 "not_assessed_reason": "role_cannot_see", "cause": "no_access",
+                                 "error": why or f"role_cannot_see; the INFORMATION_SCHEMA fallback failed too: {_short(exc, 300)}"}
+                    else:  # a timeout or a fault in the fallback is not "the role can't see it"
+                        entry = {"status": "failed", "exported_rows": None, "truncated": False,
+                                 "truncated_windows": [], "columns": None, "not_assessed_rows": None,
+                                 "error": f"the INFORMATION_SCHEMA fallback failed: {_short(exc, 300)}",
+                                 "error_code": error_code(exc), "cause": cause}
                 entry.update({"source": "information_schema", "source_reads": head.get("reads"),
                               "source_note": note, "unreadable": blocked,
                               "duration_s": round(time.monotonic() - started, 3), "domain": _domain(qid, text)})
@@ -1402,6 +1427,8 @@ def run_validate(out_dir: Path, *, windows: int = 7, only: list[str] | None = No
     try:
         conn = (connect_fn or connect)()
         cur = conn.cursor()
+    except ExportConfigError:
+        raise  # a missing .env setting is a config error (exit 2), not a connection error
     except Exception as exc:  # noqa: BLE001 -- sign-in and session setup: one line, never a traceback
         raise ExportConnectionError(explain_connection_error(exc)) from exc
     results: dict[str, dict] = {}
@@ -1409,6 +1436,7 @@ def run_validate(out_dir: Path, *, windows: int = 7, only: list[str] | None = No
         try:
             ctx = account_context(cur, as_of=as_of, credit_price=credit_price, storage_price=storage_price,
                                   ai_credit_price=ai_credit_price)
+            ctx.update(transfer_rates(params_for(EGRESS_CHECK, thresholds)))
         except Exception as exc:  # noqa: BLE001
             raise ExportConnectionError(explain_connection_error(exc)) from exc
         visibility = probe_visibility(cur, [app_registry.by_id(q) for q in checks], as_of=as_of)

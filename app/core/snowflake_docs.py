@@ -63,8 +63,3 @@ def load_docs() -> dict[str, DocsEntry]:
     _CACHE = (key, parsed)
     return parsed
 
-
-def url_for(key: str) -> str:
-    """The docs URL for "<schema>.<name>", or "" when the file has no entry for it."""
-    entry = load_docs().get(key)
-    return entry.url if entry else ""

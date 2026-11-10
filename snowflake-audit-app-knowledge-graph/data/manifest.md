@@ -1,6 +1,6 @@
 # manifest.json — two different files with one name
 
-One-line summary: `app/queries/manifest.json` is the check catalog generated from the SQL headers (298 checks in 7 domains) and read by `app/core/registry.py`; the export's `manifest.json` (in each results folder) is the run record read by the loader — do not confuse them (tools/build_manifest.py:1-10; app/core/registry.py:1-17; tools/export_results.py:1330-1358; tools/load_results.py:457-463).
+One-line summary: `app/queries/manifest.json` is the check catalog generated from the SQL headers (298 checks in 7 domains) and read by `app/core/registry.py`; the export's `manifest.json` (in each results folder) is the run record read by the loader — do not confuse them (tools/build_manifest.py:1-10; app/core/registry.py:1-17; tools/export_results.py:1355-1383; tools/load_results.py:458-464).
 
 ```mermaid
 flowchart LR
@@ -35,17 +35,17 @@ flowchart LR
 
 ## B. Export run manifest: results/<stamp>/manifest.json
 
-- Written once per export (tools/export_results.py:1330-1358). Keys the loader uses:
+- Written once per export (tools/export_results.py:1355-1383). Keys the loader uses:
 
 | Key | Loader use | Evidence |
 |---|---|---|
-| `findings{qid: {status, error, error_code, cause, unreadable, exported_rows, not_assessed_rows, truncated, truncated_windows, source, source_reads, source_note}}` | what to load / mark failed | tools/load_results.py:533-587 |
-| `dims.available` | which dim files are this run's | tools/load_results.py:471-472 |
-| `tag_sources.available`, `.truncated` | which tag sources load; `tag_sources_cut` | tools/load_results.py:392-397, 654 |
-| `window_aliases` | copy windows | tools/load_results.py:476-483 |
-| `max_rows` | truncation note | tools/load_results.py:467 |
-| `as_of, as_of_date, includes_today, last_complete_day, lag_hours, windows, window_coverage, account, pricing, visibility, edition, masked, git_commit, tool_version` | `direct_export_meta` | tools/load_results.py:643-656 |
-| `pricing.credit_price_usd` | tag cost tables priced or empty | tools/load_results.py:415-419 |
+| `findings{qid: {status, error, error_code, cause, unreadable, exported_rows, not_assessed_rows, truncated, truncated_windows, source, source_reads, source_note}}` | what to load / mark failed | tools/load_results.py:534-592 |
+| `dims.available` | which dim files are this run's | tools/load_results.py:472-473 |
+| `tag_sources.available`, `.truncated` | which tag sources load; `tag_sources_cut` | tools/load_results.py:393-398, 654 |
+| `window_aliases` | copy windows | tools/load_results.py:477-484 |
+| `max_rows` | truncation note | tools/load_results.py:468 |
+| `as_of, as_of_date, includes_today, last_complete_day, lag_hours, windows, window_coverage, account, pricing, visibility, edition, masked, git_commit, tool_version` | `direct_export_meta` | tools/load_results.py:648-661 |
+| `pricing.credit_price_usd` | tag cost tables priced or empty | tools/load_results.py:416-420 |
 
-- No manifest -> import mode; nothing is truncated or failed (tools/load_results.py:485-494).
-- Export also writes `sources`, `monitor_usage`, `manage_grants`, `days`, `mode`, `export_date`, `statement_timeout_s`, `include_snowflake_tasks` that the loader does not store (tools/export_results.py:1330-1358 vs tools/load_results.py:632-656).
+- No manifest -> import mode; nothing is truncated or failed (tools/load_results.py:486-495).
+- Export also writes `sources`, `monitor_usage`, `manage_grants`, `days`, `mode`, `export_date`, `statement_timeout_s`, `include_snowflake_tasks` that the loader does not store (tools/export_results.py:1355-1383 vs tools/load_results.py:637-661).

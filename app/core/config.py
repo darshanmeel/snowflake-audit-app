@@ -162,8 +162,9 @@ DEFAULT_SETTINGS: dict = {
     "export_tag_keys": None,  # None = every tag
     "include_today": True,
     "include_snowflake_tasks": False,
-    "credit_price_usd": 3.0,  # the same list prices config/settings.yml ships with
-    "ai_credit_price_usd": 2.0,
+    # no price in code: without settings.yml a figure reads unpriced, never an invented price
+    "credit_price_usd": None,
+    "ai_credit_price_usd": None,
     "storage_price_usd_tb_month": None,
     "required_tag_keys": [],
     "env_patterns": {
@@ -371,15 +372,15 @@ def parse_sources(raw) -> dict[str, str] | None:
     if not isinstance(raw, dict):
         raise ValueError("must map a SNOWFLAKE view or schema to your copy, e.g. ACCOUNT_USAGE: MY_DB.AU_COPY")
     out = {}
-    for key, copy in raw.items():
+    for key, target_raw in raw.items():
         m = _SOURCE_KEY.fullmatch(str(key).strip())
         if not m:
             raise ValueError(f"{key!r} is not a view or schema such as ACCOUNT_USAGE.QUERY_HISTORY")
         parts = 3 if m.group(2) else 2
-        target = str(copy or "").strip()
+        target = str(target_raw or "").strip()
         if not re.fullmatch(rf"{_IDENT}(?:\.{_IDENT}){{{parts - 1}}}", target):
             want = "db.schema" if parts == 2 else "db.schema.view"
-            raise ValueError(f"{key}: the copy must be a {want} name, not {copy!r}")
+            raise ValueError(f"{key}: the copy must be a {want} name, not {target_raw!r}")
         out[m.group(1).upper() + (f".{m.group(2).upper()}" if m.group(2) else "")] = target
     return out
 
@@ -443,7 +444,8 @@ def load_settings() -> dict:
     if _SETTINGS_CACHE.get("key") != key or key[1] is None:
         _SETTINGS_CACHE.clear()
         value = load_settings_uncached()
-        key = (key[0], _stamp(_config_dir() / "settings.yml"), key[2])
+        if key[1] is None:  # the file was just seeded: stamp it now; otherwise keep the stamp taken before the read
+            key = (key[0], _stamp(_config_dir() / "settings.yml"), key[2])
         _SETTINGS_CACHE.update(key=key, value=value)
     return copy.deepcopy(_SETTINGS_CACHE["value"])
 

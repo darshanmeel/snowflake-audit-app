@@ -33,7 +33,7 @@
 WITH v AS (
   SELECT table_id AS view_id, UPPER(table_catalog || '.' || table_schema || '.' || table_name) AS view_fqn,
          table_catalog AS database_name, table_schema AS schema_name, table_name AS view_name,
-         table_owner AS view_owner, is_secure = 'YES' AS is_secure, created, last_altered
+         table_owner AS view_owner, is_secure = 'YES' AS is_secure, created, last_altered, last_ddl
   FROM SNOWFLAKE.ACCOUNT_USAGE.VIEWS
   WHERE deleted IS NULL AND table_catalog <> 'SNOWFLAKE'
 ),
@@ -58,7 +58,8 @@ deps AS (
 SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id, v.view_fqn, v.database_name, v.schema_name,
        v.view_name, v.view_owner, v.is_secure, v.created, v.last_altered,
        DATEDIFF(day, v.created, __AS_OF_DATE__) AS age_days,
-       DATEDIFF(day, v.last_altered, __AS_OF_DATE__) AS days_since_altered,
+       -- LAST_DDL: LAST_ALTERED also moves with background maintenance
+       DATEDIFF(day, COALESCE(v.last_ddl, v.last_altered), __AS_OF_DATE__) AS days_since_altered,
        CASE WHEN v.is_secure THEN 'secure view, unread for ' || :period_days || ' days'
             ELSE 'unread for ' || :period_days || ' days, nothing depends on it' END AS reasons,
        CAST(NULL AS VARCHAR) AS not_assessed_reason,

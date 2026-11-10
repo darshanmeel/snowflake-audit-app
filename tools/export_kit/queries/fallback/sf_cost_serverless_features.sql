@@ -22,7 +22,9 @@ WITH raw AS (
         FROM __SHIM_SEARCH_OPTIMIZATION_HISTORY__)
   WHERE start_time >= DATEADD(day, -2 * :period_days, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
   UNION ALL
-  SELECT 'SNOWPIPE', TO_VARCHAR(pipe_id), pipe_name, start_time, credits_used
+  -- auto-refresh and Streaming rows have no pipe: one named group, as in cost_daily_by_resource
+  SELECT 'SNOWPIPE', COALESCE(TO_VARCHAR(pipe_id), 'none'), COALESCE(pipe_name, '(auto-refresh or Streaming)'),
+         start_time, credits_used
   FROM __SHIM_PIPE_USAGE_HISTORY__
   WHERE start_time >= DATEADD(day, -2 * :period_days, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
   UNION ALL
@@ -40,7 +42,8 @@ WITH raw AS (
   WHERE start_time >= DATEADD(day, -2 * :period_days, __AS_OF_DATE__) AND start_time < __AS_OF_DATE__
 ),
 o AS (
-  SELECT feature, object_id, MAX(object_name) AS object_name,
+  -- a dropped object's names are NULL: keep its row, named as such
+  SELECT feature, object_id, COALESCE(MAX(object_name), '(dropped object)') AS object_name,
          SUM(IFF(start_time >= DATEADD(day, -:period_days, __AS_OF_DATE__), credits_used, 0)) AS cur_credits,
          SUM(IFF(start_time < DATEADD(day, -:period_days, __AS_OF_DATE__), credits_used, 0)) AS prev_credits
   FROM raw

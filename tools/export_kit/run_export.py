@@ -616,7 +616,9 @@ def run_shims(cur, ctx: dict, views: list[str], queries: Path) -> None:
     plans: dict[str, tuple[dict, str, list]] = {}
     for view in views:
         head, body = shims[view]
-        if fallback_blocked(head, ctx):
+        why = fallback_blocked(head, ctx)
+        if why:
+            ctx["shim_errors"][view] = why  # each check that needs it names the missing privilege
             continue
         try:
             items: list = [None]
@@ -795,6 +797,9 @@ def render(text: str, *, days: int, params: dict, ctx: dict) -> str:
         "__AI_CREDIT_PRICE__": _literal(ctx.get("ai_credit_price_usd")),
         "__INFO_SCHEMA__": '"' + str(ctx.get("info_schema_db") or "").replace('"', '""') + '".INFORMATION_SCHEMA',
         "__STORAGE_PRICE_TB_MONTH__": _literal(ctx.get("storage_price_usd_tb_month")),
+        # the egress check's defaults when the context has none
+        "__TRANSFER_SAME_CLOUD_USD_TB__": _literal(ctx.get("transfer_same_cloud_usd_tb") or 20),
+        "__TRANSFER_OTHER_CLOUD_USD_TB__": _literal(ctx.get("transfer_other_cloud_usd_tb") or 90),
         # Task health checks leave out Snowflake's own tasks (SNOWFLAKE database).
         "__WITH_SNOWFLAKE_TASKS__": _literal(bool(ctx.get("include_snowflake_tasks", False))),
     }.items():
@@ -1052,7 +1057,10 @@ def info_schema_db(cur) -> str | None:
         if current:
             return current
         cur.execute("SHOW TERSE DATABASES")
-        names = [r[1] for r in cur.fetchall()]
+        rows = cur.fetchall()
+        # A standard database first: a shared or application one may not run the table functions.
+        names = ([r[1] for r in rows if len(r) > 2 and str(r[2] or "").upper() == "STANDARD"]
+                 + [r[1] for r in rows])
     except Exception:  # noqa: BLE001 -- no database to use means no fallback
         return None
     return next((n for n in names if n.upper() != "SNOWFLAKE"), names[0] if names else None)
@@ -1180,6 +1188,14 @@ def not_assessed_rows(table: pa.Table) -> int:
     return sum(1 for v in table.column("status").to_pylist() if str(v or "").upper() == "NOT_ASSESSED")
 
 
+def is_access_error(exc: Exception) -> bool:
+    """The same no-access rule as app/core/reasons.py: the role can't read it, not a fault or a timeout."""
+    code = str(getattr(exc, "errno", None) or getattr(exc, "sqlstate", None) or "")
+    return code in {"2003", "3001", "2043", "2014"} or bool(re.search(
+        r"does not exist or not authorized|insufficient privileges|not authorized|access denied"
+        r"|permission|forbidden|not allowed to", str(exc), re.I))
+
+
 def _skipped(reason: str, cause: str, error: str, domain: str, unreadable=None) -> dict:
     return {"status": "not_assessed", "exported_rows": None, "truncated": False, "truncated_windows": [],
             "columns": None, "not_assessed_rows": None, "not_assessed_reason": reason, "cause": cause,
@@ -1268,13 +1284,22 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int | None = None,
         conn = (connect_fn or (lambda: connect(timeout_s, defaults["query_tag"])))()
         cur = conn.cursor()
     except StopExport:
+        shutil.rmtree(work, ignore_errors=True)
         raise
     except Exception as exc:  # noqa: BLE001 -- sign-in: one line, never a traceback
-        raise StopExport(f"could not sign in: {type(exc).__name__} {error_code(exc) or ''} {short(exc, 200)}") from exc
+        shutil.rmtree(work, ignore_errors=True)
+        raise StopExport(f"could not sign in: {type(exc).__name__} {error_code(exc) or ''} {short(exc, 200)}"
+                         " -- check the account, user, role, warehouse and key in .env, and that the user's"
+                         " public key is set (ALTER USER ... SET RSA_PUBLIC_KEY)") from exc
     try:
         try:
             ctx = account_context(cur, as_of=as_of, credit_price=credit_price, storage_price=storage_price,
                                   ai_credit_price=ai_credit_price, defaults=defaults)
+            ctx["include_snowflake_tasks"] = bool(defaults.get("include_snowflake_tasks", False))
+            egress = (index["checks"].get("sf_cost_data_transfer_egress") or {}).get("params") or {}
+            # the egress check's $/TB, so cost_lines prices the same bytes at the same rate
+            ctx["transfer_same_cloud_usd_tb"] = egress.get("same_cloud_usd_per_tb")
+            ctx["transfer_other_cloud_usd_tb"] = egress.get("other_cloud_usd_per_tb")
         except Exception as exc:  # noqa: BLE001
             raise StopExport(f"the session cannot run a query (check SNOWFLAKE_WAREHOUSE and the role): "
                              f"{short(exc, 200)}") from exc
@@ -1337,10 +1362,16 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int | None = None,
                     entry = {"status": "failed", "exported_rows": None, "truncated": False,
                              "truncated_windows": [], "columns": None, "not_assessed_rows": None,
                              "error": "not run: the export was stopped during this check"}
-                except Exception as exc:  # noqa: BLE001 -- the fallback failing reads as the role gap
-                    entry = _skipped("role_cannot_see", "no_access", fallback_blocked(head, ctx) or
-                                     f"role_cannot_see; the INFORMATION_SCHEMA fallback failed too: {short(exc, 300)}",
-                                     meta["domain"], blocked)
+                except Exception as exc:  # noqa: BLE001 -- the fallback failing: the role gap, or a real failure
+                    why = fallback_blocked(head, ctx)
+                    if why or "role_cannot_see" in str(exc) or is_access_error(exc):
+                        entry = _skipped("role_cannot_see", "no_access", why or
+                                         f"role_cannot_see; the INFORMATION_SCHEMA fallback failed too: {short(exc, 300)}",
+                                         meta["domain"], blocked)
+                    else:  # a timeout or a fault: the loader classifies the error text
+                        entry = {"status": "failed", "exported_rows": None, "truncated": False,
+                                 "truncated_windows": [], "columns": None, "not_assessed_rows": None,
+                                 "error": f"the INFORMATION_SCHEMA fallback failed: {short(exc, 300)}"}
                 entry.update({"source": "information_schema", "source_reads": fb.get("reads"),
                               "source_note": note, "unreadable": blocked,
                               "duration_s": round(time.monotonic() - started, 3), "domain": meta["domain"]})
@@ -1418,7 +1449,7 @@ def run_export(out_dir: Path, *, windows: int = 30, max_rows: int | None = None,
             pass
 
     manifest = {
-        "tool": "run_export.py", "tool_version": TOOL_VERSION, "git_commit": index.get("git_commit"),
+        "tool": "run_export.py", "tool_version": TOOL_VERSION, "git_commit": None, "queries_sha256": index.get("queries_sha256"),
         "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "as_of_date": as_of.isoformat(),
         "includes_today": bool(include_today), "mode": "query",
         "last_complete_day": ((now - dt.timedelta(hours=LAG_HOURS)).date() - dt.timedelta(days=1)).isoformat(),

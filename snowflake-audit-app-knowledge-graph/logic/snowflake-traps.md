@@ -33,13 +33,13 @@ flowchart LR
 
 | Trap | Handled? | Main place |
 |---|---|---|
-| Price joined twice | Yes, by design | `tools/export_results.py:600-614` (price is a pasted literal) |
+| Price joined twice | Yes, by design | `tools/export_results.py:614-628` (price is a pasted literal) |
 | Units added together | Yes | `common/cost_lines.sql:4-9`, `app/core/finding_columns.py:15-56` |
-| Days with zero usage skipped | Partly | `checks/cost_daily_spikes.sql:47-63` (9 checks with a GENERATOR spine) |
-| Two "todays" | Yes in checks; doc gap in `verify/` | `tools/export_results.py:600-609, 1037-1041` |
+| Days with zero usage skipped | Partly | `checks/cost_daily_spikes.sql:47-65` (9 checks with a GENERATOR spine) |
+| Two "todays" | Yes in checks; doc gap in `verify/` | `tools/export_results.py:614-623, 1037-1041` |
 | Cloud services 10% | Yes | `common/sf_cs_billed_ratio.sql:1-12` |
 | Attribution is not a total | Yes | `checks/sf_cost_warehouse_idle_credits_daily.sql:28-65`, `common/sf_chg_query_credits.sql:1-30` |
-| Role visibility | Yes | `tools/export_results.py:938-985, 1211-1266` |
+| Role visibility | Yes | `tools/export_results.py:955-1002, 1211-1266` |
 | Fail-safe NULL names | Yes | `common/sf_storage_live_tables.sql:25-28`, `checks/sf_storage_dropped_not_purged.sql:41-68` |
 | POLICY_REFERENCES gaps | Yes | `checks/sf_secx_session_policy_coverage.sql:13-14, 64-78`, `checks/sf_secx_password_policy_posture.sql:6-22` |
 | TABLE_ID / BASE_TABLE_ID | Yes | `checks/sf_storage_search_optimization_value.sql:38-46` |
@@ -49,10 +49,10 @@ flowchart LR
 
 - **Rule:** a $/credit is multiplied in once. It never comes from a join that can repeat rows.
 - **How:**
-  - The export resolves each price once per run, in this order: CLI, `RATE_SHEET_DAILY`, 90-day `USAGE_IN_CURRENCY_DAILY` average, `config/settings.yml` (`tools/export_results.py:821-873`, `STATUS.md:17`).
-  - `render` pastes it as a literal (`__CREDIT_PRICE__`, `__AI_CREDIT_PRICE__`, `__STORAGE_PRICE_TB_MONTH__`) (`tools/export_results.py:608-614`). The 96 checks that use `__CREDIT_PRICE__` (grep) never join a price table.
+  - The export resolves each price once per run, in this order: CLI, `RATE_SHEET_DAILY`, 90-day `USAGE_IN_CURRENCY_DAILY` average, `config/settings.yml` (`tools/export_results.py:839-891`, `STATUS.md:17`).
+  - `render` pastes it as a literal (`__CREDIT_PRICE__`, `__AI_CREDIT_PRICE__`, `__STORAGE_PRICE_TB_MONTH__`) (`tools/export_results.py:622-628`). The 96 checks that use `__CREDIT_PRICE__` (grep) never join a price table.
   - OU checks that price per account first reduce the rate to one row per account, then LEFT JOIN it (`checks/sf_org_warehouse_spend_across_accounts.sql:62-77`: `rate` is `GROUP BY account_locator`).
-- **Example** (`tests/test_totals_agree.py:21-57`): on the fake account, `cost_chargeback_by_account.usd_list`, `cost_chargeback_by_service.usd_list`, `cost_period_over_period.est_current_usd_list` and `cost_daily_spikes.est_day_usd_list` must give the same total at 7, 30 and 90 days (`rel=1e-6`). They do because all of them read `common/cost_lines.sql`, which has one rate per line (`common/cost_lines.sql:1-3, 13-16`).
+- **Example** (`tests/test_totals_agree.py:21-55`): on the fake account, `cost_chargeback_by_account.usd_list`, `cost_chargeback_by_service.usd_list`, `cost_period_over_period.est_current_usd_list` and `cost_daily_spikes.est_day_usd_list` must give the same total at 7, 30 and 90 days (`rel=1e-6`). They do because all of them read `common/cost_lines.sql`, which has one rate per line (`common/cost_lines.sql:1-3, 13-16`).
 
 ## 2. Units added together (credits + $, spend + waste)
 
@@ -63,14 +63,14 @@ flowchart LR
 - **App:**
   - One headline column per check, with one kind (`app/core/finding_columns.py:15-56, 135-152`).
   - Total and tie-out rows (`is_total_row`) and second-basis rows (`is_alt_basis`) are left out of the money sum (`app/core/finding_columns.py:61-68`, `app/core/data.py:1113-1129`).
-- **Example** (`tests/test_totals_agree.py:153-167`): `cost_period_over_period` has current, previous and change columns. Its headline is `est_change_usd_list` (kind `change`), and the test asserts the headline is not change + current.
+- **Example** (`tests/test_totals_agree.py:151-165`): `cost_period_over_period` has current, previous and change columns. Its headline is `est_change_usd_list` (kind `change`), and the test asserts the headline is not change + current.
 - **Example** (`checks/overview_spend_estimate.sql:24-25`): one row with 1,000 credits and 2 TB-days of storage gives `total_net_credits = 1000` and `net_list_cost_usd = 1000*3.00 + 2*23/30.4 = 3001.51`. The credits column never includes TB.
 
 ## 3. Days with zero usage skipped
 
 - **Rule:** a day with no usage is a $0 day. It counts in averages, baselines and spikes.
 - **Handled where it matters (9 checks use `GENERATOR`):** `cost_daily_spikes`, `sf_ai_provisioned_throughput_use`, `sf_cost_anomalies_vs_spikes`, `sf_cost_native_app_spend`, `sf_org_cloud_services_billed_by_account`, `sf_perf_table_pruning_regression`, `sf_qry_daily_by_warehouse`, `sf_use_table_daily`, `sf_use_table_perf_daily` (grep).
-  - Pattern: build 400 days with `GENERATOR(ROWCOUNT => 400)`, CROSS JOIN them with every product, LEFT JOIN `cost_lines`, and write `COALESCE(SUM(c.usd), 0)` (`checks/cost_daily_spikes.sql:47-63`). The baseline is the `MEDIAN` over those filled days (`checks/cost_daily_spikes.sql:65-75`).
+  - Pattern: build 400 days with `GENERATOR(ROWCOUNT => 400)`, CROSS JOIN them with every product, LEFT JOIN `cost_lines`, and write `COALESCE(SUM(c.usd), 0)` (`checks/cost_daily_spikes.sql:47-65`). The baseline is the `MEDIAN` over those filled days (`checks/cost_daily_spikes.sql:70-80`).
   - Same pattern per warehouse: `checks/sf_qry_daily_by_warehouse.sql:89-90`.
 - **Left to the reader:** `cost_daily_by_resource` emits only days with usage. Its header tells the reader to "average over the window's days, not over the rows" (`checks/cost_daily_by_resource.sql:20-23`). **Partial:** a consumer that averages its rows overstates the average day.
 - **Cloud-services ratio on a day with no daily row** reads 1, so the full cloud services amount is billed, never 0 (`common/sf_cs_billed_ratio.sql:3`; `checks/cost_daily_by_resource.sql:38`).
@@ -80,14 +80,14 @@ flowchart LR
 
 - **Rule:** every window ends at one `__AS_OF_DATE__`, which is exclusive.
 - **How:**
-  - `as_of = _cutoff(now, include_today)` is computed once per export (`tools/export_results.py:1037-1041, 1144`). With `include_today: true` (the default, `config/settings.yml:9-12`) it is tomorrow, so today's partial day is in. With `false` it is `(now - 8 h).date()`.
-  - `render` turns `__AS_OF_DATE__` into `CAST('<as_of>' AS DATE)` (`tools/export_results.py:609`). The window filter is `>= DATEADD(day, -:period_days, __AS_OF_DATE__) AND < __AS_OF_DATE__` (`README.md:52`).
+  - `as_of = _cutoff(now, include_today)` is computed once per export (`tools/export_results.py:1054-1058, 1144`). With `include_today: true` (the default, `config/settings.yml:9-12`) it is tomorrow, so today's partial day is in. With `false` it is `(now - 8 h).date()`.
+  - `render` turns `__AS_OF_DATE__` into `CAST('<as_of>' AS DATE)` (`tools/export_results.py:623`). The window filter is `>= DATEADD(day, -:period_days, __AS_OF_DATE__) AND < __AS_OF_DATE__` (`README.md:52`).
 - **Deliberate uses of "now" in the checks** (inferred safe):
   - `DATEADD(hour, -8, CURRENT_TIMESTAMP())` as the attribution-lag guard, e.g. `checks/sf_cost_warehouse_idle_credits_daily.sql:33-34`.
   - `LEAST(CURRENT_TIMESTAMP(), CAST(__AS_OF_DATE__ AS TIMESTAMP))` for ages, e.g. `checks/sf_repl_group_health.sql:91`.
   - No check filters a window on `CURRENT_DATE` (grep of `checks/*.sql`).
 - **Fallbacks and shims:** INFORMATION_SCHEMA function ranges use now, because the functions' limits are relative to now (`tools/export_results.py:122-126`, `fallback/access_login_concentration.sql:9-28`). The rows are still filtered on `__AS_OF_DATE__` (`fallback/access_login_concentration.sql:35`).
-- **Example** (`tests/test_totals_agree.py:87-90`): the test DB's `/api/meta` `cost_cutoff` is `data_through 2026-09-20` with no partial day.
+- **Example** (`tests/test_totals_agree.py:85-88`): the test DB's `/api/meta` `cost_cutoff` is `data_through 2026-09-20` with no partial day.
 - **Doc gap:** `verify/cost.sql:3-4` says "(the app counts up to midnight of that day; today is left out)" and uses `CURRENT_DATE()` as `end_date`. With the default `include_today: true`, the app includes today, so the hand check covers one day less than the app.
 
 ## 5. Cloud services priced after the 10% adjustment
@@ -96,7 +96,7 @@ flowchart LR
 - **How:**
   - Daily billed ratio for `WAREHOUSE_METERING`: `GREATEST(SUM(cs + adj), 0) / NULLIF(SUM(cs), 0)` (`common/sf_cs_billed_ratio.sql:4-12`). Warehouse rows are priced as `credits_used_compute + credits_used_cloud_services * billed_ratio` (`checks/cost_daily_by_resource.sql:38-41`). 12 checks include it.
   - Window-level ratio for per-query cloud services: `common/sf_cs_window_ratio.sql:1-9` (2 checks).
-  - Service totals use `METERING_DAILY_HISTORY.CREDITS_BILLED` directly (`common/cost_lines.sql:13`). 8 checks include `cost_lines`.
+  - Service totals use `METERING_DAILY_HISTORY.CREDITS_BILLED` directly (`common/cost_lines.sql:15`). 8 checks include `cost_lines`.
   - README rule: "Cloud services are priced billed only ... never as `credits_used_cloud_services` alone" (`README.md:64-65`).
   - Hand check: `verify/cost.sql:44-60`.
 - **Example:**
@@ -111,15 +111,15 @@ flowchart LR
   - Idle = compute minus attributed, only for hours older than 8 h with a non-NULL `credits_attributed_compute_queries` (`checks/sf_cost_warehouse_idle_credits_daily.sql:28-41`). A day with no attributed hours reads `NOT_ASSESSED`, `no_query_attribution` (`checks/sf_cost_warehouse_idle_credits_daily.sql:61-65`). 6 checks emit `no_query_attribution` and 17 read `credits_attributed_compute_queries` (grep).
   - README rule: sum it without COALESCE, so NULL stays NULL (`README.md:60-61`).
   - The per-query credit include keeps every attributed query with an OUTER join to QUERY_HISTORY, and labels the missing context `(no query history row)` (`common/sf_chg_query_credits.sql:1-30`).
-  - Chargeback shares idle back as a remainder row, `(unallocated idle)` (`checks/sf_chg_idle_allocation.sql:16-18, 54-61`). The app keeps remainder rows in the $ but not in the entity count (`app/core/data.py:1188-1196`).
+  - Chargeback shares idle back as a remainder row, `(unallocated idle)` (`checks/sf_chg_idle_allocation.sql:16-18, 54-61`). The app keeps remainder rows in the $ but not in the entity count (`app/core/data.py:1191-1199`).
   - The INFORMATION_SCHEMA stand-in returns NULL attribution, which reads "not assessed", never idle (`shims/WAREHOUSE_METERING_HISTORY.sql:5-8`).
-  - The export's default cut-off already trails by `LAG_HOURS = 8` when today is excluded (`tools/export_results.py:1033-1041`).
+  - The export's default cut-off already trails by `LAG_HOURS = 8` when today is excluded (`tools/export_results.py:1050-1058`).
 - **Example:** an hour with compute 2.0 and attributed 1.5 gives idle 0.5. The same hour on an adaptive warehouse (attributed NULL) gives idle NULL, and the day reads NOT_ASSESSED.
 
 ## 7. SHOW and role-filtered views show only what the role can see
 
-- **Before the run:** `probe_visibility` opens every source with `SELECT 1 ... LIMIT 0`, runs each `pre:` SHOW, and compares the warehouses that billed in the last 30 days with SHOW WAREHOUSES (`tools/export_results.py:938-975`).
-- **Per check** (`tools/export_results.py:1215-1266`):
+- **Before the run:** `probe_visibility` opens every source with `SELECT 1 ... LIMIT 0`, runs each `pre:` SHOW, and compares the warehouses that billed in the last 30 days with SHOW WAREHOUSES (`tools/export_results.py:955-992`).
+- **Per check** (`tools/export_results.py:1234-1291`):
   - edition too low -> `not_assessed`, `edition_too_low`;
   - unreadable with a fallback -> run the INFORMATION_SCHEMA version;
   - unreadable with no fallback -> `not_assessed`, `role_cannot_see`, never "empty".
@@ -128,7 +128,7 @@ flowchart LR
   - `sf_cost_resource_monitor_coverage` emits `monitor_not_visible` (`checks/sf_cost_resource_monitor_coverage.sql:103-105`).
   - 98 checks declare `empty_if: role_cannot_see` (grep; vocabulary at `tools/header_schema.py:51-59`).
 - **Test:** `tests/test_sql_smoke.py:214` (`test_not_assessed_rows_say_why`).
-- **Example:** the role lacks MONITOR on 2 of 10 billing warehouses. The probe records `metered: 10, missing_from_show: 2` (`tools/export_results.py:961-971`), and `sf_cost_resource_monitor_coverage` rows for those warehouses read NOT_ASSESSED.
+- **Example:** the role lacks MONITOR on 2 of 10 billing warehouses. The probe records `metered: 10, missing_from_show: 2` (`tools/export_results.py:978-988`), and `sf_cost_resource_monitor_coverage` rows for those warehouses read NOT_ASSESSED.
 
 ## 8. Fail-safe tables have NULL names and can pass as live
 
@@ -157,7 +157,7 @@ flowchart LR
 
 - **How:** 18 checks take `:settle_days` (default 3) and end their window at `__AS_OF_DATE__ - settle_days` (grep). For example, `checks/sf_org_warehouse_spend_across_accounts.sql:11, 41, 48-57, 68-69`, and `checks/sf_org_replication_cost.sql:35-41`.
 - **Not settled:**
-  - The export's own price lookups use rows up to the day before as-of: the rate sheet takes the latest rate (`tools/export_results.py:876-891`), and the invoice rate averages 90 days (`tools/export_results.py:894-920`). Both are ratios, so the lag barely moves them (inferred).
+  - The export's own price lookups use rows up to the day before as-of: the rate sheet takes the latest rate (`tools/export_results.py:894-909`), and the invoice rate averages 90 days (`tools/export_results.py:912-937`). Both are ratios, so the lag barely moves them (inferred).
   - `sf_cost_contract_balance_burn`, `sf_cost_rate_sheet`, `sf_org_login_activity_by_account` and `sf_org_security_posture_by_account` read OU without `settle_days` (grep). They are balances, rates or logins, not window spend.
 - **Example:** with as-of 2026-09-21 and a 30-day window, the OU window is 2026-08-19 up to, but not including, 2026-09-18.
 - **Effect:** OU pages carry their own cut-off, three days earlier than the account pages (inferred from the SQL; how the UI labels it is not checked here).
@@ -165,5 +165,5 @@ flowchart LR
 ## Possible issues found
 
 - **Cortex in-progress rows:** no check filters `IS_COMPLETED` on `CORTEX_AI_FUNCTIONS_USAGE_HISTORY` (grep `IS_COMPLETED` = 0 hits in `checks/`). `references/traps.md:23` says to "filter IS_COMPLETED or dedupe". `sf_ai_functions_spend_by_user` sums the hourly rows per query (`checks/sf_ai_functions_spend_by_user.sql:44-50, 65-72`). Whether in-progress rows double count is unclear; verify on a live account.
-- **`verify/cost.sql` query 1 prices every credit at one rate** (`verify/cost.sql:9-12`). The app prices AI service types at `__AI_CREDIT_PRICE__` (`common/cost_lines.sql:14-16`), so the hand check differs from the app wherever AI credits exist.
+- **`verify/cost.sql` query 1 prices every credit at one rate** (`verify/cost.sql:9-12`). The app prices AI service types at `__AI_CREDIT_PRICE__` (`common/cost_lines.sql:16-18`), so the hand check differs from the app wherever AI credits exist.
 - **`sf_org_replication_cost` reads `OU.REPLICATION_USAGE_HISTORY`** (`checks/sf_org_replication_cost.sql:39`). `references/traps.md:190` lists `REPLICATION_USAGE_HISTORY` as deprecated (the schema is not stated there); verify.

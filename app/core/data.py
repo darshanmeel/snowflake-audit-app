@@ -1177,6 +1177,8 @@ def finding_window_counts(
                                    if raw_flagged is not None and usd is not None else None)
                     money = {"column": col, "kind": kind, "usd": usd, "unit": unit, "basis": basis,
                              "usd_flagged": usd_flagged,
+                             # rows in the sum with no figure: the $ is then partial, never complete
+                             "unpriced_rows": max(basis_rows - priced_rows, 0) if usd is not None else 0,
                              "currency": currency, "mixed_currency": mixed_currency,
                              # where the $/credit behind this figure came from; a currency amount is the invoice's own
                              "price_basis": "invoice_currency" if unit == "currency" else basis_source}
@@ -1570,15 +1572,6 @@ def tag_spend_ready() -> bool:
     con = _connect()
     try:
         return app_tag_spend.available(con)
-    finally:
-        con.close()
-
-
-def read_tag_origins(tag_filter, window_days: int, workspace_scope: set[str] | None) -> dict | None:
-    """Where the dollars a tag filter keeps got their tag (app/core/tag_spend.origins)."""
-    con = _connect()
-    try:
-        return app_tag_spend.origins(con, tag_filter, window_days, workspace_scope)
     finally:
         con.close()
 

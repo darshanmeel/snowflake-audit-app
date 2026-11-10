@@ -22,7 +22,8 @@
 WITH __INCLUDE_cost_lines__
 SELECT :period_days AS window_days, __ACCOUNT_ID__ AS account_id,
        SUM(IFF(usage_unit = 'CREDITS', qty, 0)) AS total_net_credits, 'USD' AS currency_code,
-       SUM(usd) AS net_list_cost_usd,
+       -- a line with usage but no price leaves the total short: no total, never a partial one
+       IFF(COUNT_IF(rate IS NULL AND qty > 0) > 0, NULL, SUM(usd)) AS net_list_cost_usd,
        'effective credit price' AS credit_price_source,
        IFF(COUNT_IF(rate IS NULL) > 0, 'unpriced', 'priced') AS price_basis
 FROM cost_lines

@@ -42,10 +42,12 @@ GRANT APPLICATION ROLE SNOWFLAKE.BUDGET_VIEWER TO ROLE AUDIT_ROLE;
 -- Data quality expectation results (SNOWFLAKE.LOCAL); IMPORTED PRIVILEGES does not open them.
 GRANT APPLICATION ROLE SNOWFLAKE.DATA_QUALITY_MONITORING_VIEWER TO ROLE AUDIT_ROLE;
 
--- Authentication and password policies. POLICY_REFERENCES does not list them, so the checks use
+-- Optional: authentication and password policies. POLICY_REFERENCES does not list them, so the checks use
 -- SHOW AUTHENTICATION POLICIES and SHOW PASSWORD POLICIES, which need a privilege on the account.
-GRANT APPLY AUTHENTICATION POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
-GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
+-- These are not read-only: they let the role attach and detach sign-in policies. Without them the
+-- two checks see only the policies the role owns.
+-- GRANT APPLY AUTHENTICATION POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
+-- GRANT APPLY PASSWORD POLICY ON ACCOUNT TO ROLE AUDIT_ROLE;
 
 -- Optional: the organization billing views (invoice, rates, contract balance).
 -- In an ORGADMIN-enabled account they are database roles of the SNOWFLAKE database:
