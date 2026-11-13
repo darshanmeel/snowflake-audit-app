@@ -60,6 +60,10 @@ flowchart TD
 | `area_governance.tsx` | Access, Audit, PII, Lineage and Sharing pages (`GOV_CHART_PAGES`) | `web/src/components/area_governance.tsx:1960-1967` |
 | `area_ai_storage.tsx` | AI and Storage pages, plus the shared `useCheck`, `chkOf` and `useLede` | `web/src/components/area_ai_storage.tsx:50-80`, `327-330`, `1301-1305` |
 | `area_activity.tsx` | Activity pages | `web/src/components/area_activity.tsx:1024-1027` |
+| `access_log_page.tsx` | Activity › Access log: left panel (Overview, One object, One person), UTC-offset slider, shared `ByCard` and `StatementsCard` | `web/src/components/access_log_page.tsx` |
+| `area_access_log.tsx` | PII › Tags, and the suggested-tags and downloads blocks of PII | `web/src/components/area_access_log.tsx` |
+| `area_policies.tsx` | PII › Masking & row policies blocks (who saw clear text, who can bypass, policy use) and Audit › Changes policy changes | `web/src/components/area_policies.tsx` |
+| `use_json.ts` | GET hook for the routes that are not check findings (/api/access/*, /api/policies/*) | `web/src/components/use_json.ts` |
 | `area_pipelines.tsx` | Tasks, Loading and Serverless pages | `web/src/components/area_pages.tsx:22`, `184-186` |
 | `drawer.tsx` | `DrawerBus` (one open drawer, mirrored to `open=`), `CheckDrawer` | `web/src/components/drawer.tsx:25-53`, `86` |
 | `waste_total.tsx` | The one waste, saving and storage-per-month calculation | `web/src/components/waste_total.tsx:1-12`, `143-193` |

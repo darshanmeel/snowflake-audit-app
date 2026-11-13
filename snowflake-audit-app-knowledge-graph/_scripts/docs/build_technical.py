@@ -566,6 +566,7 @@ def sec_backend():
         "<code>sf_use_access_log</code> runs once over 90 days of <code>ACCESS_HISTORY</code> and keeps one row per object x user x role x client x statement type x UTC day (hour with <code>bucket_hours: 1</code>), with read, write and DDL counts and DDL operations. No query text. The page has a left panel: Overview, One object, One person " + cite("app/queries/checks/sf_use_access_log.sql; web/src/components/access_log_page.tsx"),
         "The aggregation runs in Snowflake; the API only slices the DuckDB table to the window (<code>[as_of - window, as_of)</code>) and one object, so a page never loads the log whole " + cite("app/api/access_log.py:38-56"),
         "A check may declare <code>:row_cap</code>; the log keeps up to 1,000,000 rows, newest first, and the page says from when counts are complete when the cap was reached " + cite("tools/export_results.py; app/api/access_log.py:45-56"),
+        "The Overview also breaks every object down by client, role, user and statement type, and shows who touched what off hours (person x object, sensitive or all objects, with – where the person has no grant path) " + cite("app/api/access_log.py _by, _statements, get_overview"),
         "Off hours: <code>sf_use_access_hours</code> keeps people's queries per UTC hour; the page shifts them with a UTC-offset slider and recounts, the findings use <code>business_utc_offset</code> from config/thresholds.yml; weekends are off; only users whose TYPE is PERSON",
         "The tag explorer joins <code>sf_gov_tag_objects</code> (direct tags on databases, schemas, tables, columns) with the grant walk of explorer.py (who can read) and the log (who did), in one grouped scan " + cite("app/api/access_log.py:157-198"),
         "<code>sf_gov_policy_hits</code> logs where each masking and row access policy was enforced, by user and role; joined with each policy's exempt roles it shows who read masked columns in clear, and with the grant walk who can bypass each policy " + cite("app/api/policies.py:34-76"),
@@ -1025,7 +1026,7 @@ def main():
 ])}
 <div class="facts"><div class="fact"><b>{TOTAL}</b><span>checks, 7 domains</span></div><div class="fact"><b>85</b><span>INFORMATION_SCHEMA fallbacks</span></div>
 <div class="fact"><b>44</b><span>HTTP routes</span></div><div class="fact"><b>{len(TABS)} / {sum(len(x) for _, x in TABS)}</b><span>tabs / sub-tabs</span></div><div class="fact"><b>300</b><span>findings tables (test DB)</span></div></div>
-<p class="key">Built from the knowledge graph, last updated with the access log (commit 6180c11), key steps checked in the code. Examples marked &quot;run&quot; were executed on this repo; the rest cite a test or a code line.</p>
+<p class="key">Built from the knowledge graph, last updated with the access log redesign (Nov 2026), key steps checked in the code. Examples marked &quot;run&quot; were executed on this repo; the rest cite a test or a code line.</p>
 <ul class="toc">{"".join(f'<li><a href="#{i}">{n}</a></li>' for i, n in SECTIONS)}</ul></section>
 """
     body = "".join([sec_arch(), sec_export(), sec_checks(), sec_model(), sec_backend(), sec_money(), sec_ui(),

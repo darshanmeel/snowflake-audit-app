@@ -119,6 +119,7 @@ Every row: the sub-tab is registered by `registerAreaContent` (`tab_area.tsx:472
 | pii (PII & policies) | sensitive | `:370` | `ApPiiSensitive` `area_governance.tsx:830` | |
 | pii | policies | `:375` | `ApPiiPolicies` `area_governance.tsx:922` | |
 | pii | reads | `:380` | `ApPiiReads` `area_governance.tsx:1035` | |
+| pii | tags | `:373` | `ApPiiTags` `area_access_log.tsx:24` | tag value → objects, who can read, who did |
 | pii | quality | `:385` | `ApPiiQuality` `area_governance.tsx:1120` | |
 | lineage | dependencies | `:394` | `ApLineageDeps` `area_governance.tsx:1196` | |
 | lineage | explorer | `:399` | `ApLineageExplorer` `area_lineage_explorer.tsx:77` | |
@@ -126,6 +127,7 @@ Every row: the sub-tab is registered by `registerAreaContent` (`tab_area.tsx:472
 | activity | schemas (no own ids) | `:412` | `ApActivitySchemas` `area_activity.tsx:152` | |
 | activity | tables | `:413` | `ApActivityTables` `area_activity.tsx:263` | |
 | activity | lastactive | `:414` | `ApActivityLastActive` `area_activity.tsx:990` | |
+| activity | accesslog | `:403` | `ApActivityAccessLog` `access_log_page.tsx:160` | left panel: Overview, One object, One person; UTC-offset slider |
 | activity | users | `:415` | `ApActivityUsers` `area_activity.tsx:623` | |
 | activity | objects | `:416` | `ApActivityObjects` `area_activity.tsx:772` | |
 | sharing (Sharing & org) | shares | `:423` | `ApSharingShares` `area_governance.tsx:1261` | |

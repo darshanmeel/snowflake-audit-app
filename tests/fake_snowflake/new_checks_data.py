@@ -778,6 +778,48 @@ def policy_hits(b: _B) -> None:
          root_query_id="01pol-ddl")
 
 
+def access_extras(b: _B) -> None:
+    """Rows the access log, hours and downloads pages need: ANALYST_CARA unloads CUSTOMERS (sensitive) to a
+    named stage on Saturday night and downloads it with GET; ANALYST_EVA downloads from her user stage;
+    LEGACY_LOADER, an old service user with no TYPE, loads ORDERS at 02:00 (never flagged as a person);
+    DEV_HUGO alters CUSTOMERS late on Saturday (off-hours DDL by a person)."""
+    stage = {"objectDomain": "Stage", "objectId": 7701, "objectName": "ANALYTICS_DB.PUBLIC.EXPORT_STAGE",
+             "stageKind": "Internal Named"}
+    cust = {"objectDomain": "Table", "objectId": 5008, "objectName": "ANALYTICS_DB.CORE.CUSTOMERS",
+            "columns": [{"columnId": 2, "columnName": "EMAIL"}]}
+    orders = {"objectDomain": "Table", "objectId": 5007, "objectName": "ANALYTICS_DB.CORE.ORDERS",
+              "columns": [{"columnId": 1, "columnName": "ID"}]}
+    sessions = [(91001, "ANALYST_CARA", "SnowSQL 1.2.32"), (91002, "ANALYST_EVA", "SnowSQL 1.2.32"),
+                (91003, "LEGACY_LOADER", "JDBC 3.14.4"), (91004, "DEV_HUGO", "Snowflake UI")]
+    for sid, user, app in sessions:
+        b.au("SESSIONS", session_id=sid, created_on=_ts(b.back(8), 0), user_name=user, authentication_method="RSA_KEYPAIR",
+             login_event_id=sid, client_application_id=app, client_environment="{}", is_open="NO", closed_reason=None)
+    b.au("USERS", user_id=5901, name="LEGACY_LOADER", login_name="LEGACY_LOADER", email=None, type=None, disabled=False,
+         snowflake_lock=False, has_password=False, must_change_password=False, has_mfa=None, ext_authn_duo=False,
+         has_rsa_public_key=True, has_pat=False, has_workload_identity=False, last_success_login=_ts(b.back(1), 2),
+         password_last_set_time=None, created_on=_ts(b.back(400), 10), deleted_on=None, owner="USERADMIN",
+         default_role="ETL_ROLE", default_secondary_role=None, default_warehouse="WH_ETL", is_from_organization_user=False)
+
+    def q(qid, user, role, sid, qtype, at, ah, **extra):
+        b.au("QUERY_HISTORY", query_id=qid, user_name=user, role_name=role, session_id=sid, query_type=qtype,
+             execution_status="SUCCESS", warehouse_id=1003, warehouse_name="WH_BI", start_time=at,
+             end_time=at, execution_time=900, total_elapsed_time=900, **extra)
+        b.au("ACCESS_HISTORY", query_id=qid, query_start_time=at, user_name=user, root_query_id=qid,
+             **{"direct_objects_accessed": [], "base_objects_accessed": [], "objects_modified": [], "policies_referenced": [], **ah})
+
+    sat = b.back(2)   # the as-of date is a Monday, so two days back is a Saturday
+    q("01dl-unload", "ANALYST_CARA", "ANALYST_ROLE", 91001, "UNLOAD", _ts(sat, 22), {"base_objects_accessed": [cust], "objects_modified": [stage]},
+      rows_unloaded=5000, outbound_data_transfer_bytes=40_000_000)
+    q("01dl-get", "ANALYST_CARA", "ANALYST_ROLE", 91001, "GET_FILES", _ts(sat, 22, 10), {"objects_modified": [stage]})
+    q("01dl-get-user", "ANALYST_EVA", "ANALYST_ROLE", 91002, "GET_FILES", _ts(b.back(3), 14),
+      {"objects_modified": [{"objectDomain": "Stage", "objectName": "ANALYST_EVA", "stageKind": "User"}]})
+    for k in range(1, 6):
+        q(f"01legacy-{k}", "LEGACY_LOADER", "ETL_ROLE", 91003, "MERGE", _ts(b.back(k), 2), {"base_objects_accessed": [orders], "objects_modified": [orders]})
+    q("01ddl-hugo", "DEV_HUGO", "DATA_ADMIN", 91004, "ALTER_TABLE_ADD_COLUMN", _ts(sat, 23, 30),
+      {"object_modified_by_ddl": {"objectDomain": "Table", "objectId": 5008, "objectName": "ANALYTICS_DB.CORE.CUSTOMERS",
+                                  "operationType": "ALTER"}})
+
+
 def add(w) -> None:
     b = _B(w)
     ai(b)
@@ -788,3 +830,4 @@ def add(w) -> None:
     lineage_audit(b)
     sensitive_names(b)
     policy_hits(b)
+    access_extras(b)
