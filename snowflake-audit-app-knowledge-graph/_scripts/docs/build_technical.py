@@ -140,7 +140,7 @@ def l2():
     m.box("res", 525, 40, 175, 80, "results/STAMP/", "findings dims tags_src manifest", "data", "DATA", "kept: newest 2 folders")
     m.box("ld", 525, 160, 175, 80, "load_results.py", "build_tags.py", "routine", "", "builds into audit.duckdb.tmp")
     m.box("db", 525, 280, 175, 80, "audit.duckdb", "findings dims summary tags", "data", "DATA", "read-only in the app")
-    m.box("api", 750, 40, 235, 80, "app/api/app.py", "46 routes, service.py, explorer, access log, policies", "routine entry", "ENTRY", "FastAPI app: app/api/app.py:128")
+    m.box("api", 750, 40, 235, 80, "app/api/app.py", "42 routes, service.py, explorer, access log, policies", "routine entry", "ENTRY", "FastAPI app: app/api/app.py:128")
     m.box("core", 750, 160, 235, 80, "app/core/data.py", "money, status, filters", "routine", "", "one cut-off, one price basis")
     m.box("ui", 750, 280, 235, 80, "React UI", "web/src built to app/web/dist", "", "", "mounted last at /")
     m.arrow([(180, 80), (250, 80)], "au", "q")
@@ -541,7 +541,7 @@ def sec_backend():
         ("DuckDB read-only connection", "one shared connection per file identity", "rows from <code>findings.f_sf_wh_idle_minutes</code>"),
     ])
     b += cite("app/api/app.py:130-204, 1008-1153; app/api/service.py:277-425; app/core/data.py:120-164, 688-793")
-    b += sub("Important endpoints (46 routes: 29 in app.py, 2 in explorer.py, 10 in access_log.py, 4 in policies.py, 1 in guide.py)")
+    b += sub("Important endpoints (42 routes: 24 in app.py, 2 in explorer.py, 11 in access_log.py, 4 in policies.py, 1 in guide.py)")
     b += table(["Method", "Path", "Returns", "Where"], [
         ["GET", c("/api/status"), "<code>{state, settings_error, database, brand}</code>; state = settings_invalid, no_database, build_incomplete, ready. Never raises", cite("app.py:449-476")],
         ["GET", c("/api/meta"), "as_of, windows, discount, price_basis, edition, <code>cost_cutoff</code>, <code>checks_ran</code>", cite("app.py:498-561")],

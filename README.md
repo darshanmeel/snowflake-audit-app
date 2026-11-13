@@ -217,7 +217,7 @@ roles per view, at 306 checks. A check can need more than one grant, so they ove
 | `IMPORTED PRIVILEGES` on the `SNOWFLAKE` database | Every `ACCOUNT_USAGE` view, plus the reader-account and listing views | Almost everything. Only 24 checks read nothing from the `SNOWFLAKE` database (they use SHOW, the organization views or the Trust Center). |
 | **Or** the four database roles below, instead of `IMPORTED PRIVILEGES` | 277 of the 306 checks (257 without the organization checks, which need an organization role either way) | The 28 checks in the "None of the four" row, and the data quality expectations check. 5 of these 29 still show results through a fallback. |
 | `SNOWFLAKE.USAGE_VIEWER` | 173 checks: credits and metering, spend by service, warehouse metering and load, storage, serverless features, AI and Cortex spend, task and pipe runs, data transfer | Overview spend, most of Cost, Warehouses, Serverless features, Storage, AI & apps, and the run history in Tasks & pipelines and Data loading. |
-| `SNOWFLAKE.GOVERNANCE_VIEWER` | 143 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Activity, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
+| `SNOWFLAKE.GOVERNANCE_VIEWER` | 143 checks: query history, access history, masking and row policies, tags, classification, query insights | Queries, Audit, PII & policies, Activity, Access log, Tags, and the "who spent it" cuts. Query attribution opens with this role or `USAGE_VIEWER`. |
 | `SNOWFLAKE.SECURITY_VIEWER` | 91 checks: users, roles, grants, sign-ins, sessions, network policies and rules, secrets, shares | Access (roles, grants, users, MFA, stale users), admin sign-ins in Audit, the network perimeter. Policy references open with this role or `GOVERNANCE_VIEWER`. |
 | `SNOWFLAKE.OBJECT_VIEWER` | 63 checks: tables, schemas, views, stages, pipes, tasks, object dependencies | Storage by table, unused objects, dependencies in Lineage, object inventories. |
 | None of the four: needs `IMPORTED PRIVILEGES` | 28 checks | Ten task checks (task cost, failures, runs per day, run times, failed vs all runs, duration change, skipped overlaps, late starts, no-op runs, warehouse vs serverless, all through `TASK_VERSIONS`). Also serverless features, streaming cost, allocation reconciliation, alert history, query acceleration, lock waits, compute pools, backups, stale stage files, database replication, Cortex Code Desktop, data movement violations, reader accounts, listings and Marketplace. |
@@ -574,6 +574,7 @@ Node is only needed to change it.
 | PII & policies | Sensitive data, masking and row policies, who reads it and where it goes, data quality coverage. |
 | Lineage | Dependencies and lineage, and Explorer: pick a table or view to see everything upstream and downstream. |
 | Activity | What is used and what is not: databases, schemas, tables (with one table day by day), last active (tables and other objects by time since last used, down to which ones), users & roles, stages and other objects. |
+| Access log | Who read, wrote or changed which table, view, stage, procedure, function and Streamlit app, with which role and client, and when. Look into first: admin roles used for data work or to open apps, apps shared with PUBLIC or owned by an admin role, a pipeline's login used in Snowsight, sensitive data changed off hours. Per object: owner, who can grant access, its flags. Per app: who it is shared with, who can open it, who opened it (role, grant path, IP) and what it ran as. Per user or role: what they touched. Off hours follow a UTC-offset slider. No query text is kept. |
 | Sharing & org | Shares and listings, accounts, spend across accounts, replication and transfer. |
 | Storage | Growth and stages, unused and sprawl, Time Travel and Fail-safe, backups. |
 | All findings | Every check in one table, with its status and dollars. |
@@ -603,8 +604,8 @@ Node is only needed to change it.
 | Lens | Pages |
 |---|---|
 | FinOps (default) | Overview, Fix these first; Cost, Tags, Budgets, Contract; Waste & savings, Warehouses, Serverless features, AI & apps, Storage, Sharing & org |
-| Data engineer | Overview, Fix these first; Tasks & pipelines, Data loading, Activity, Who can access what; Queries, Warehouses, Serverless features; Cost, Waste & savings, Storage |
-| Governance | Overview, Fix these first; Roles & grants, Users & sign-ins, Account perimeter, Who can access what; PII & policies, Lineage, Activity, Sharing & org, Storage; Audit |
+| Data engineer | Overview, Fix these first; Tasks & pipelines, Data loading, Activity, Access log, Who can access what; Queries, Warehouses, Serverless features; Cost, Waste & savings, Storage |
+| Governance | Overview, Fix these first; Roles & grants, Users & sign-ins, Account perimeter, Who can access what; PII & policies, Lineage, Activity, Access log, Sharing & org, Storage; Audit |
 | CTO | Every page, grouped as Cost, Reliability, Performance and Security |
 | CFO | Money, What to do; Cost, Chargeback & tags, Contract & rate, Budgets & guardrails, Waste & savings |
 
