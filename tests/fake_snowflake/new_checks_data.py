@@ -854,6 +854,20 @@ def access_extras(b: _B) -> None:
             if user != "ANALYST_EVA":
                 q(f"01st-child-{i}-{k}", "SVC_BI", "BI_ROLE", 91005, "SELECT", _ts(b.back(k), 9 + i, 1), {"base_objects_accessed": [cust]},
                   query_tag=child_tag)
+    # a container-runtime app with restricted caller's rights: its queries run as each viewer (user and role)
+    mkt = "ANALYTICS_DB.APPS.MARKETING_APP"
+    ltv = {"objectDomain": "Table", "objectId": 5020, "objectName": "ANALYTICS_DB.MARTS.CUSTOMER_LTV", "columns": [{"columnId": 1, "columnName": "ID"}]}
+    m_run = json.dumps({"StreamlitEngine": "ExecuteStreamlit", "StreamlitName": mkt})
+    m_child = json.dumps({"StreamlitEngine": "ExecuteStreamlit", "StreamlitName": mkt, "ChildQuery": "true"})
+    for i, (user, role, sid, days) in enumerate((("DEV_HUGO", "DEV_ROLE", 91004, (2, 6)), ("ANALYST_DAN", "ANALYST_ROLE", 92002, (4,)))):
+        for k in days:
+            q(f"01mk-run-{i}-{k}", user, role, sid, "EXECUTE_STREAMLIT", _ts(b.back(k), 14), {}, query_tag=m_run)
+            for j in range(2):
+                q(f"01mk-child-{i}-{k}-{j}", user, role, sid, "SELECT", _ts(b.back(k), 14, 1 + j), {"base_objects_accessed": [ltv]}, query_tag=m_child)
+    for priv, grantee, made in (("USAGE", "DEV_ROLE", 20), ("USAGE", "ANALYST_ROLE", 20), ("OWNERSHIP", "DATA_ADMIN", 25)):
+        b.au("GRANTS_TO_ROLES", created_on=_ts(b.back(made), 11), modified_on=_ts(b.back(made), 11), deleted_on=None, privilege=priv,
+             granted_on="STREAMLIT", name="MARKETING_APP", table_catalog="ANALYTICS_DB", table_schema="APPS", granted_to="ROLE",
+             grantee_name=grantee, grant_option=False, granted_by="SYSADMIN", granted_by_role_type="ROLE", object_instance=None)
     # shared with ANALYST_ROLE a month ago; shared with PUBLIC ten days ago and revoked five days later
     for priv, grantee, by, made, gone in (("USAGE", "ANALYST_ROLE", "SYSADMIN", 30, None), ("USAGE", "PUBLIC", "BI_ROLE", 10, 5),
                                           ("OWNERSHIP", "BI_ROLE", "SYSADMIN", 40, None)):

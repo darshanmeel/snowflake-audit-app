@@ -674,7 +674,8 @@ function AppDetail({ p, go, app, onPick, otype, setOtype }: { p: ApPageProps; go
             <Tile l="Can open it now" v={d.can_open == null ? "–" : fmtInt(d.can_open.length)} s={d.can_open == null ? "no grant links in this export" : "users through the roles it is shared with"} />
             <Tile l="Shared with" v={d.shares == null ? "–" : fmtInt(live.length)} warn={live.some((r: Row) => r.grantee_name === "PUBLIC")}
               s={d.shares == null ? "the share check did not run" : few(live.map((r: Row) => r.grantee_name).join(", "))} />
-            <Tile l="Runs as" mono v={(d.runs_as as Row[])[0]?.role_name || "–"} s="the app's own queries (owner's rights)" />
+            <Tile l="Runs as" mono v={d.rights === "caller" ? "each viewer" : (d.runs_as as Row[])[0]?.role_name || "–"}
+              s={d.rights === "caller" ? "restricted caller's rights: the app's queries run with the viewer's own role" : d.rights === "owner" ? `owner's rights: the app's queries run as the owner${d.owner_role ? ` (${d.owner_role})` : ""}` : "the app ran no queries in the window"} />
           </div>
           <Card title="Who opened it" sub="One row per user · runs = the app starting or rerunning for them · a tick per day used · client and sign-in IP of their session">
             {(d.who as Row[]).length ? (
@@ -689,7 +690,7 @@ function AppDetail({ p, go, app, onPick, otype, setOtype }: { p: ApPageProps; go
                       ? <span className="al-chip d" title="No grant path to the app today: revoked since, or reached another way">no path today</span>
                       : <span className="al-two">{(w.access_paths as string[][]).slice(0, 2).map((pth, i) => (
                           <span key={i} className="al-mono sm" title={pth.join(" → ")}>{pth.slice(1).join(" → ")}</span>))}</span>}</td>
-                    <td className="n">{fmtInt(numOrZero(w.runs))}</td>
+                    <td className="n">{fmtInt(numOrZero(w.runs))}{w.app_queries != null && <div className="al-meta">{`${fmtInt(w.app_queries)} app queries`}</div>}</td>
                     <td><div className="al-ticks">{days.map((x) => <i key={x} className={(w.dates || []).includes(x) ? "on" : ""} title={x} />)}</div><span className="al-meta">{`${fmtInt(numOrZero(w.days))} of ${fmtInt(days.length)} days`}</span></td>
                     <td><span className="al-two"><span className="al-mono sm">{w.client_ips || "–"}</span><span className="al-meta">{w.clients || "–"}</span></span></td>
                     <td className="n al-meta">{`${day(w.first_at)} → ${day(w.last_at)}`}</td>
@@ -716,7 +717,7 @@ function AppDetail({ p, go, app, onPick, otype, setOtype }: { p: ApPageProps; go
               <div className="al-key"><span><i style={{ background: "color-mix(in srgb, var(--c1) 18%, transparent)" }} />opened it in the window</span></div>
             </Card>
           </div>
-          <Card title="What it read and wrote" sub="Tables and views the app's own queries touched, as its owner · select a row">
+          <Card title="What it read and wrote" sub={d.rights === "caller" ? "Tables and views the app's own queries touched, as each viewer · select a row" : "Tables and views the app's own queries touched, as its owner · select a row"}>
             {(d.objects as Row[]).length ? (
               <table className="al-table">
                 <thead><tr><th>Object</th><th className="n">Reads</th><th className="n">Writes</th><th className="n">DDL</th><th>Ran as</th><th className="n">Last</th></tr></thead>
@@ -728,7 +729,9 @@ function AppDetail({ p, go, app, onPick, otype, setOtype }: { p: ApPageProps; go
               </table>
             ) : <CxStat>The app read no table in the window, or its queries are not in the access log.</CxStat>}
           </Card>
-          <div className="al-meta">Apps run with owner's rights: their queries carry the owner's role, and the viewer is read from the query that opens the app. Snowflake does not record which rows a viewer saw.</div>
+          <div className="al-meta">{d.rights === "caller"
+            ? "This app runs with restricted caller's rights (container runtime): its queries carry each viewer's own user and role, so what it read is per viewer. Snowflake does not record which rows a viewer saw."
+            : "Apps run with owner's rights unless set to restricted caller's rights (container runtime): their queries carry the owner's role, and the viewer is read from the query that opens the app. Snowflake does not record which rows a viewer saw."}</div>
         </>
       )}
     </>

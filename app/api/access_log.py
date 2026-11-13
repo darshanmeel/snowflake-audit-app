@@ -395,6 +395,15 @@ def get_apps(window: int = 30, app: str = "") -> dict:
         pass
     for w in who:
         w["access_paths"] = paths.get(w["user_name"]) if can_open is not None else None
+    # owner's rights: the app's queries run as the owner's role; restricted caller's rights (container runtime):
+    # as each viewer, so they show under the viewer's own user and role
+    owner = next((r["grantee_name"] for r in shares or [] if r["privilege"] == "OWNERSHIP" and not r["revoked_at"]), None)
+    as_roles = {r["role_name"] for r in runs_as}
+    rights = None if not runs_as else "owner" if owner and as_roles <= {owner} else "caller" if (
+        {r["user_name"] for r in runs_as} & {w["user_name"] for w in who}) else "owner"
+    per_viewer = {(r["user_name"], r["role_name"]): r["queries"] for r in runs_as}
+    for w in who:
+        w["app_queries"] = sum(q for (u, _), q in per_viewer.items() if u == w["user_name"]) if rights == "caller" else None
     read = _log_or_503(
         f"SELECT object_fqn, MAX(object_domain) AS object_domain, SUM(read_queries) AS reads, SUM(write_queries) AS writes, "
         f"SUM(ddl_queries) AS ddl, COUNT(DISTINCT user_name) AS users, MAX(last_at) AS last_at FROM {LOG} WHERE via = ? "
@@ -404,7 +413,7 @@ def get_apps(window: int = 30, app: str = "") -> dict:
     for r in read:
         r["sensitive"] = sens.get(r["object_fqn"])
     return {"window": window, "start": start, "end": end, "apps": apps, "app": name, "who": who, "runs_as": runs_as,
-            "shares": shares, "can_open": can_open, "objects": read}
+            "shares": shares, "can_open": can_open, "owner_role": owner, "rights": rights, "objects": read}
 
 
 @router.get("/api/access/people")

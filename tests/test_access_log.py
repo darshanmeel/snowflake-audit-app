@@ -118,3 +118,13 @@ def test_each_viewer_shows_the_role_used_and_the_grant_path_to_the_app():
     who = {w["user_name"]: w for w in client.get("/api/access/apps", params={"window": 30}).json()["who"]}
     assert who["ANALYST_CARA"]["roles"] == "ANALYST_ROLE"
     assert ["ANALYST_CARA", "ANALYST_ROLE"] in who["ANALYST_CARA"]["access_paths"]
+
+
+def test_an_app_with_callers_rights_runs_as_each_viewer_and_a_view_read_by_an_insert_is_its_source():
+    body = client.get("/api/access/apps", params={"window": 30, "app": "ANALYTICS_DB.APPS.MARKETING_APP"}).json()
+    assert body["rights"] == "caller" and all(w["app_queries"] for w in body["who"])
+    assert client.get("/api/access/apps", params={"window": 30, "app": "ANALYTICS_DB.APPS.SALES_DASH"}).json()["rights"] == "owner"
+    views = client.get("/api/access/log/objects", params={"window": 30, "kind": "view"}).json()["objects"]
+    for v in views:
+        kinds = [s["k"] for s in client.get("/api/access/log", params={"object": v["object_fqn"], "window": 30}).json()["statements"]]
+        assert not {"INSERT", "MERGE", "UPDATE", "DELETE"} & set(kinds), (v["object_fqn"], kinds)

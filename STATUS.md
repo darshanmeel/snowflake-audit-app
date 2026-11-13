@@ -59,8 +59,9 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
     - who it is shared with (`sf_acc_streamlit_shares`: grants and revokes from GRANTS_TO_ROLES);
     - who can open it now (grant paths);
     - who opened it: the role they used, their grant path to the app, days, sign-in IP and client;
-    - the role its own queries ran as;
+    - the role its own queries ran as, and whether it runs with owner's or restricted caller's rights (caller's rights: per viewer);
     - what it read.
+  - A read by a write statement (INSERT ... SELECT FROM a view) is labelled `INSERT (source)`; views never show a plain INSERT.
   - One user or role: a user's or a role's activity, what was touched by kind, and the apps a user opened.
 - **Procedures, Streamlit apps, schema rollup (13 Nov 2026):**
   - Every access row carries `via`: the procedure a query ran inside (`ACCESS_HISTORY.root_query_id`), or the Streamlit app named in its QUERY_TAG.
