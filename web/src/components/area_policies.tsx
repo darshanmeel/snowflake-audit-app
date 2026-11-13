@@ -8,7 +8,7 @@ import type { ApPageProps } from "./area_pages";
 import { ChartCard } from "./primitives";
 import { useAggCheck } from "./area_ai_storage";
 import { CxObjName, CxStat, CxTable } from "./cx_e";
-import { useJson } from "./area_access_log";
+import { useJson } from "./use_json";
 import type { Row } from "../types";
 
 const plural = (n: number, one: string) => `${fmtInt(n)} ${n === 1 ? one : `${one}s`}`;

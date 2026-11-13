@@ -4960,6 +4960,25 @@
    },
    "needs_enterprise": false
   },
+  "sf_use_access_hours": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "lookback_days": 90,
+    "business_utc_offset": 0,
+    "business_start_hour": 7,
+    "business_end_hour": 19,
+    "row_cap": 1000000
+   },
+   "needs_enterprise": true
+  },
   "sf_use_access_log": {
    "domain": "governance_access",
    "windowed": false,
@@ -4972,11 +4991,8 @@
    ],
    "params": {
     "lookback_days": 90,
-    "grain": "day",
-    "row_cap": 1000000,
-    "business_tz": "UTC",
-    "business_start_hour": 7,
-    "business_end_hour": 19
+    "bucket_hours": 24,
+    "row_cap": 1000000
    },
    "needs_enterprise": true
   },
@@ -5799,5 +5815,5 @@
   "dim_user",
   "dim_warehouse"
  ],
- "queries_sha256": "ff3ec1084d242b46c35ccd3b0eda9bd71bdf4aff0c50bb68957fb53fa388e09c"
+ "queries_sha256": "fdf0dda34d5347f39f53f19f37c927903feb11fa1674eb6f5428f4a55d069020"
 }

@@ -4,11 +4,13 @@
 # header default. The Settings page renders its editor from the registry's params, not from this
 # file's keys alone.
 
-# The access log (Activity › Access log): counts per day by default; hour gives up to 24 times the rows.
-# Business hours decide what reads as off-hours use by people. Next export.
+# The access log (Activity › Access log): one row per UTC day; bucket_hours: 1 gives one per UTC hour (up to
+# 24 times the rows). Off-hours use by people is judged at business_utc_offset (hours ahead of UTC, e.g. 1
+# for Zurich in winter, -5 for New York); the page can shift it to compare. Numbers only. Next export.
 # sf_use_access_log:
-#   grain: day            # day or hour
+#   bucket_hours: 24
 #   lookback_days: 90
-#   business_tz: UTC      # e.g. Europe/Zurich
+# sf_use_access_hours:
+#   business_utc_offset: 0
 #   business_start_hour: 7
 #   business_end_hour: 19

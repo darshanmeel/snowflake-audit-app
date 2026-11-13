@@ -9373,6 +9373,77 @@
       "sql_url": "app/queries/checks/sf_share_inbound_databases.sql"
     },
     {
+      "query_id": "sf_use_access_hours",
+      "title": "When people use each table, view and stage, hour by hour, and what falls outside business hours",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "people",
+        "columns": [
+          "user_name"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.SESSIONS",
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition",
+      "params": [
+        {
+          "name": "lookback_days",
+          "default": 90,
+          "meaning": "days of ACCESS_HISTORY it reads, counted back from the export date"
+        },
+        {
+          "name": "business_utc_offset",
+          "default": 0,
+          "meaning": "hours business time is ahead of UTC (e.g. 1 for Zurich in winter, -5 for New York)"
+        },
+        {
+          "name": "business_start_hour",
+          "default": 7,
+          "meaning": "local hour business hours start"
+        },
+        {
+          "name": "business_end_hour",
+          "default": 19,
+          "meaning": "local hour they end (Saturday and Sunday are off hours all day)"
+        },
+        {
+          "name": "row_cap",
+          "default": 1000000,
+          "meaning": "rows: the export keeps at most this many, newest hours first"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one person x object x role x client x statement type x UTC hour (usage_date and hour_utc). People are users whose TYPE is PERSON; service users, SYSTEM (tasks), users with no TYPE and dropped users are left out. queries, read_queries, write_queries and ddl_queries count distinct queries. is_off_hours is judged at :business_utc_offset; the page can shift the offset and recount without a new export, because every row keeps its UTC hour.",
+      "healthy": "status = OK when people use objects in business hours.",
+      "investigate_if": "WARN when a person ran queries on an object outside business hours at the configured offset; NOT_ASSESSED when ACCESS_HISTORY has no rows in the lookback.",
+      "actions": [
+        "ask the person why they used the data off hours, starting with sensitive objects and changes (free)",
+        "set business_utc_offset and the business hours for the account in config/thresholds.yml (config)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_use_access_log",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_access_hours.sql"
+    },
+    {
       "query_id": "sf_use_access_log",
       "title": "Who read or changed each table, view and stage, when and how often",
       "domain": "governance_access",
@@ -9406,43 +9477,28 @@
           "meaning": "days of ACCESS_HISTORY it reads, counted back from the export date"
         },
         {
-          "name": "grain",
-          "default": "day",
-          "meaning": "day or hour: the time bucket each row counts in (hour gives up to 24 times the rows)"
+          "name": "bucket_hours",
+          "default": 24,
+          "meaning": "hours per row: 24 counts per UTC day, 1 per UTC hour (up to 24 times the rows)"
         },
         {
           "name": "row_cap",
           "default": 1000000,
           "meaning": "rows: the export keeps at most this many, newest buckets first"
-        },
-        {
-          "name": "business_tz",
-          "default": "UTC",
-          "meaning": "time zone business hours are in (e.g. Europe/Zurich)"
-        },
-        {
-          "name": "business_start_hour",
-          "default": 7,
-          "meaning": "hour business hours start"
-        },
-        {
-          "name": "business_end_hour",
-          "default": 19,
-          "meaning": "hour they end (Saturday and Sunday are off hours all day)"
         }
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one object x user x role x client x time bucket (bucket_start, :grain). Every table, view, stage and other object in ACCESS_HISTORY is kept, not only the busy ones. read_queries, write_queries and ddl_queries count distinct queries; reads through a view count on the view and on its base tables. client is the first word of the session's client application (Snowflake UI, JDBC, PythonConnector, ODBC ...), unknown when the session is not in SESSIONS. first_at and last_at are the first and last query in the bucket. statement_types lists the QUERY_HISTORY query types (SELECT, INSERT, MERGE, DELETE, CREATE_TABLE_AS_SELECT ...) and ddl_operations the DDL operations (CREATE, ALTER, DROP, RENAME ...) in the bucket. No query text or query id is kept: the Guide has the SQL to list the queries of one object. off_hours_queries counts the queries outside business hours; user_type is the user's TYPE today (NOT_SET when the user has none, UNKNOWN when dropped) and is_person is TRUE only for TYPE PERSON, so service users, SYSTEM (tasks), users with no type and dropped users are never flagged.",
-      "healthy": "status = OK when people use objects in business hours; service users and pipelines are never flagged.",
-      "investigate_if": "WARN when a person ran queries on the object outside business hours; NOT_ASSESSED when ACCESS_HISTORY has no rows in the lookback.",
+      "read_this": "one row = one object x user x role x client x statement type x UTC day (or hour). Every table, view, stage and other object in ACCESS_HISTORY is kept, not only the busy ones. read_queries, write_queries and ddl_queries count distinct queries; reads through a view count on the view and on its base tables. client is the first word of the session's client application (Snowflake UI, JDBC, PythonConnector, ODBC ...), task for tasks and no session when SESSIONS has none. statement_type is the QUERY_HISTORY query type (SELECT, INSERT, MERGE, CREATE_TABLE_AS_SELECT ...) and ddl_operations the DDL operations (CREATE, ALTER, DROP, RENAME ...). user_type is the user's TYPE today (NOT_SET when it has none, UNKNOWN when dropped). No query text or query id is kept: the page has the SQL to list the queries of one object. Off-hours use by people is in sf_use_access_hours.",
+      "healthy": "status = OK on every row; this check is a log, it does not judge.",
+      "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the lookback.",
       "actions": [
         "check that each user and role reading a sensitive object needs it; revoke the role otherwise (free)",
-        "list the single queries of one object with the SQL in the Guide (free)"
+        "list the single queries of one object with the SQL on the page (free)"
       ],
       "next": [
         {
-          "query_id": "sf_gov_sensitive_data_access",
+          "query_id": "sf_use_access_hours",
           "if": ""
         }
       ],

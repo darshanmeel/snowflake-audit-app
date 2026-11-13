@@ -4,7 +4,7 @@
 // the storage of never-used schemas, which sf_use_database_activity carries.
 // Registered into AREA_CHART_PAGES by area_pages.tsx.
 import React from "react";
-import { ApActivityAccessLog } from "./area_access_log";
+import { ApActivityAccessLog } from "./access_log_page";
 import { fmtDayShort, fmtDuration, fmtInt, fmtMoney } from "../format";
 import { numOrZero } from "./hooks";
 import { CsvButton } from "./csv";

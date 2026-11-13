@@ -1,10 +1,9 @@
-"""tests/test_access_log.py: the access log, off-hours and tag explorer routes on the fake account's test DB."""
+"""tests/test_access_log.py: the access log routes (overview, one object, one person) on the fake account's test DB."""
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-import duckdb
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,36 +19,44 @@ client = TestClient(app)
 def test_objects_are_busiest_first_and_flag_sensitive_tables():
     body = client.get("/api/access/log/objects", params={"window": 30}).json()
     busy = [o["reads"] + o["writes"] + o["ddl"] for o in body["objects"]]
-    assert busy == sorted(busy, reverse=True) and body["total"] >= len(body["objects"])
-    assert body["truncated"] is False
+    assert busy == sorted(busy, reverse=True) and body["truncated"] is False
     sens = client.get("/api/access/log/objects", params={"window": 30, "sensitive": True}).json()["objects"]
     assert sens and all(o["sensitive"] in ("tagged", "suggested") for o in sens)
 
 
-def test_one_object_stays_inside_the_window_and_never_counts_a_merge_target_as_read():
+def test_one_object_stays_in_the_window_and_its_parts_add_up():
     name = client.get("/api/access/log/objects", params={"window": 7}).json()["objects"][0]["object_fqn"]
-    body = client.get("/api/access/log", params={"object": name, "window": 7}).json()
-    assert body["buckets"] and all(body["start"] <= b["bucket"][:10] < body["end"] for b in body["buckets"])
-    assert sum(b["reads"] for b in body["buckets"]) == sum(w["reads"] for w in body["who"])
-    # a user whose every statement on the table is a MERGE has writes, no reads
-    merges = [w for w in body["who"] if w["statement_types"] == "MERGE"]
-    assert all(w["reads"] == 0 for w in merges)
+    body = client.get("/api/access/log", params={"object": name, "window": 7, "split": "statement"}).json()
+    t = body["tiles"]
+    total = t["reads"] + t["writes"] + t["ddl"]
+    days = {d for s in body["per_day"]["series"] for d in s["values"]}
+    assert days and all(body["start"] <= d < body["end"] for d in days)
+    assert sum(v for s in body["per_day"]["series"] for v in s["values"].values()) == total
+    assert sum(r["reads"] + r["writes"] + r["ddl"] for r in body["who"]) == total
+    # a MERGE on its own target is a write, never a read of it
+    assert all(s["reads"] == 0 for s in body["statements"] if s["k"] == "MERGE")
+    # off hours are judged for people only
+    assert all(w["off_hours"] is None for w in body["who"] if not w["is_person"])
 
 
-def test_off_hours_lists_people_only():
-    rows = client.get("/api/access/log/offhours", params={"window": 30}).json()["rows"]
-    assert rows and all(r["off_hours"] > 0 for r in rows)
-    people = {r[0] for r in duckdb.connect(str(access_log.app_core_data._db_path()), read_only=True).execute(
-        "SELECT DISTINCT user_name FROM findings.f_sf_use_access_log WHERE is_person").fetchall()}
-    assert {r["user_name"] for r in rows} <= people
+def test_off_hours_counts_people_only_and_follow_the_offset():
+    base = client.get("/api/access/overview", params={"window": 30, "offset": 0}).json()
+    people = {r["user_name"] for r in client.get("/api/access/people", params={"window": 30}).json()["people"] if r["is_person"]}
+    assert base["off_hours"] and {p["user_name"] for p in base["off_hours"]} <= people
+    shifted = client.get("/api/access/overview", params={"window": 30, "offset": 6}).json()
+    assert sum(p["off_hours"] for p in shifted["off_hours"]) != sum(p["off_hours"] for p in base["off_hours"])
+    # the heatmap reads None (shown "–") where the person has no grant path to the object
+    assert any(v is None for r in base["heat"] for v in r["cells"])
 
 
-def test_a_column_tag_lists_who_can_read_and_who_queried():
-    tags = client.get("/api/access/tags").json()["tags"]
-    tag = next(t for t in tags if "COLUMN" in t["levels"])
-    objs = client.get("/api/access/tag", params={"tag": tag["tag_fqn"], "value": tag["tag_value"]}).json()["objects"]
-    assert objs and all(o["level"] == "COLUMN" for o in objs)
-    assert any(o["can_read"] for o in objs) and all(isinstance(o["queried_by"], list) for o in objs)
+def test_a_person_has_hours_of_use_and_a_service_user_none():
+    body = client.get("/api/access/person", params={"user": "ANALYST_DAN", "window": 30}).json()
+    assert body["tiles"]["is_person"] and len(body["hours"]["on"]) == 24 and body["objects"]
+    assert client.get("/api/access/person", params={"user": "SYSTEM", "window": 30}).json()["hours"] is None
+
+
+def test_settings_default_to_utc_business_hours():
+    assert client.get("/api/access/settings").json() == {"offset": 0, "start": 7, "end": 19}
 
 
 def test_a_missing_log_reads_503(monkeypatch):
