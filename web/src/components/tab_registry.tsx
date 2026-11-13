@@ -400,9 +400,14 @@ export const ACTIVITY_SUBTABS: SubtabDef[] = [
   { key: "schemas", label: "Schemas", ids: [], refIds: [] },
   { key: "tables", label: "Tables", ids: ["sf_use_table_activity", "sf_use_table_daily", "sf_use_table_heaviest", "sf_use_table_perf_daily", "sf_use_table_columns", "sf_use_query_profile", "sf_use_top_query_shapes"], refIds: [] },
   { key: "lastactive", label: "Last active", ids: ["sf_use_last_active"], refIds: [] },
-  { key: "accesslog", label: "Access log", ids: ["sf_use_access_log"], refIds: [] },
   { key: "users", label: "Users & roles", ids: ["sf_use_user_activity", "sf_use_user_data_io", "sf_use_table_readers"], refIds: ["sf_use_query_profile", "sf_use_top_query_shapes"] },
   { key: "objects", label: "Stages & other objects", ids: ["sf_use_object_activity", "sf_lin_unused_views"], refIds: ["sf_acct_object_counts"] },
+];
+
+// ─────────── Access log ─── who touched which object, user, role and Streamlit app, and when; one page with its own
+// left panel (Overview, One object, One user or role) and a UTC-offset slider.
+export const ACCESSLOG_SUBTABS: SubtabDef[] = [
+  { key: "log", label: "Access log", ids: ["sf_use_access_log", "sf_use_access_hours", "sf_use_streamlit_access", "sf_acc_streamlit_shares"], refIds: [] },
 ];
 
 // ─────────── Sharing & org ─── the org sub-tabs read ORGANIZATION_USAGE and hide when the role
@@ -489,6 +494,7 @@ export const AREA_REGISTRY: Record<string, AreaDef> = {
   audit: { label: "Audit", scope: "Account-wide · what the audit role can see", subtabs: AUDIT_SUBTABS },
   pii: { label: "PII & policies", scope: "Account-wide · what the audit role can see", subtabs: PII_SUBTABS },
   lineage: { label: "Lineage", scope: "Account-wide · what the audit role can see", subtabs: LINEAGE_SUBTABS },
+  accesslog: { label: "Access log", scope: "Account-wide · what the audit role can see · needs Enterprise (ACCESS_HISTORY) · hours are UTC", subtabs: ACCESSLOG_SUBTABS },
   activity: { label: "Activity", scope: "Account-wide · what the audit role can see · reads, writes and DDL need Enterprise (ACCESS_HISTORY)", subtabs: ACTIVITY_SUBTABS },
   sharing: { label: "Sharing & org", scope: "Shares of this account · organization views need an organization role", subtabs: SHARING_SUBTABS },
   storage: { label: "Storage", scope: "Storage at your $ per TB per month · what the audit role can see", subtabs: STORAGE_SUBTABS },
@@ -501,7 +507,7 @@ export const AREA_REGISTRY: Record<string, AreaDef> = {
 };
 export const AREA_ORDER = [
   "overview", "actions", "cost", "waste", "warehouses", "serverless", "queries", "tasks", "loading", "ai",
-  "access", "pii", "lineage", "activity", "audit", "sharing", "storage", "findings", "coverage",
+  "access", "pii", "lineage", "activity", "accesslog", "audit", "sharing", "storage", "findings", "coverage",
 ];
 
 // The one money column cost_dollarized_by_service_day carries.

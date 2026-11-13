@@ -53,6 +53,15 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
   - A UTC-offset slider (UTC−12 to UTC+14) recounts off hours in place. `sf_use_access_log` now keeps one row per statement type and judges nothing. The new `sf_use_access_hours` keeps people's queries per UTC hour and holds the off-hours WARN at `business_utc_offset`. Both read the shared include `sf_use_access_rows`.
   - Checked in a real browser (Playwright driving Edge, `pip install playwright` in the venv, no browser download) on the fake account: all three sections render, laid out after the design mock (one-line names, a 70/30 off-hours split with the heatmap, hours-of-use rows with an on/off bar, toggles in card heads, statement-type block, activity timelines).
   - `thresholds.yml` takes numbers only, so the old `grain` and `business_tz` settings are gone: `bucket_hours` and `business_utc_offset` replace them.
+- **Access log tab (13 Nov 2026):**
+  - The Access log is its own top-level tab, no longer under Activity; old links redirect.
+  - One object starts with a type (tables, views, stages, procedures, functions, Streamlit apps). A Streamlit app shows:
+    - who it is shared with (`sf_acc_streamlit_shares`: grants and revokes from GRANTS_TO_ROLES);
+    - who can open it now (grant paths);
+    - who opened it (role, days, sign-in IP and client);
+    - the role its own queries ran as;
+    - what it read.
+  - One user or role: a user's or a role's activity, what was touched by kind, and the apps a user opened.
 - **Procedures, Streamlit apps, schema rollup (13 Nov 2026):**
   - Every access row carries `via`: the procedure a query ran inside (`ACCESS_HISTORY.root_query_id`), or the Streamlit app named in its QUERY_TAG.
   - New check `sf_use_streamlit_access`: who opened which Streamlit app, and when. It reads Snowflake's Streamlit query tag (JSON or the older text form) and keeps only the app name.

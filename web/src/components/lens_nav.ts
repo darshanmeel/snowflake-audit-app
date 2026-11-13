@@ -23,7 +23,7 @@ export const LENS_NAV: Record<string, NavGroup[]> = {
     { label: "Cost", items: ["cost", "tags", "waste", "warehouses", "serverless", "storage"].map(area) },
     { label: "Reliability", items: ["tasks", "loading"].map(area) },
     { label: "Performance", items: ["queries", "ai"].map(area) },
-    { label: "Security", items: ["access", "pii", "audit", "sharing", "lineage", "activity"].map(area) },
+    { label: "Security", items: ["access", "pii", "audit", "sharing", "lineage", "activity", "accesslog"].map(area) },
     REFERENCE,
   ],
   cfo: [
@@ -42,7 +42,7 @@ export const LENS_NAV: Record<string, NavGroup[]> = {
   ],
   data_engineer: [
     TOP,
-    { label: "Pipelines", items: [...["tasks", "loading", "activity"].map(area), sub("access", "explorer", "Who can access what")] },
+    { label: "Pipelines", items: [...["tasks", "loading", "activity", "accesslog"].map(area), sub("access", "explorer", "Who can access what")] },
     { label: "Queries & compute", items: ["queries", "warehouses", "serverless"].map(area) },
     { label: "Cost", items: ["cost", "waste", "storage"].map(area) },
     REFERENCE,
@@ -50,7 +50,7 @@ export const LENS_NAV: Record<string, NavGroup[]> = {
   governance: [
     TOP,
     { label: "Access", items: [sub("access", "roles", "Roles & grants"), sub("access", "users", "Users & sign-ins"), sub("access", "perimeter", "Account perimeter"), sub("access", "explorer", "Who can access what")] },
-    { label: "Data", items: ["pii", "lineage", "activity", "sharing", "storage"].map(area) },
+    { label: "Data", items: ["pii", "lineage", "activity", "accesslog", "sharing", "storage"].map(area) },
     { label: "Trail", items: [area("audit")] },
     REFERENCE,
   ],

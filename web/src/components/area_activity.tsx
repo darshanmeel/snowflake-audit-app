@@ -1022,6 +1022,7 @@ export function ApActivityLastActive(p: ApPageProps) {
 
 /** The Activity sub-tab pages, merged into AREA_CHART_PAGES by area_pages.tsx. */
 export const ACTIVITY_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) => React.JSX.Element>> = {
-  activity: { databases: ApActivityDatabases, schemas: ApActivitySchemas, tables: ApActivityTables, lastactive: ApActivityLastActive, accesslog: ApActivityAccessLog, users: ApActivityUsers, objects: ApActivityObjects },
+  accesslog: { log: ApActivityAccessLog },
+  activity: { databases: ApActivityDatabases, schemas: ApActivitySchemas, tables: ApActivityTables, lastactive: ApActivityLastActive, users: ApActivityUsers, objects: ApActivityObjects },
 };
 Object.values(ACTIVITY_CHART_PAGES).forEach((m) => Object.values(m).forEach((fn) => { (fn as any).ownsTiles = true; (fn as any).ownsLede = true; }));

@@ -26,7 +26,7 @@ let start: { section: Section; object: string } = { section: "overview", object:
 /** Open the Access log on one object, from another page (the page mounts fresh on navigation). */
 export function openInAccessLog(p: ApPageProps, name: string) {
   start = { section: "object", object: name };
-  p.goTo({ tab: "activity", subtab: "accesslog", focusQueryId: null });
+  p.goTo({ tab: "accesslog", subtab: "log", focusQueryId: null });
 }
 
 const kindOf = (k: string) => k || undefined;

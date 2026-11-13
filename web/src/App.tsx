@@ -700,6 +700,8 @@ export function applyOldKeyRedirects<T extends { tab: string; subtab: string | n
   if (tab === "access" && subtab === "admins") tab = "audit";
   // Usage moved from Lineage to its own Activity tab.
   if (tab === "lineage" && subtab === "usage") { tab = "activity"; subtab = "databases"; }
+  // The Access log moved from Activity to its own tab.
+  if (tab === "activity" && subtab === "accesslog") { tab = "accesslog"; subtab = "log"; }
   const area = AREA_REGISTRY[tab];
   const isLiveSubtab = area && (area.subtabs || []).some((s) => s.key === subtab);
   if (subtab && !isLiveSubtab && OLD_SUBTAB_REDIRECTS[subtab]) subtab = OLD_SUBTAB_REDIRECTS[subtab];
