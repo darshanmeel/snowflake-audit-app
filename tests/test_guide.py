@@ -406,6 +406,12 @@ def test_guide_sql_route_fills_defaults_and_404s(sql_client):
     assert sql_client.get("/api/guide/sql/no_such_check").status_code == 404
 
 
+def test_guide_sql_as_of_now_ends_the_window_today_for_a_worksheet(sql_client):
+    live = sql_client.get("/api/guide/sql/sf_use_access_log", params={"live": True}).json()
+    assert live["live"] and live["as_of"] is None
+    assert "CURRENT_DATE()" in live["sql"] and "CURRENT_ACCOUNT()" in live["sql"] and "<account_id>" not in live["sql"]
+
+
 
 def test_guide_sql_route_is_mounted_on_the_app():
     import app.api.app as api_app

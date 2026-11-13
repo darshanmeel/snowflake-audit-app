@@ -155,7 +155,7 @@ svg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
     <tr><td><b>All findings, Coverage &amp; Gaps</b></td><td>Every check in one list; what the audit could not look at, and why.</td></tr>
   </tbody>
 </table>
-<p class="key">Plus a Guide, "How it works": plain-words help for every check, with links to Snowflake's documentation.</p>
+<p class="key">Plus a Guide, "How it works": plain-words help for every check, with links to Snowflake's documentation, and the check's own SQL to copy and run in a worksheet, as of the export or as of now.</p>
 <ul>
   <li>Five "View as" lenses reorder the menu for CTO, CFO, FinOps, data engineer or governance. They are views, not permissions.</li>
   <li>A check that could not run shows a dash and the reason (edition too low, no access, view missing). It never reads as clean or $0.</li>
@@ -201,7 +201,8 @@ svg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
 
 <h2 id="needs">What it needs</h2>
 <ul>
-  <li>A Snowflake role that can read the usage views, granted once by an administrator.</li>
+  <li>A Snowflake role that can read the usage views, granted once by an administrator (the grant script). The role is not an admin role, and its queries carry the audit's tag.</li>
+  <li>A warehouse: its own X-Small one with a monthly credit cap, or a shared one that is already running. A weekly run is enough.</li>
   <li>A normal laptop or server with Python and a browser. No other service.</li>
   <li>Without full access, 85 checks fall back to narrower sources. Others show a dash with the reason.</li>
 </ul>

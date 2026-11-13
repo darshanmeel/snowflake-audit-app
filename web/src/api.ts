@@ -213,7 +213,7 @@ export const Api = {
   refreshStart: (days: number) => fetch(`/api/refresh${qs({ days })}`, { method: "POST" }).then((r) => r.json()),
   guide: () => getJson("/api/guide"),
   // The check's own read-only SQL with its params filled in (shown lazily on a check's Guide page).
-  guideSql: (queryId: string) => getJson(`/api/guide/sql/${encodeURIComponent(queryId)}`),
+  guideSql: (queryId: string, live = false) => getJson(`/api/guide/sql/${encodeURIComponent(queryId)}${live ? "?live=true" : ""}`),
   setTagFilter,
   tagFilterKey,
   tagParams: _tagParams,

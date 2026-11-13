@@ -2392,14 +2392,17 @@ export function GuideSqlViewer({ queryId }: { queryId: string }) {
   const [open, setOpen] = React.useState(false);
   const [st, setSt] = React.useState<{ phase: string; sql: string; error: string | null }>({ phase: "idle", sql: "", error: null });
   const [copied, setCopied] = React.useState(false);
+  // "now" ends the window today, for a live answer in a worksheet; "export" matches the page's numbers
+  const [live, setLive] = React.useState(false);
+  React.useEffect(() => { setSt({ phase: "idle", sql: "", error: null }); }, [live]);
   React.useEffect(() => {
     if (!open || st.phase !== "idle") return;
     setSt({ phase: "loading", sql: "", error: null });
-    Api.guideSql(queryId)
+    Api.guideSql(queryId, live)
       .then((d) => setSt({ phase: "ready", sql: [...(d.pre || []), d.sql].map((s) => `${String(s).trim()};`).join("\n\n"), error: null }))
       .catch((e) => setSt({ phase: "error", sql: "", error: e.message || String(e) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, st.phase]);
   const copy = () => {
     const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1200); };
     const clip = window.navigator && window.navigator.clipboard;
@@ -2413,7 +2416,11 @@ export function GuideSqlViewer({ queryId }: { queryId: string }) {
       {st.phase === "error" && <p className="muted gd-small">{`The SQL is not available: ${st.error}`}</p>}
       {st.phase === "ready" && (
         <div>
-          <p className="muted gd-small">The audit's own read-only statement with the values in effect filled in. It holds no customer query text.</p>
+          <p className="muted gd-small">No customer query text. As of now ends the window today (partial; the views lag up to a few hours).</p>
+          <div className="cx-seg" role="group" aria-label="Window ends">
+            <button type="button" className={live ? "" : "on"} aria-pressed={!live} onClick={() => setLive(false)}>As of the export</button>
+            <button type="button" className={live ? "on" : ""} aria-pressed={live} onClick={() => setLive(true)}>As of now</button>
+          </div>{" "}
           <button type="button" className="ck-link" onClick={copy}>{copied ? "Copied" : "Copy SQL"}</button>
           <pre className="mono gd-small" style={{ whiteSpace: "pre-wrap", overflow: "auto", maxHeight: 420 }}>{st.sql}</pre>
         </div>
@@ -2710,7 +2717,7 @@ export function GuideArticle({ f, data, filters, home, area }: GuideArticleProps
       )}
 
       <h2 className="gd-h2">Run it yourself</h2>
-      <p className="muted gd-small">The exact query the export runs for this check, with the window and the export date filled in. Paste it into a Snowflake worksheet; it only reads.</p>
+      <p className="muted gd-small">The exact query the export runs for this check, with the window filled in, ending at the export date or today. Paste it into a Snowflake worksheet for a live answer; it only reads.</p>
       <GuideSqlViewer key={f.query_id} queryId={f.query_id} />
 
       {f.columns && f.columns.length > 0 && (

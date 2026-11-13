@@ -450,9 +450,11 @@ def _literal(value) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def sql_text(query_id: str) -> dict:
+def sql_text(query_id: str, live: bool = False) -> dict:
     """The check's own read-only SQL (the audit's statement, never customer query text), includes
-    expanded and every :param filled with the value in effect. Raises KeyError for an unknown id."""
+    expanded and every :param filled with the value in effect. live=True ends the window today, for a
+    fresh answer in a worksheet; otherwise it ends at the export's as-of date, matching the page.
+    Raises KeyError for an unknown id."""
     spec = next((s for s in registry.load_registry() if s.query_id == query_id and s.executable), None)
     if spec is None:
         raise KeyError(query_id)
@@ -465,15 +467,15 @@ def sql_text(query_id: str) -> dict:
     egress_spec = next((s for s in registry.load_registry() if s.query_id == "sf_cost_data_transfer_egress"), None)
     egress = {n: v for n, (v, _src) in service.resolve_params(egress_spec).items()} if egress_spec else {}
     ctx = {
-        "__AS_OF_DATE__": f"CAST('{as_of}' AS DATE)" if as_of else "CURRENT_DATE()",
-        "__ACCOUNT_ID__": "'<account_id>'",
+        "__AS_OF_DATE__": f"CAST('{as_of}' AS DATE)" if as_of and not live else "CURRENT_DATE()",
+        "__ACCOUNT_ID__": "CURRENT_ACCOUNT()" if live else "'<account_id>'",
         "__CLOUD__": "'<cloud>'",
         "__CREDIT_PRICE__": _literal(price.get("credit_price_usd")),
         "__AI_CREDIT_PRICE__": _literal(price.get("ai_credit_price_usd")),
         "__STORAGE_PRICE_TB_MONTH__": _literal(price.get("storage_price_usd_tb_month")),
         # cost_lines prices transfer at the egress check's $/TB
         **{f"__TRANSFER_{k.upper()}_CLOUD_USD_TB__": _literal(egress.get(f"{k}_cloud_usd_per_tb")) for k in ("same", "other")},
-        "__QUERY_SOURCE__": "'<query_tag>'",
+        "__QUERY_SOURCE__": _literal(app_config.query_source()),
         "__WITH_SNOWFLAKE_TASKS__": _literal(bool((direct or {}).get("include_snowflake_tasks"))),
     }
 
@@ -488,16 +490,16 @@ def sql_text(query_id: str) -> dict:
         "query_id": query_id,
         "pre": [fill(p) for p in spec.pre],
         "sql": fill(spec.body),
-        "params": dict(resolved),
+        "params": dict(resolved), "live": live, "as_of": None if live else as_of,
         "note": "The audit's own read-only statement with the values in effect filled in; it never holds customer query text.",
     }
 
 
 @router.get("/api/guide/sql/{query_id}")
-def get_guide_sql(query_id: str) -> dict:
+def get_guide_sql(query_id: str, live: bool = False) -> dict:
     """GET /api/guide/sql/{query_id}: the check's own SQL, params filled with their defaults."""
     try:
-        return sql_text(query_id)
+        return sql_text(query_id, live)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"No check named {query_id}") from None
 

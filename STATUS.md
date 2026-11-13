@@ -53,6 +53,10 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
   - A UTC-offset slider (UTC−12 to UTC+14) recounts off hours in place. `sf_use_access_log` now keeps one row per statement type and judges nothing. The new `sf_use_access_hours` keeps people's queries per UTC hour and holds the off-hours WARN at `business_utc_offset`. Both read the shared include `sf_use_access_rows`.
   - Checked in a real browser (Playwright driving Edge, `pip install playwright` in the venv, no browser download) on the fake account: all three sections render, laid out after the design mock (one-line names, a 70/30 off-hours split with the heatmap, hours-of-use rows with an on/off bar, toggles in card heads, statement-type block, activity timelines).
   - `thresholds.yml` takes numbers only, so the old `grain` and `business_tz` settings are gone: `bucket_hours` and `business_utc_offset` replace them.
+- **Setup and live SQL (13 Nov 2026):**
+  - The grant script (README, `grants.sql`) sets the audit user's query tag. The warehouse is either the audit's own X-Small with a monthly credit cap (resource monitor), or a shared warehouse that is already running.
+  - The README says to run weekly.
+  - How it works: each check's SQL has As of the export / As of now, to copy and run live in a worksheet.
 - **Access log tab (13 Nov 2026):**
   - The Access log is its own top-level tab, no longer under Activity; old links redirect.
   - One object starts with a type (tables, views, stages, procedures, functions, Streamlit apps). A Streamlit app shows:

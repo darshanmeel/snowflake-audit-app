@@ -1,9 +1,14 @@
 CREATE ROLE IF NOT EXISTS AUDIT_ROLE;
 
--- The user the export signs in as, with its public key.
+-- The user the export signs in as, with its public key. AUDIT_ROLE is not an admin role: only this
+-- setup needs ACCOUNTADMIN, the runs do not. Its statements carry the audit's query tag (settings
+-- query_source), so its own cost shows on Coverage & gaps (cost of running this audit) and in your own queries.
 CREATE USER IF NOT EXISTS AUDIT_USER DEFAULT_ROLE = AUDIT_ROLE DEFAULT_WAREHOUSE = AUDIT_WH
   TYPE = SERVICE RSA_PUBLIC_KEY = '<public key, without the BEGIN/END lines>';
+ALTER USER AUDIT_USER SET QUERY_TAG = 'crosshire-audit';
 GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
+-- Or give the role to a person, who then runs the audit with their own sign-in:
+--   GRANT ROLE AUDIT_ROLE TO USER <their user>;
 
 -- The ACCOUNT_USAGE views: all of them.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AUDIT_ROLE;
@@ -21,10 +26,19 @@ GRANT MONITOR USAGE ON ACCOUNT TO ROLE AUDIT_ROLE;
 -- Tasks and pipes: SHOW TASKS and the pipe checks list only what the role may monitor.
 GRANT MONITOR EXECUTION ON ACCOUNT TO ROLE AUDIT_ROLE;
 
--- A small warehouse to run the export on.
+-- A warehouse to run the export on. Pick one of the two.
+-- A) Its own X-Small warehouse: the audit's cost is on one line of the bill, and a monthly credit cap
+--    suspends it if a run ever costs more than planned (set the quota to your budget).
 CREATE WAREHOUSE IF NOT EXISTS AUDIT_WH WAREHOUSE_SIZE = XSMALL AUTO_SUSPEND = 60 AUTO_RESUME = TRUE
   INITIALLY_SUSPENDED = TRUE;
 GRANT USAGE ON WAREHOUSE AUDIT_WH TO ROLE AUDIT_ROLE;
+CREATE RESOURCE MONITOR IF NOT EXISTS AUDIT_MONITOR WITH CREDIT_QUOTA = 10 FREQUENCY = MONTHLY
+  START_TIMESTAMP = IMMEDIATELY TRIGGERS ON 80 PERCENT DO NOTIFY ON 100 PERCENT DO SUSPEND;
+ALTER WAREHOUSE AUDIT_WH SET RESOURCE_MONITOR = AUDIT_MONITOR;
+-- B) A shared warehouse that is already running during the day (a BI or analyst warehouse): no resume
+--    or idle time of its own, so the run costs only its query time. Run it when that warehouse is busy
+--    anyway, not overnight, or it resumes for the audit alone. Its cost is still found by the query tag.
+--   GRANT USAGE ON WAREHOUSE <shared warehouse> TO ROLE AUDIT_ROLE;
 
 -- SHOW WAREHOUSES lists only the warehouses the role has a privilege on. Grant MONITOR on each one
 -- (repeat for every warehouse, and again whenever a new one is created).
