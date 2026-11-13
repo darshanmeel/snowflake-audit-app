@@ -9,9 +9,9 @@
 -- params: :row_cap (default 200000) rows: the export keeps at most this many, identifiers first
 -- confidence: needs_confirmation
 -- confidence_note: Not yet run on a live account. Name matching only; no column value is read.
--- read_this: one row = one live column with no sensitive tag whose name matches a pattern for one of
---   Snowflake's semantic categories (EMAIL, PHONE_NUMBER, NATIONAL_IDENTIFIER ...) or CREDENTIAL (not a
---   Snowflake category: passwords, tokens, secrets). suggested_category and privacy_category are what
+-- read_this: one row = one live untagged column whose name looks like a semantic category or a credential.
+--   The patterns follow Snowflake's semantic categories (EMAIL, PHONE_NUMBER, NATIONAL_IDENTIFIER ...) plus
+--   CREDENTIAL (not a Snowflake category: passwords, tokens, secrets). suggested_category and privacy_category are what
 --   SNOWFLAKE.CORE.SEMANTIC_CATEGORY and PRIVACY_CATEGORY would most likely say; confidence is high when
 --   the name is unambiguous (EMAIL, SSN, IBAN), medium when it often is (ADDRESS, ACCOUNT_NUMBER), low for
 --   quasi-identifiers that are often harmless (CITY, AGE). Snowflake classification, which reads the data,
@@ -21,7 +21,7 @@
 --   medium confidence or a credential; OK for the rest, listed as a suggestion.
 -- actions: 1) run Snowflake classification on the tables listed (CALL SYSTEM$CLASSIFY with auto_tag, or
 --   a classification profile on the database) so the system tags are set from the data (serverless
---   credits); 2) put masking policies on the classification tags (config)
+--   credits, spend); 2) put masking policies on the classification tags (config)
 -- next: sf_gov_classification_coverage
 -- caveats: names lie both ways: a column called C7 holding emails is missed, and NAME_ID is flagged.
 --   Tags seen are direct tags on the column only; the role sees only the columns of objects it can

@@ -533,12 +533,12 @@ def test_findings_money_and_affected_shapes(findings_by_window):
     assert money["usd"] == pytest.approx(13827.60, abs=0.01)
     assert rows[WINDOWED_CHECK]["affected"] == {"column": "warehouse_id", "columns": ["warehouse_id"], "noun": "warehouses",
                                                   "flagged": 5, "total": 12, "flagged_other": 0,
-                                                  "not_assessed": 1}
+                                                  "not_assessed": 7}
     assert rows[INVENTORY_CHECK]["money"] is None
     for r in rows.values():
         if r["money"]:
             # storage checks also carry overlap_usd / overlap_tables (a table two checks both price)
-            assert set(r["money"]) - {"overlap_usd", "overlap_tables"} == {"column", "kind", "usd", "unit", "basis", "currency", "mixed_currency", "price_basis", "usd_flagged"}
+            assert set(r["money"]) - {"overlap_usd", "overlap_tables"} == {"column", "kind", "usd", "unit", "basis", "currency", "mixed_currency", "price_basis", "usd_flagged", "unpriced_rows"}
             assert r["money"]["usd"] is not None or r["money_reason"] == "unpriced" or r["money"]["mixed_currency"]
         if r["affected"]:
             assert set(r["affected"]) == {"column", "columns", "noun", "flagged", "total", "flagged_other", "not_assessed"}

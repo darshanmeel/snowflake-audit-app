@@ -8,8 +8,8 @@
 -- params: :row_cap (default 200000) rows: the export keeps at most this many
 -- confidence: needs_confirmation
 -- confidence_note: Not yet run on a live account.
--- read_this: one row = one tag value set directly on one database, schema or table (views included), or
---   on columns of one table (level COLUMN, with the columns listed). A tag on a database or schema also
+-- read_this: one row = one tag value set directly on a database, schema, table or view, or on columns of a table.
+--   Level COLUMN lists the columns. A tag on a database or schema also
 --   reaches every table in it by inheritance; that row stands for all of them. apply_method is MANUAL,
 --   CLASSIFIED (set by Snowflake classification) or PROPAGATED. Tag names and values only.
 -- healthy: status = OK on every row; this check is an inventory for the tag explorer.

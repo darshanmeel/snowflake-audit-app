@@ -6537,11 +6537,11 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account. Name matching only; no column value is read.",
-      "read_this": "one row = one live column with no sensitive tag whose name matches a pattern for one of Snowflake's semantic categories (EMAIL, PHONE_NUMBER, NATIONAL_IDENTIFIER ...) or CREDENTIAL (not a Snowflake category: passwords, tokens, secrets). suggested_category and privacy_category are what SNOWFLAKE.CORE.SEMANTIC_CATEGORY and PRIVACY_CATEGORY would most likely say; confidence is high when the name is unambiguous (EMAIL, SSN, IBAN), medium when it often is (ADDRESS, ACCOUNT_NUMBER), low for quasi-identifiers that are often harmless (CITY, AGE). Snowflake classification, which reads the data, confirms it.",
+      "read_this": "one row = one live untagged column whose name looks like a semantic category or a credential. The patterns follow Snowflake's semantic categories (EMAIL, PHONE_NUMBER, NATIONAL_IDENTIFIER ...) plus CREDENTIAL (not a Snowflake category: passwords, tokens, secrets). suggested_category and privacy_category are what SNOWFLAKE.CORE.SEMANTIC_CATEGORY and PRIVACY_CATEGORY would most likely say; confidence is high when the name is unambiguous (EMAIL, SSN, IBAN), medium when it often is (ADDRESS, ACCOUNT_NUMBER), low for quasi-identifiers that are often harmless (CITY, AGE). Snowflake classification, which reads the data, confirms it.",
       "healthy": "status = OK when nothing that looks like an identifier is untagged.",
       "investigate_if": "WARN for an untagged column that looks like an IDENTIFIER or SENSITIVE with high or medium confidence or a credential; OK for the rest, listed as a suggestion.",
       "actions": [
-        "run Snowflake classification on the tables listed (CALL SYSTEM$CLASSIFY with auto_tag, or a classification profile on the database) so the system tags are set from the data (serverless credits)",
+        "run Snowflake classification on the tables listed (CALL SYSTEM$CLASSIFY with auto_tag, or a classification profile on the database) so the system tags are set from the data (serverless credits, spend)",
         "put masking policies on the classification tags (config)"
       ],
       "next": [
@@ -6740,7 +6740,7 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one tag value set directly on one database, schema or table (views included), or on columns of one table (level COLUMN, with the columns listed). A tag on a database or schema also reaches every table in it by inheritance; that row stands for all of them. apply_method is MANUAL, CLASSIFIED (set by Snowflake classification) or PROPAGATED. Tag names and values only.",
+      "read_this": "one row = one tag value set directly on a database, schema, table or view, or on columns of a table. Level COLUMN lists the columns. A tag on a database or schema also reaches every table in it by inheritance; that row stands for all of them. apply_method is MANUAL, CLASSIFIED (set by Snowflake classification) or PROPAGATED. Tag names and values only.",
       "healthy": "status = OK on every row; this check is an inventory for the tag explorer.",
       "investigate_if": "n/a - inventory",
       "actions": [

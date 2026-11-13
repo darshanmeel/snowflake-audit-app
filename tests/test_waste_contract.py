@@ -142,7 +142,8 @@ def test_waste_spend_and_change_are_reported_apart_never_as_one_total():
     for row in body["findings"]:
         if row["money"]:
             # storage checks also carry overlap_usd / overlap_tables (a table two checks both price)
-            assert set(row["money"]) - {"overlap_usd", "overlap_tables"} == {"column", "kind", "usd", "unit", "basis", "currency", "mixed_currency", "price_basis", "usd_flagged"}
+            assert set(row["money"]) - {"overlap_usd", "overlap_tables"} == {"column", "kind", "usd", "unit", "basis", "currency", "mixed_currency", "price_basis", "usd_flagged",
+                                                                          "unpriced_rows"}
             kinds.add(row["money"]["kind"])
     assert {"waste", "spend", "change"} <= kinds
 
