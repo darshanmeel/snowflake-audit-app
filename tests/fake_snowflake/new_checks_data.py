@@ -854,6 +854,14 @@ def access_extras(b: _B) -> None:
             if user != "ANALYST_EVA":
                 q(f"01st-child-{i}-{k}", "SVC_BI", "BI_ROLE", 91005, "SELECT", _ts(b.back(k), 9 + i, 1), {"base_objects_accessed": [cust]},
                   query_tag=child_tag)
+    # a pipeline's service login used by a person in Snowsight: flagged on the Access log
+    b.au("SESSIONS", session_id=92010, created_on=_ts(b.back(3), 13), user_name="SVC_ETL", authentication_method="KEYPAIR",
+         login_event_id=92010, client_application_id="Snowflake UI", client_environment="{}", is_open="NO", closed_reason=None)
+    b.au("LOGIN_HISTORY", event_id=92010, event_timestamp=_ts(b.back(3), 13), event_type="LOGIN", user_name="SVC_ETL", client_ip="192.0.2.77",
+         reported_client_type="SNOWFLAKE_UI", reported_client_version="1.0", first_authentication_factor="RSA_KEYPAIR",
+         second_authentication_factor=None, is_success="YES", connection=None, login_details="{}")
+    for k in range(2):
+        q(f"01svc-ui-{k}", "SVC_ETL", "ETL_ROLE", 92010, "SELECT", _ts(b.back(3), 13, 5 + k), {"base_objects_accessed": [cust]})
     # a container-runtime app with restricted caller's rights: its queries run as each viewer (user and role)
     mkt = "ANALYTICS_DB.APPS.MARKETING_APP"
     ltv = {"objectDomain": "Table", "objectId": 5020, "objectName": "ANALYTICS_DB.MARTS.CUSTOMER_LTV", "columns": [{"columnId": 1, "columnName": "ID"}]}

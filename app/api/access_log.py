@@ -10,6 +10,7 @@ recounted here at the offset the page asks for: every hours row keeps its UTC da
     GET /api/access/log?object=&window=&offset=       one object: per day, by client/role/user, statements, who
     GET /api/access/rollup?window=&level=             objects rolled up by schema or database, per kind
     GET /api/access/apps?window=&app=                 Streamlit apps: who opened which, when; what one app read
+    GET /api/access/flags?window=&offset=             what to look into first: admin roles, app risks, service logins
     GET /api/access/people?window=                    people and other users to pick from
     GET /api/access/person?user=&window=&offset=      one user: per day, objects, hours of use
     GET /api/access/tags, /api/access/tag?tag=        tag values; one tag's objects, who can read, who did
@@ -180,6 +181,23 @@ def _statements(where: str, params: list) -> list[dict]:
         f"COUNT(DISTINCT object_fqn) AS objects {where} GROUP BY 1 ORDER BY 2 DESC", params)
 
 
+def _control(name: str) -> dict | None:
+    """Who owns an object and who can grant access to it: the owning role, roles holding a privilege on it WITH GRANT
+    OPTION, and roles with MANAGE GRANTS on the account; with the users behind them. None without grant links."""
+    try:
+        g = explorer._load(None)
+    except HTTPException:
+        return None
+    held = g["holders"].get(name, [])
+    owner = next((r for r, priv, _, _ in held if priv == "OWNERSHIP"), None)
+    granters = [{"role": owner, "why": "owner"}] if owner else []
+    granters += [{"role": r, "why": f"{priv.lower()} with grant option"} for r, priv, _, opt in held if opt and r != owner]
+    granters += [{"role": r, "why": "manage grants"} for r, grants in g["grants"].items()
+                 if any(priv == "MANAGE GRANTS" for priv, *_ in grants) and r not in {x["role"] for x in granters}]
+    users = explorer._holders_of(g, [x["role"] for x in granters], identity.masking_enabled()) if granters else []
+    return {"owner": owner, "granters": granters, "granter_users": sorted({h["name"] for h in users if h["kind"] == "user"})}
+
+
 @router.get("/api/access/settings")
 def get_settings() -> dict:
     return hours_settings()
@@ -317,7 +335,7 @@ def get_log(object: str, window: int = 30, split: str = "user", offset: int | No
         f"WHERE via = ? AND bucket_start >= ? AND bucket_start < ? GROUP BY 1 ORDER BY writes DESC, reads DESC",
         [f"procedure {object}", start, end])
     kind = _log_or_503(f"SELECT MAX(object_domain) AS d {where}", params)[0]["d"]
-    return {"object": object, "kind": kind, "did": did, "window": window, "start": start, "end": end, "sensitive": _sensitive().get(object),
+    return {"object": object, "kind": kind, "did": did, "control": _control(object), "window": window, "start": start, "end": end, "sensitive": _sensitive().get(object),
             "tiles": tiles, "by": by, "statements": statements, "matrix": matrix, "days": days, "who": who,
             "per_day": _series(where, params, split), **_cut()}
 
@@ -413,7 +431,100 @@ def get_apps(window: int = 30, app: str = "") -> dict:
     for r in read:
         r["sensitive"] = sens.get(r["object_fqn"])
     return {"window": window, "start": start, "end": end, "apps": apps, "app": name, "who": who, "runs_as": runs_as,
-            "shares": shares, "can_open": can_open, "owner_role": owner, "rights": rights, "objects": read}
+            "shares": shares, "can_open": can_open, "owner_role": owner, "rights": rights, "objects": read, "control": _control(name)}
+
+
+# System roles that see or change far more than a day's work needs; the first set is account-wide power.
+ADMIN_HIGH = {"ACCOUNTADMIN", "SECURITYADMIN", "ORGADMIN", "GLOBALORGADMIN"}
+ADMIN_MED = {"SYSADMIN", "USERADMIN"}
+
+
+def _n(n, one: str, many: str = "") -> str:
+    return f"{n or 0} {one if n == 1 else many or one + 's'}"
+
+
+def _sev(role: str) -> str:
+    return "high" if role in ADMIN_HIGH else "medium"
+
+
+@router.get("/api/access/flags")
+def get_flags(window: int = 30, offset: int | None = None) -> dict:
+    """What to look into first, from the rows already exported. Each flag names who, with which role, on what."""
+    start, end = _range(window)
+    cfg = hours_settings()
+    offset = cfg["offset"] if offset is None else offset
+    sens = _sensitive()
+    admin = sorted(ADMIN_HIGH | ADMIN_MED)
+    marks = ", ".join("?" * len(admin))
+    flags: list[dict] = []
+    # admin roles on data: account-wide roles by anyone; SYSADMIN and USERADMIN by people (pipelines often run as SYSADMIN)
+    for r in _log_or_503(
+            f"SELECT user_name, role_name, MAX(user_type) AS user_type, bool_or(is_person) AS person, SUM({Q}) AS queries, "
+            f"SUM(write_queries + ddl_queries) AS changes, list(DISTINCT object_fqn) AS objects, MAX(last_at) AS last_at "
+            f"FROM {LOG} WHERE role_name IN ({marks}) AND (via IS NULL OR via NOT LIKE 'streamlit %') "
+            f"AND bucket_start >= ? AND bucket_start < ? GROUP BY 1, 2", [*admin, start, end]):
+        if r["role_name"] in ADMIN_MED and not r["person"]:
+            continue
+        objs = sorted(r["objects"] or [], key=lambda f: sens.get(f) is None)
+        n_sens = sum(1 for f in objs if sens.get(f))
+        flags.append({"severity": _sev(r["role_name"]), "kind": "admin_role", "area": "Security",
+                      "title": f"{r['role_name']} used for data work", "user": _who(r["user_name"]), "role": r["role_name"],
+                      "object": objs[0] if objs else None, "count": r["queries"] or 0, "last_at": r["last_at"],
+                      "detail": f"{_n(r['queries'], 'query', 'queries')} on {_n(len(objs), 'object')} "
+                                f"({n_sens} sensitive), {r['changes'] or 0} of them changes · use a role made for the job"})
+    try:
+        opens = _rows(f"SELECT app_name, user_name, role_name, SUM(queries) AS runs, MAX(last_at) AS last_at FROM {APPS} "
+                      f"WHERE kind = 'open' AND role_name IN ({marks}) AND usage_date >= ? AND usage_date < ? GROUP BY 1, 2, 3",
+                      [*admin, start, end])
+    except duckdb.Error:
+        opens = []
+    for r in opens:
+        flags.append({"severity": _sev(r["role_name"]), "kind": "admin_app", "area": "Security",
+                      "title": f"Streamlit app opened with {r['role_name']}", "user": _who(r["user_name"]), "role": r["role_name"],
+                      "app": r["app_name"], "count": r["runs"] or 0, "last_at": r["last_at"],
+                      "detail": f"{_n(r['runs'], 'run')} · share the app with a viewer role and open it with that"})
+    try:
+        shares = _rows(f"SELECT app_name, privilege, grantee_name, granted_at FROM {SHARES} WHERE revoked_at IS NULL", [])
+    except duckdb.Error:
+        shares = []
+    for r in shares:
+        if r["grantee_name"] == "PUBLIC" and r["privilege"] != "OWNERSHIP":
+            flags.append({"severity": "high", "kind": "app_public", "area": "Security", "title": "Streamlit app shared with PUBLIC",
+                          "app": r["app_name"], "role": "PUBLIC", "count": 1, "last_at": r["granted_at"],
+                          "detail": "every user can open it, and with owner's rights it reads as its owner"})
+        if r["privilege"] == "OWNERSHIP" and r["grantee_name"] in ADMIN_HIGH | ADMIN_MED:
+            flags.append({"severity": _sev(r["grantee_name"]), "kind": "app_owner_admin", "area": "Security",
+                          "title": f"Streamlit app owned by {r['grantee_name']}", "app": r["app_name"], "role": r["grantee_name"],
+                          "count": 1, "last_at": r["granted_at"],
+                          "detail": "with owner's rights every viewer queries as this role · give the app a narrow owner role"})
+    # a service or legacy-service login used from Snowsight: a person working with a pipeline's credentials
+    for r in _log_or_503(
+            f"SELECT user_name, MAX(user_type) AS user_type, array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles, "
+            f"SUM({Q}) AS queries, list(DISTINCT object_fqn) AS objects, MAX(last_at) AS last_at FROM {LOG} "
+            f"WHERE user_type IN ('SERVICE', 'LEGACY_SERVICE') AND (upper(client) LIKE 'SNOWFLAKE%' OR upper(client) LIKE 'SNOWSIGHT%') "
+            f"AND bucket_start >= ? AND bucket_start < ? GROUP BY 1", [start, end]):
+        objs = sorted(r["objects"] or [], key=lambda f: sens.get(f) is None)
+        flags.append({"severity": "medium", "kind": "service_ui", "area": "Security", "title": "Service login used from Snowsight",
+                      "user": _who(r["user_name"]), "role": r["roles"], "object": objs[0] if objs else None,
+                      "count": r["queries"] or 0, "last_at": r["last_at"],
+                      "detail": f"{_n(r['queries'], 'query', 'queries')} on {_n(len(objs), 'object')} · a person is working with a pipeline's login"})
+    # people changing sensitive objects off hours
+    off_sql, off_params = _off(offset, cfg["start"], cfg["end"])
+    for r in _hours_or_none(
+            f"SELECT user_name, object_fqn, array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles, "
+            f"SUM(write_queries + ddl_queries) AS changes, MAX(usage_date) AS last_at FROM {HOURS} WHERE user_name IS NOT NULL "
+            f"AND usage_date >= ? AND usage_date < ? AND {off_sql} GROUP BY 1, 2 HAVING SUM(write_queries + ddl_queries) > 0",
+            [start, end, *off_params]) or []:
+        if sens.get(r["object_fqn"]):
+            flags.append({"severity": "medium", "kind": "off_hours_change", "area": "Security",
+                          "title": "Sensitive data changed off hours", "user": _who(r["user_name"]), "role": r["roles"],
+                          "object": r["object_fqn"], "count": r["changes"] or 0, "last_at": r["last_at"],
+                          "detail": f"{r['changes'] or 0} writes or DDL outside business hours (UTC{offset:+d})"})
+    flags.sort(key=lambda f: (f["severity"] != "high", -f["count"]))
+    for f in flags:
+        f["last_at"] = str(f["last_at"])[:10] if f.get("last_at") else None
+    return {"window": window, "start": start, "end": end, "offset": offset, "flags": flags,
+            "high": sum(f["severity"] == "high" for f in flags), "medium": sum(f["severity"] == "medium" for f in flags)}
 
 
 @router.get("/api/access/people")

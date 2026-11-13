@@ -162,3 +162,13 @@
 .al-types { gap: 10px; }
 .al-apps th:nth-child(1) { width: 14%; } .al-apps th:nth-child(2) { width: 12%; } .al-apps th:nth-child(3) { width: 20%; }
 .al-apps th:nth-child(4) { width: 6%; } .al-apps th:nth-child(5) { width: 22%; } .al-apps th:nth-child(6) { width: 14%; } .al-apps th:nth-child(7) { width: 12%; }
+.al-chip.hi { background: var(--st-crit-tint); color: var(--st-crit-ink); width: fit-content; }
+.al-flags { display: grid; }
+.al-flag { display: grid; grid-template-columns: 64px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.4fr) 56px; gap: 12px; align-items: center;
+  padding: 9px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.al-sev { justify-self: start; padding: 1px 8px; border-radius: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.al-sev.high { background: var(--st-crit-tint); color: var(--st-crit-ink); }
+.al-sev.medium { background: var(--st-warn-tint); color: var(--st-warn-ink); }
+@media (max-width: 760px) { .al-flag { grid-template-columns: 64px minmax(0, 1fr); } }
+.al-control { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; margin: -4px 0 14px; font-size: 13px; }
+.al-flag .al-meta, .al-flag b { white-space: normal; overflow: visible; text-overflow: clip; }

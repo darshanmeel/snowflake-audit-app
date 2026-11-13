@@ -128,3 +128,19 @@ def test_an_app_with_callers_rights_runs_as_each_viewer_and_a_view_read_by_an_in
     for v in views:
         kinds = [s["k"] for s in client.get("/api/access/log", params={"object": v["object_fqn"], "window": 30}).json()["statements"]]
         assert not {"INSERT", "MERGE", "UPDATE", "DELETE"} & set(kinds), (v["object_fqn"], kinds)
+
+
+def test_look_into_first_flags_admin_roles_app_risks_and_service_logins_high_first():
+    body = client.get("/api/access/flags", params={"window": 30}).json()
+    kinds = {f["kind"] for f in body["flags"]}
+    assert {"admin_role", "admin_app", "service_ui"} <= kinds
+    sev = [f["severity"] for f in body["flags"]]
+    assert sev == sorted(sev, key=lambda s: s != "high") and body["high"] + body["medium"] == len(sev)
+    assert any(f["kind"] == "admin_app" and f["role"] == "ACCOUNTADMIN" for f in body["flags"])
+
+
+def test_owner_and_who_can_share_an_app_or_grant_on_a_table():
+    app = client.get("/api/access/apps", params={"window": 30, "app": "ANALYTICS_DB.APPS.SALES_DASH"}).json()["control"]
+    assert app["owner"] == "BI_ROLE" and {"role": "BI_ROLE", "why": "owner"} in app["granters"]
+    assert any(g["why"] == "manage grants" for g in app["granters"]) and app["granter_users"]
+    assert client.get("/api/access/log", params={"window": 30, "object": "ANALYTICS_DB.CORE.CUSTOMERS"}).json()["control"]["owner"]

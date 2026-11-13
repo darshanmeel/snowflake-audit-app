@@ -20,6 +20,10 @@ const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
 const pct = (a: number, b: number) => (b ? Math.round((100 * a) / b) : 0);
 const few = (list: any, n = 3) => { const a = String(list || "").split(", ").filter(Boolean); return a.length > n ? `${a.slice(0, n).join(", ")} +${a.length - n}` : a.join(", "); };
 const sqlLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
+// System roles flagged when used for day-to-day data work or to open an app (the API's ADMIN_HIGH and ADMIN_MED).
+const ADMIN = new Set(["ACCOUNTADMIN", "SECURITYADMIN", "ORGADMIN", "GLOBALORGADMIN", "SYSADMIN", "USERADMIN"]);
+const AdminChip = ({ roles }: { roles: any }) => String(roles || "").split(", ").some((r) => ADMIN.has(r))
+  ? <span className="al-chip hi" title="A system admin role: use a role made for the job">admin role</span> : null;
 const WRITES = new Set(["INSERT", "UPDATE", "DELETE", "MERGE", "COPY", "CREATE_TABLE_AS_SELECT", "TRUNCATE_TABLE", "UNLOAD", "MULTI_TABLE_INSERT"]);
 
 let start: { section: Section; object: string } = { section: "overview", object: "" };
@@ -220,7 +224,51 @@ export function ApActivityAccessLog(p: ApPageProps) {
 
 // ═══════════════════════ Overview ═══════════════════════
 
-function Overview({ p, off, s, go }: { p: ApPageProps; off: number; s: Row; go: (s: Section, n?: string) => void }) {
+/** What to look into first: admin roles on data or apps, risky app setup, service logins in Snowsight, sensitive changes off hours. */
+function LookFirst({ p, off, go }: { p: ApPageProps; off: number; go: (s: Section, n?: string, k?: string) => void }) {
+  const fl = useJson("/api/access/flags", { window: p.filters.window, offset: off });
+  const [n, setN] = React.useState(6);
+  if (fl.loading && !fl.data) return <Card title="Look into first"><CxStat>…</CxStat></Card>;
+  if (fl.err) return <Card title="Look into first"><CxStat>{`– ${fl.err}`}</CxStat></Card>;
+  const flags: Row[] = fl.data?.flags || [];
+  return (
+    <Card title="Look into first" sub={`Admin roles on data or apps, risky app sharing, service logins used in Snowsight, sensitive data changed off hours · ${fmtInt(fl.data?.high || 0)} high, ${fmtInt(fl.data?.medium || 0)} medium`}>
+      {!flags.length ? <CxStat>{`Nothing to flag in ${day(fl.data?.start)} – ${day(fl.data?.end)}.`}</CxStat> : (
+        <div className="al-flags">
+          {flags.slice(0, n).map((f, i) => (
+            <div key={i} className="al-flag">
+              <span className={`al-sev ${f.severity}`}>{f.severity}</span>
+              <span className="al-two"><b>{f.title}</b><span className="al-meta">{f.detail}</span></span>
+              <span className="al-two">
+                {f.user && <button type="button" className="al-link" onClick={() => go("person", f.user)}><span className="al-mono">{f.user}</span></button>}
+                {f.role && <span className="al-mono sm">{f.role}</span>}
+              </span>
+              <span>{f.app ? <button type="button" className="al-link" onClick={() => go("object", f.app, "streamlit")}><span className="al-mono sm">{f.app}</span></button>
+                : f.object ? <button type="button" className="al-link" onClick={() => go("object", f.object)}><span className="al-mono sm">{f.object}</span></button> : null}</span>
+              <span className="al-meta">{day(f.last_at)}</span>
+            </div>
+          ))}
+          <div className="al-foot"><span>{`Showing ${fmtInt(Math.min(n, flags.length))} of ${plural(flags.length, "flag")}`}</span>
+            {flags.length > n && <button type="button" className="al-link" onClick={() => setN(flags.length)}>{`Show ${fmtInt(flags.length - n)} more`}</button>}</div>
+        </div>)}
+    </Card>
+  );
+}
+
+/** Who owns an object and who can grant access to it (or share an app): owner, grant option, MANAGE GRANTS. */
+function Control({ c, verb }: { c: Row | null | undefined; verb: string }) {
+  if (c == null) return <div className="al-control al-meta">Owner and who can grant: – not in this export (needs sf_acc_grant_links).</div>;
+  return (
+    <div className="al-control">
+      <span><span className="al-meta">Owner </span><span className="al-mono sm">{c.owner || "–"}</span></span>
+      <span><span className="al-meta">{`Can ${verb} `}</span>{(c.granters as Row[]).map((g) => (
+        <span key={g.role} className="al-chip" title={g.why}>{`${g.role} · ${g.why}`}</span>))}</span>
+      <span className="al-meta" title={(c.granter_users as string[]).join(", ")}>{`${plural((c.granter_users as string[]).length, "user")} through these roles`}</span>
+    </div>
+  );
+}
+
+function Overview({ p, off, s, go }: { p: ApPageProps; off: number; s: Row; go: (s: Section, n?: string, k?: string) => void }) {
   const [heatKind, setHeatKind] = React.useState("sensitive");
   const [kind, setKind] = React.useState("");
   const [prefix, setPrefix] = React.useState("");
@@ -257,6 +305,8 @@ function Overview({ p, off, s, go }: { p: ApPageProps; off: number; s: Row; go: 
           s={d.busiest ? `${fmtInt(d.busiest.queries)} queries · ${plural(d.busiest.users, "user")}` : undefined} />
         <Tile l="Queries" v={fmtInt(d.queries)} s={`reads, writes and DDL · ${plural(d.users, "user")}`} />
       </div>
+
+      <LookFirst p={p} off={off} go={go} />
 
       <Card title="Off-hours use by people" sub={`Queries by people outside ${hh(s.start)}–${hh(s.end)} ${utc(off)} or at weekends · service users and pipelines left out`}>
         {!d.hours_available ? <CxStat>– Not in this export: run it again with sf_use_access_hours.</CxStat> : !people.length
@@ -456,6 +506,7 @@ function ObjectView({ p, off, name, onPick, go, otype, setOtype }: { p: ApPagePr
             <Tile l="DDL" v={fmtInt(numOrZero(t.ddl))} s={t.ddl_operations || "CREATE, ALTER, DROP and the like"} warn={numOrZero(t.ddl) > 0} />
             <Tile l="Clients" v={fmtInt(numOrZero(t.clients))} s={few(t.client_list)} />
           </div>
+          <Control c={d.control} verb="grant access" />
           {d.kind === "PROCEDURE" && (
             <Card title="What it did" sub="Tables and views the procedure's own queries read and wrote (linked through the CALL) · in the window">
               {(d.did as Row[]).length ? (
@@ -519,7 +570,7 @@ function ObjectView({ p, off, name, onPick, go, otype, setOtype }: { p: ApPagePr
                   <tr key={`${w.user_name}|${w.role_name}|${w.client}|${i}`} className={w.is_person ? "person" : ""}>
                     <td><span className="al-two"><button type="button" className="al-link" onClick={() => go("person", String(w.user_name))}><b className="al-mono">{String(w.user_name)}</b></button>
                       <span className={`al-badge ${w.is_person ? "p" : ""}`}>{w.is_person ? "Person" : w.user_type === "UNKNOWN" ? "System" : "Service"}</span></span></td>
-                    <td><span className="al-two"><span className="al-mono">{String(w.role_name)}</span><span className="al-meta">{String(w.client)}</span>{w.via && <span className="al-chip v" title={String(w.via)}>{`via ${String(w.via).replace(/^(procedure|streamlit) /, (m) => m.trim() === "procedure" ? "proc " : "app ").split(".").pop()}`}</span>}</span></td>
+                    <td><span className="al-two"><span className="al-mono">{String(w.role_name)}</span><AdminChip roles={w.role_name} /><span className="al-meta">{String(w.client)}</span>{w.via && <span className="al-chip v" title={String(w.via)}>{`via ${String(w.via).replace(/^(procedure|streamlit) /, (m) => m.trim() === "procedure" ? "proc " : "app ").split(".").pop()}`}</span>}</span></td>
                     <td><Chips list={[w.statements, w.ddl_operations].filter(Boolean).join(", ")} /></td>
                     <td className="n"><b>{fmtInt(q)}</b><div className="al-meta">{`${fmtInt(numOrZero(w.writes))} DML · ${fmtInt(numOrZero(w.reads))} rd${numOrZero(w.ddl) ? ` · ${fmtInt(w.ddl)} DDL` : ""}`}</div></td>
                     <td className={`n${numOrZero(w.off_hours) > 0 ? " al-o" : ""}`}>{w.off_hours == null ? "–" : fmtInt(w.off_hours)}</td>
@@ -677,6 +728,7 @@ function AppDetail({ p, go, app, onPick, otype, setOtype }: { p: ApPageProps; go
             <Tile l="Runs as" mono v={d.rights === "caller" ? "each viewer" : (d.runs_as as Row[])[0]?.role_name || "–"}
               s={d.rights === "caller" ? "restricted caller's rights: the app's queries run with the viewer's own role" : d.rights === "owner" ? `owner's rights: the app's queries run as the owner${d.owner_role ? ` (${d.owner_role})` : ""}` : "the app ran no queries in the window"} />
           </div>
+          <Control c={d.control} verb="share it" />
           <Card title="Who opened it" sub="One row per user · runs = the app starting or rerunning for them · a tick per day used · client and sign-in IP of their session">
             {(d.who as Row[]).length ? (
               <table className="al-table al-apps">
@@ -685,7 +737,7 @@ function AppDetail({ p, go, app, onPick, otype, setOtype }: { p: ApPageProps; go
                   <tr key={String(w.user_name)} className={w.user_type === "PERSON" ? "person" : ""}>
                     <td><span className="al-two"><button type="button" className="al-link" onClick={() => go("person", String(w.user_name))}><b className="al-mono">{String(w.user_name)}</b></button>
                       <span className={`al-badge ${w.user_type === "PERSON" ? "p" : ""}`}>{w.user_type === "PERSON" ? "Person" : "Service"}</span></span></td>
-                    <td><span className="al-mono sm">{w.roles}</span></td>
+                    <td><span className="al-two"><span className="al-mono sm">{w.roles}</span><AdminChip roles={w.roles} /></span></td>
                     <td>{w.access_paths == null ? <span className="al-meta">–</span> : !w.access_paths.length
                       ? <span className="al-chip d" title="No grant path to the app today: revoked since, or reached another way">no path today</span>
                       : <span className="al-two">{(w.access_paths as string[][]).slice(0, 2).map((pth, i) => (
