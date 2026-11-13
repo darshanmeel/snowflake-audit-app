@@ -34,7 +34,7 @@ TAGGED = "findings.f_sf_gov_sensitive_columns_unprotected"
 SUGGESTED = "findings.f_sf_gov_sensitive_suggestions"
 SPLITS = {"user": "user_name", "role": "role_name", "client": "client", "statement": "statement_type",
           "object": "object_fqn"}
-TOP = 6   # series a chart shows before folding the rest into Other
+TOP = 4   # series before Other: the chart folds past five itself
 Q = "(read_queries + write_queries + ddl_queries)"
 
 
