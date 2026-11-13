@@ -156,9 +156,9 @@
 .al-ticks { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 1px; height: 12px; margin-bottom: 3px; }
 .al-ticks i { background: var(--surface-3); border-radius: 1px; }
 .al-ticks i.on { background: var(--st-warn); }
-.al-apps th:nth-child(5) { width: 34%; }
 .al-head-right .cx-seg button { white-space: nowrap; }
 .al-roll th:nth-child(1) { width: 34%; } .al-roll th:nth-child(2) { width: 16%; } .al-roll th:nth-child(3) { width: 14%; }
 .al-nav button small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .al-types { gap: 10px; }
-.al-apps th:nth-child(4) { width: 28%; } .al-apps th:nth-child(5) { width: 16%; }
+.al-apps th:nth-child(1) { width: 14%; } .al-apps th:nth-child(2) { width: 12%; } .al-apps th:nth-child(3) { width: 20%; }
+.al-apps th:nth-child(4) { width: 6%; } .al-apps th:nth-child(5) { width: 22%; } .al-apps th:nth-child(6) { width: 14%; } .al-apps th:nth-child(7) { width: 12%; }

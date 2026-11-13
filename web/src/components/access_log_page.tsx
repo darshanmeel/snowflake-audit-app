@@ -679,12 +679,17 @@ function AppDetail({ p, go, app, onPick, otype, setOtype }: { p: ApPageProps; go
           <Card title="Who opened it" sub="One row per user · runs = the app starting or rerunning for them · a tick per day used · client and sign-in IP of their session">
             {(d.who as Row[]).length ? (
               <table className="al-table al-apps">
-                <thead><tr><th>User</th><th>Roles</th><th className="n">Runs</th><th>Days used · {day(d.start)} – {day(d.end)}</th><th>From</th><th className="n">First → last</th></tr></thead>
+                <thead><tr><th>User</th><th>Opened with role</th><th>Access through</th><th className="n">Runs</th><th>Days used · {day(d.start)} – {day(d.end)}</th><th>From</th><th className="n">First → last</th></tr></thead>
                 <tbody>{(d.who as Row[]).map((w) => (
                   <tr key={String(w.user_name)} className={w.user_type === "PERSON" ? "person" : ""}>
                     <td><span className="al-two"><button type="button" className="al-link" onClick={() => go("person", String(w.user_name))}><b className="al-mono">{String(w.user_name)}</b></button>
                       <span className={`al-badge ${w.user_type === "PERSON" ? "p" : ""}`}>{w.user_type === "PERSON" ? "Person" : "Service"}</span></span></td>
-                    <td className="al-meta">{w.roles}</td><td className="n">{fmtInt(numOrZero(w.runs))}</td>
+                    <td><span className="al-mono sm">{w.roles}</span></td>
+                    <td>{w.access_paths == null ? <span className="al-meta">–</span> : !w.access_paths.length
+                      ? <span className="al-chip d" title="No grant path to the app today: revoked since, or reached another way">no path today</span>
+                      : <span className="al-two">{(w.access_paths as string[][]).slice(0, 2).map((pth, i) => (
+                          <span key={i} className="al-mono sm" title={pth.join(" → ")}>{pth.slice(1).join(" → ")}</span>))}</span>}</td>
+                    <td className="n">{fmtInt(numOrZero(w.runs))}</td>
                     <td><div className="al-ticks">{days.map((x) => <i key={x} className={(w.dates || []).includes(x) ? "on" : ""} title={x} />)}</div><span className="al-meta">{`${fmtInt(numOrZero(w.days))} of ${fmtInt(days.length)} days`}</span></td>
                     <td><span className="al-two"><span className="al-mono sm">{w.client_ips || "–"}</span><span className="al-meta">{w.clients || "–"}</span></span></td>
                     <td className="n al-meta">{`${day(w.first_at)} → ${day(w.last_at)}`}</td>

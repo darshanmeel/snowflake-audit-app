@@ -58,7 +58,7 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
   - One object starts with a type (tables, views, stages, procedures, functions, Streamlit apps). A Streamlit app shows:
     - who it is shared with (`sf_acc_streamlit_shares`: grants and revokes from GRANTS_TO_ROLES);
     - who can open it now (grant paths);
-    - who opened it (role, days, sign-in IP and client);
+    - who opened it: the role they used, their grant path to the app, days, sign-in IP and client;
     - the role its own queries ran as;
     - what it read.
   - One user or role: a user's or a role's activity, what was touched by kind, and the apps a user opened.

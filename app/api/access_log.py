@@ -383,12 +383,18 @@ def get_apps(window: int = 30, app: str = "") -> dict:
     except duckdb.Error:
         shares = None
     can_open = None
+    paths: dict = {}
     try:
         g = explorer._load(None)
         roles = [r for r, priv, on, _ in g["holders"].get(name, []) if priv in ("USAGE", "OWNERSHIP")]
-        can_open = sorted({h["name"] for h in explorer._holders_of(g, roles, identity.masking_enabled()) if h["kind"] == "user"}) if roles else []
+        holders = [h for h in explorer._holders_of(g, roles, identity.masking_enabled()) if h["kind"] == "user"] if roles else []
+        can_open = sorted({h["name"] for h in holders})
+        # how each user reaches the app: user -> role ... -> the role it is shared with (shortest paths first)
+        paths = {h["name"]: h["paths"][:3] for h in holders}
     except HTTPException:
         pass
+    for w in who:
+        w["access_paths"] = paths.get(w["user_name"]) if can_open is not None else None
     read = _log_or_503(
         f"SELECT object_fqn, MAX(object_domain) AS object_domain, SUM(read_queries) AS reads, SUM(write_queries) AS writes, "
         f"SUM(ddl_queries) AS ddl, COUNT(DISTINCT user_name) AS users, MAX(last_at) AS last_at FROM {LOG} WHERE via = ? "

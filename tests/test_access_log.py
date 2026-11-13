@@ -112,3 +112,9 @@ def test_a_role_lists_its_users_and_a_user_lists_kinds_and_apps():
     assert role["role"] == "ETL_ROLE" and role["tiles"]["users"] >= 1 and role["hours"] is None
     user = client.get("/api/access/person", params={"user": "ANALYST_CARA", "window": 30}).json()
     assert {k["kind"] for k in user["kinds"]} >= {"table"} and user["apps"][0]["app_name"] == "ANALYTICS_DB.APPS.SALES_DASH"
+
+
+def test_each_viewer_shows_the_role_used_and_the_grant_path_to_the_app():
+    who = {w["user_name"]: w for w in client.get("/api/access/apps", params={"window": 30}).json()["who"]}
+    assert who["ANALYST_CARA"]["roles"] == "ANALYST_ROLE"
+    assert ["ANALYST_CARA", "ANALYST_ROLE"] in who["ANALYST_CARA"]["access_paths"]
