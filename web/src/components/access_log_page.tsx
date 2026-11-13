@@ -107,6 +107,56 @@ function OnOff({ on, off }: { on: number; off: number }) {
   );
 }
 
+/** Reads, writes and DDL by client, role or user, with a toggle in the head. */
+function ByCard({ by, scope }: { by: any; scope: string }) {
+  const [dim, setDim] = React.useState("client");
+  const rows: Row[] = by?.[dim] || [];
+  const max = Math.max(1, ...rows.map((r) => numOrZero(r.reads) + numOrZero(r.writes) + numOrZero(r.ddl)));
+  const meta = (r: Row) => dim === "client" ? `${plural(numOrZero(r.users), "user")} · ${r.roles}`
+    : dim === "role" ? `${plural(numOrZero(r.users), "user")} · ${r.clients}` : `${r.roles} · ${r.clients}`;
+  return (
+    <Card title={`Queries by ${dim}`} sub={`Writes, reads and DDL summed per row · ${scope} · sorted by volume`}
+      right={<Seg label="Group by" value={dim} options={[["client", "Client"], ["role", "Role"], ["user", "User"]]} onPick={setDim} />}>
+      {rows.slice(0, 8).map((r) => {
+        const tot = numOrZero(r.reads) + numOrZero(r.writes) + numOrZero(r.ddl);
+        return (
+          <div key={String(r.k)} className="al-byrow">
+            <span className="al-two"><b className="al-mono">{String(r.k)}</b><span className="al-meta" title={meta(r)}>{`${plural(numOrZero(r.objects), "object")} · ${meta(r)}`}</span></span>
+            <span className="al-hbar3" style={{ width: `${Math.max(2, (100 * tot) / max)}%` }}>
+              <i className="w" style={{ width: `${pct(numOrZero(r.writes), tot)}%` }} /><i className="r" style={{ width: `${pct(numOrZero(r.reads), tot)}%` }} /><i className="d" style={{ width: `${pct(numOrZero(r.ddl), tot)}%` }} />
+            </span>
+            <span className="al-num">{fmtInt(tot)}</span>
+          </div>
+        );
+      })}
+      {rows.length > 8 && <div className="al-meta">{`Top 8 of ${fmtInt(rows.length)}`}</div>}
+      <div className="al-key"><span><i style={{ background: "var(--c1)" }} />Writes (DML)</span><span><i style={{ background: "var(--c2)" }} />Reads</span><span><i style={{ background: "var(--c3)" }} />DDL</span></div>
+    </Card>
+  );
+}
+
+function StatementsCard({ rows, scope }: { rows: Row[]; scope: string }) {
+  const max = Math.max(1, ...rows.map((r) => numOrZero(r.queries)));
+  return (
+    <Card title="Statement kinds" sub={`Queries per statement type · ${scope}`}>
+      {rows.slice(0, 12).map((r) => {
+        const k = numOrZero(r.ddl) ? "d" : numOrZero(r.writes) ? "w" : "r";
+        return (
+          <div key={String(r.k)} className="al-strow">
+            <span className={`al-dot ${k}`} />
+            <span className="al-mono sm" title={String(r.k)}>{String(r.k)}</span>
+            <span className="al-bar"><i className={k} style={{ width: `${(100 * numOrZero(r.queries)) / max}%` }} /></span>
+            <span className="al-num">{fmtInt(numOrZero(r.queries))}</span>
+            <span className="al-meta al-r">{`${fmtInt(numOrZero(r.objects))} obj · ${fmtInt(numOrZero(r.combos))} combos`}</span>
+          </div>
+        );
+      })}
+      {rows.length > 12 && <div className="al-meta">{`Top 12 of ${fmtInt(rows.length)} statement types`}</div>}
+      <div className="al-key"><span><i style={{ background: "var(--c1)" }} />Write</span><span><i style={{ background: "var(--c2)" }} />Read</span><span><i style={{ background: "var(--c3)" }} />DDL</span></div>
+    </Card>
+  );
+}
+
 export function ApActivityAccessLog(p: ApPageProps) {
   const c = useAggCheck(p, "sf_use_access_log", [], "read_queries", []);
   const ran = !c.loading && !c.why;
@@ -158,7 +208,8 @@ export function ApActivityAccessLog(p: ApPageProps) {
 // ═══════════════════════ Overview ═══════════════════════
 
 function Overview({ p, off, s, go }: { p: ApPageProps; off: number; s: Row; go: (s: Section, n?: string) => void }) {
-  const ov = useJson("/api/access/overview", { window: p.filters.window, offset: off });
+  const [heatKind, setHeatKind] = React.useState("sensitive");
+  const ov = useJson("/api/access/overview", { window: p.filters.window, offset: off, heat: heatKind });
   const objs = useJson("/api/access/log/objects", { window: p.filters.window, limit: 50 });
   const [onlySens, setOnlySens] = React.useState(false);
   const [allPeople, setAllPeople] = React.useState(false);
@@ -193,7 +244,7 @@ function Overview({ p, off, s, go }: { p: ApPageProps; off: number; s: Row; go: 
       <Card title="Off-hours use by people" sub={`Queries by people outside ${hh(s.start)}–${hh(s.end)} ${utc(off)} or at weekends · service users and pipelines left out`}>
         {!d.hours_available ? <CxStat>– Not in this export: run it again with sf_use_access_hours.</CxStat> : !people.length
           ? <CxStat>{`No person used an object outside business hours in ${day(d.start)}–${day(d.end)}.`}</CxStat> : (
-          <div className="al-split">
+          <div>
             <div>
               {shown.map((u) => (
                 <div key={u.user_name} className="al-person">
@@ -217,24 +268,35 @@ function Overview({ p, off, s, go }: { p: ApPageProps; off: number; s: Row; go: 
               <div className="al-foot"><span>{`Showing ${fmtInt(shown.length)} of ${plural(people.length, "person")} · ${fmtInt(rowsShown)} of ${plural(rowsAll, "row")}`}</span>
                 {people.length > 4 || rowsShown < rowsAll ? <button type="button" className="al-link" onClick={() => setAllPeople(!allPeople)}>{allPeople ? "Show fewer" : `Show ${fmtInt(rowsAll - rowsShown)} more`}</button> : null}</div>
             </div>
-            {d.heat_objects.length > 0 && (
-              <div className="al-heatbox">
-                <div className="al-sub-h">Who touched what</div>
-                <div className="al-meta">Off-hours queries · user × sensitive object · – no grant path</div>
-                <table className="al-heat">
-                  <thead><tr><th />{d.heat_objects.map((f: string) => <th key={f} title={f}>{f.split(".").pop()}</th>)}</tr></thead>
-                  <tbody>{d.heat.slice(0, 8).map((r: Row) => (
-                    <tr key={r.user_name}><td className="u al-mono">{r.user_name}</td>{r.cells.map((v: any, i: number) => (
-                      <td key={i} style={v ? { background: `color-mix(in srgb, var(--st-warn) ${Math.round(15 + (75 * v) / heatMax)}%, transparent)`, color: v / heatMax > 0.6 ? "#fff" : undefined } : undefined}>
-                        {v == null ? "–" : v === 0 ? "·" : fmtInt(v)}
-                      </td>))}</tr>))}</tbody>
-                </table>
-                <div className="al-key"><span>Fewer</span><span className="al-ramp" /><span>More</span></div>
-              </div>
-            )}
           </div>
         )}
       </Card>
+
+      {d.hours_available && (
+        <Card title="Who touched what" sub="Off-hours queries · person × object · – no grant path · · none"
+          right={<Seg label="Objects" value={heatKind} options={[["sensitive", "Sensitive objects"], ["all", "All objects"]]} onPick={setHeatKind} />}>
+          {!d.heat_objects.length ? <CxStat>{heatKind === "sensitive" ? "No sensitive object was used off hours." : "No object was used off hours."}</CxStat> : (
+            <div className="al-heatwide">
+              <table className="al-heat">
+                <thead><tr><th className="u">Person</th>{d.heat_objects.map((f: string) => <th key={f} title={f}><span className="al-mono sm">{f.split(".").slice(-2).join(".")}</span></th>)}<th>Total</th></tr></thead>
+                <tbody>{d.heat.map((r: Row) => (
+                  <tr key={r.user_name}><td className="u"><button type="button" className="al-link" onClick={() => go("person", r.user_name)}><span className="al-mono">{r.user_name}</span></button></td>
+                    {r.cells.map((v: any, i: number) => (
+                      <td key={i} style={v ? { background: `color-mix(in srgb, var(--st-warn) ${Math.round(15 + (75 * v) / heatMax)}%, transparent)`, color: v / heatMax > 0.6 ? "#fff" : undefined } : undefined}>
+                        {v == null ? "–" : v === 0 ? "·" : fmtInt(v)}
+                      </td>))}
+                    <td><b>{fmtInt(r.cells.reduce((acc: number, v: any) => acc + numOrZero(v), 0))}</b></td></tr>))}</tbody>
+              </table>
+              <div className="al-key"><span>Fewer</span><span className="al-ramp" /><span>More</span></div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      <div className="al-split al-split2">
+        <ByCard by={d.by} scope="all objects" />
+        <StatementsCard rows={d.statements || []} scope="all objects" />
+      </div>
 
       {d.hours_available && hours.length > 0 && (
         <Card title="Hours of use" sub={`People's queries by hour of day, ${utc(off)} · business hours ${hh(s.start)}–${hh(s.end)} shaded · weekends count as off hours`}>
@@ -304,7 +366,6 @@ function ObjectPicker({ p, name, onPick }: { p: ApPageProps; name: string; onPic
 
 function ObjectView({ p, off, name, onPick, go }: { p: ApPageProps; off: number; name: string; onPick: (n: string) => void; go: (s: Section, n?: string) => void }) {
   const [split, setSplit] = React.useState("user");
-  const [by, setBy] = React.useState("client");
   const [people, setPeople] = React.useState(false);
   const [sort, setSort] = React.useState("volume");
   const [whoN, setWhoN] = React.useState(15);
@@ -313,13 +374,10 @@ function ObjectView({ p, off, name, onPick, go }: { p: ApPageProps; off: number;
   const lg = useJson(obj ? "/api/access/log" : null, { object: obj, window: p.filters.window, split, offset: off });
   const d = lg.data;
   const t = d?.tiles || {};
-  const byRows: Row[] = d?.by?.[by] || [];
-  const byMax = Math.max(1, ...byRows.map((r) => numOrZero(r.reads) + numOrZero(r.writes) + numOrZero(r.ddl)));
   const roles = [...new Set((d?.matrix || []).map((m: Row) => String(m.r)))] as string[];
   const clients = [...new Set((d?.matrix || []).map((m: Row) => String(m.c)))] as string[];
   const cell = (r: string, cl: string) => numOrZero((d?.matrix || []).find((m: Row) => m.r === r && m.c === cl)?.q);
   const mMax = Math.max(1, ...(d?.matrix || []).map((m: Row) => numOrZero(m.q)));
-  const stMax = Math.max(1, ...(d?.statements || []).map((r: Row) => numOrZero(r.queries)));
   const total = numOrZero(t.reads) + numOrZero(t.writes) + numOrZero(t.ddl);
   const days = d ? allDays(String(d.start), String(d.end)) : [];
   const perDay = new Map((d?.days || []).map((r: Row) => [String(r.d).slice(0, 10), r]));
@@ -344,34 +402,9 @@ function ObjectView({ p, off, name, onPick, go }: { p: ApPageProps; off: number;
             <Tile l="DDL" v={fmtInt(numOrZero(t.ddl))} s={t.ddl_operations || "CREATE, ALTER, DROP and the like"} warn={numOrZero(t.ddl) > 0} />
             <Tile l="Clients" v={fmtInt(numOrZero(t.clients))} s={few(t.client_list)} />
           </div>
-          <div className="al-split">
-            <Card title={`Queries by ${by === "action" ? "kind" : by}`} sub="Writes, reads and DDL summed per row · sorted by volume"
-              right={<Seg label="Group by" value={by} options={[["client", "Client"], ["role", "Role"], ["user", "User"]]} onPick={setBy} />}>
-              {byRows.slice(0, 8).map((r) => {
-                const tot = numOrZero(r.reads) + numOrZero(r.writes) + numOrZero(r.ddl);
-                return (
-                  <div key={String(r.k)} className="al-byrow">
-                    <span className="al-two"><b className="al-mono">{String(r.k)}</b><span className="al-meta" title={r.roles}>{`${plural(numOrZero(r.users), "user")} · ${r.roles}`}</span></span>
-                    <span className="al-hbar3" style={{ width: `${Math.max(2, (100 * tot) / byMax)}%` }}>
-                      <i className="w" style={{ width: `${pct(numOrZero(r.writes), tot)}%` }} /><i className="r" style={{ width: `${pct(numOrZero(r.reads), tot)}%` }} /><i className="d" style={{ width: `${pct(numOrZero(r.ddl), tot)}%` }} />
-                    </span>
-                    <span className="al-num">{fmtInt(tot)}</span>
-                  </div>
-                );
-              })}
-              <div className="al-key"><span><i style={{ background: "var(--c1)" }} />Writes (DML)</span><span><i style={{ background: "var(--c2)" }} />Reads</span><span><i style={{ background: "var(--c3)" }} />DDL</span></div>
-            </Card>
-            <Card title="Statement kinds" sub="Queries per statement type · user, role and client combinations">
-              {(d.statements as Row[]).map((r) => (
-                <div key={String(r.k)} className="al-strow">
-                  <span className={`al-dot ${numOrZero(r.ddl) ? "d" : numOrZero(r.writes) ? "w" : "r"}`} />
-                  <span className="al-mono sm">{String(r.k)}</span>
-                  <span className="al-bar"><i className={numOrZero(r.ddl) ? "d" : numOrZero(r.writes) ? "w" : "r"} style={{ width: `${(100 * numOrZero(r.queries)) / stMax}%` }} /></span>
-                  <span className="al-num">{fmtInt(numOrZero(r.queries))}</span>
-                  <span className="al-meta al-r">{`${fmtInt(numOrZero(r.combos))} combos`}</span>
-                </div>
-              ))}
-            </Card>
+          <div className="al-split al-split2">
+            <ByCard by={d.by} scope="this object" />
+            <StatementsCard rows={d.statements} scope="this object" />
           </div>
           {roles.length > 0 && (
             <Card title="Role × client" sub="Queries in each cell · row and column totals">

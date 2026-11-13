@@ -151,6 +151,27 @@ def _series(where: str, params: list, split: str) -> dict:
     return {"split": split, "series": [{"name": str(shown(k)), "values": by.get(k, {})} for k in names]}
 
 
+def _by(where: str, params: list) -> dict:
+    """Reads, writes and DDL grouped by client, role and user, with how many users, roles and objects."""
+    by = {dim: _log_or_503(
+        f"SELECT {col} AS k, SUM(read_queries) AS reads, SUM(write_queries) AS writes, SUM(ddl_queries) AS ddl, "
+        f"COUNT(DISTINCT user_name) AS users, COUNT(DISTINCT object_fqn) AS objects, "
+        f"array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles, "
+        f"array_to_string(list_sort(list(DISTINCT client)), ', ') AS clients "
+        f"{where} GROUP BY 1 ORDER BY reads + writes + ddl DESC", params) for dim, col in
+        (("client", "client"), ("role", "role_name"), ("user", "user_name"))}
+    for r in by["user"]:
+        r["k"] = _who(r["k"])
+    return by
+
+
+def _statements(where: str, params: list) -> list[dict]:
+    return _log_or_503(
+        f"SELECT statement_type AS k, SUM({Q}) AS queries, SUM(read_queries) AS reads, SUM(write_queries) AS writes, "
+        f"SUM(ddl_queries) AS ddl, COUNT(DISTINCT user_name || role_name || client) AS combos, "
+        f"COUNT(DISTINCT object_fqn) AS objects {where} GROUP BY 1 ORDER BY 2 DESC", params)
+
+
 @router.get("/api/access/settings")
 def get_settings() -> dict:
     return hours_settings()
@@ -177,7 +198,7 @@ def get_objects(window: int = 30, search: str = "", sensitive: bool = False, lim
 
 @router.get("/api/access/overview")
 def get_overview(window: int = 30, offset: int | None = None, start_hour: int | None = None,
-                 end_hour: int | None = None) -> dict:
+                 end_hour: int | None = None, heat: str = "sensitive") -> dict:
     start, end = _range(window)
     cfg = hours_settings()
     offset, start_hour, end_hour = (cfg["offset"] if offset is None else offset,
@@ -207,9 +228,9 @@ def get_overview(window: int = 30, offset: int | None = None, start_hour: int | 
         # sensitive objects first, then changes before reads, then the most off-hours queries
         p["objects"].sort(key=lambda o: (o["sensitive"] is None, not ((o["ddl"] or 0) + (o["writes"] or 0)), -(o["off_hours"] or 0)))
     by_person = sorted(people.values(), key=lambda p: -p["off_hours"])
-    # who touched which sensitive object off hours; "–" where the person has no grant path to it
-    sens_objs = sorted({o["object_fqn"] for p in by_person for o in p["objects"] if o["sensitive"]},
-                       key=lambda f: -sum(o["off_hours"] for p in by_person for o in p["objects"] if o["object_fqn"] == f))[:6]
+    # who touched which object off hours (sensitive ones, or all); "–" where the person has no grant path to it
+    sens_objs = sorted({o["object_fqn"] for p in by_person for o in p["objects"] if heat == "all" or o["sensitive"]},
+                       key=lambda f: -sum(o["off_hours"] for p in by_person for o in p["objects"] if o["object_fqn"] == f))[:10]
     try:
         g = explorer._load(None)
     except HTTPException:
@@ -219,9 +240,10 @@ def get_overview(window: int = 30, offset: int | None = None, start_hour: int | 
         if g is not None and g["holders"].get(f):
             roles = [r for r, priv, on, _ in g["holders"][f] if explorer.priv_class(priv, on) in ("read", "own")]
             readers[f] = {h["name"] for h in explorer._holders_of(g, roles, identity.masking_enabled()) if h["kind"] == "user"}
-    heat = [{"user_name": p["user_name"], "cells": [
+    heat_rows = [{"user_name": p["user_name"], "cells": [
         next((o["off_hours"] for o in p["objects"] if o["object_fqn"] == f), 0 if (f not in readers or p["user_name"] in readers[f]) else None)
         for f in sens_objs]} for p in by_person]
+    all_where = (f"FROM {LOG} WHERE bucket_start >= ? AND bucket_start < ?", [start, end])
     profile = _hours_or_none(
         f"SELECT user_name, CAST(hour(CAST(usage_date AS TIMESTAMP) + to_hours(CAST(hour_utc AS BIGINT) + ?)) AS INT) AS h, "
         f"SUM(queries) FILTER (WHERE {off_sql}) AS off, SUM(queries) FILTER (WHERE NOT {off_sql}) AS on_hours "
@@ -239,7 +261,8 @@ def get_overview(window: int = 30, offset: int | None = None, start_hour: int | 
             "settings": cfg, "objects": top["objects"] or 0, "users": top["users"] or 0, "queries": top["queries"] or 0,
             "busiest": busiest[0] if busiest else None, "hours_available": hrs is not None,
             "people_off_hours": len(by_person), "objects_off_hours": len({o["object_fqn"] for p in by_person for o in p["objects"]}),
-            "off_hours": by_person, "heat_objects": sens_objs, "heat": heat,
+            "off_hours": by_person, "heat_objects": sens_objs, "heat": heat_rows, "heat_kind": heat,
+            "by": _by(*all_where), "statements": _statements(*all_where),
             "hours": sorted(hours.values(), key=lambda u: -(u["off_share"] or 0)), **_cut()}
 
 
@@ -253,16 +276,8 @@ def get_log(object: str, window: int = 30, split: str = "user", offset: int | No
         f"COUNT(DISTINCT user_name) AS users, COUNT(DISTINCT role_name) AS roles, COUNT(DISTINCT client) AS clients, "
         f"COUNT(DISTINCT statement_type) AS statements, {_merged('ddl_operations')} AS ddl_operations, "
         f"array_to_string(list_sort(list(DISTINCT client)), ', ') AS client_list {where}", params)[0]
-    by = {dim: _log_or_503(
-        f"SELECT {col} AS k, SUM(read_queries) AS reads, SUM(write_queries) AS writes, SUM(ddl_queries) AS ddl, "
-        f"COUNT(DISTINCT user_name) AS users, array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles "
-        f"{where} GROUP BY 1 ORDER BY reads + writes + ddl DESC", params) for dim, col in
-        (("client", "client"), ("role", "role_name"), ("user", "user_name"))}
-    for r in by["user"]:
-        r["k"] = _who(r["k"])
-    statements = _log_or_503(
-        f"SELECT statement_type AS k, SUM({Q}) AS queries, SUM(read_queries) AS reads, SUM(write_queries) AS writes, "
-        f"SUM(ddl_queries) AS ddl, COUNT(DISTINCT user_name || role_name || client) AS combos {where} GROUP BY 1 ORDER BY 2 DESC", params)
+    by = _by(where, params)
+    statements = _statements(where, params)
     matrix = _log_or_503(f"SELECT role_name AS r, client AS c, SUM({Q}) AS q {where} GROUP BY 1, 2", params)
     days = _log_or_503(
         f"SELECT CAST(bucket_start AS DATE) AS d, SUM(write_queries) AS writes, SUM(read_queries) AS reads, "

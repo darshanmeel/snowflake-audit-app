@@ -141,3 +141,11 @@
 .al-who th:nth-child(4) { width: 11%; } .al-who th:nth-child(5) { width: 7%; } .al-who th:nth-child(6) { width: 20%; }
 .al-split > .chart-card-v2 { min-width: 0; }
 .al-strow { grid-template-columns: 10px minmax(0, 1.8fr) minmax(0, 1fr) 36px 64px; }
+
+.al-heatwide { overflow-x: auto; }
+.al-heatwide .al-heat { table-layout: auto; width: auto; min-width: 60%; }
+.al-heatwide .al-heat td.u { text-align: left; white-space: nowrap; padding-right: 16px; max-width: none; width: auto; }
+.al-heatwide .al-heat th { white-space: nowrap; padding: 4px 10px; }
+.al-heatwide .al-heat td { min-width: 70px; }
+.al-strow { grid-template-columns: 10px minmax(0, 1.6fr) minmax(0, 1fr) 40px 104px; }
+.al-split2 { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }

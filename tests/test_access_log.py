@@ -62,3 +62,11 @@ def test_settings_default_to_utc_business_hours():
 def test_a_missing_log_reads_503(monkeypatch):
     monkeypatch.setattr(access_log, "LOG", "findings.f_no_such_table")
     assert client.get("/api/access/log/objects").status_code == 503
+
+
+def test_the_overview_breaks_all_objects_down_and_the_heatmap_can_show_every_object():
+    sens = client.get("/api/access/overview", params={"window": 30}).json()
+    allo = client.get("/api/access/overview", params={"window": 30, "heat": "all"}).json()
+    total = sum(r["reads"] + r["writes"] + r["ddl"] for r in sens["by"]["client"])
+    assert total == sens["queries"] == sum(s["queries"] for s in sens["statements"])
+    assert set(sens["heat_objects"]) <= set(allo["heat_objects"]) and len(allo["heat_objects"]) >= len(sens["heat_objects"])
