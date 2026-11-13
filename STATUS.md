@@ -59,7 +59,7 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
   - **Audit › Changes:** who created, altered or dropped a policy, and when. Attaching a policy to a table shows as that table's ALTER.
   - Limits: secondary roles are not in ACCESS_HISTORY, and a policy that decides by a lookup table reads unknown.
   - Checked on the fake account and in tests/test_policies.py; not yet run live.
-- **Full suite (13 Nov 2026):** 496 passed, 7 failed.
+- **Full suite (13 Nov 2026, last run at 944b146):** 509 passed, 0 failed; `test_ctrl_c_keeps_what_ran_and_writes_the_report` deselected (it stops pytest on Windows, before this work too). An earlier run that day had 496 passed, 7 failed:
   - Fixed: the kit refresh, Guide summary rules for two new checks, and two stale expectations (`unpriced_rows` in the money payload; 7 not-assessed warehouses in the fake data).
   - Fixed after: the tag-filter test found a real bug. With a tag filter on, "N of M" divided by every object in the account; it now counts only the objects in that tag (`_dim_scope_count`). And Activity › Access log and PII › Tags rendered only their checks list, because the sub-tabs were missing from `web/src/tabs/tab_area.tsx`; `web/src/test/subtabs.test.ts` now fails for any sub-tab without a page.
 - **Review fixes (10 Nov 2026):** the whole-repo review findings are fixed. Not done: MFA from `CREDENTIALS` (the fallback has no stand-in; noted in the check's caveat). Changed behaviour: the Overview total reads "–" when any line with usage has no rate (e.g. archive storage); the `APPLY AUTHENTICATION|PASSWORD POLICY` grants are optional. **Pending:** the full test suite (stopped for low memory), and a Playwright check of the changed pages.
