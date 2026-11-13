@@ -88,3 +88,8 @@ flowchart TD
 
 - `tag_chain` docstring says query, then warehouse, then object cascade, then account (tags.py:397-401); the code puts object tags before the warehouse tag and adds user and role tags (tags.py:408-437). The code comment at tags.py:408 and the test match the code.
 - `compliance(account_ids=...)` narrows `tags.tag_entity` only (tag_compliance.py:163-171); the object universes and the $ block are not narrowed by account, so in an org export `total` and `missing` can mix accounts (inferred).
+
+## Tag filter and "N of M" counts
+
+- With a tag filter on, a check that lists only flagged rows is measured against the objects of that kind that match the same tag chain (for warehouses: the warehouse's own tag, then the account's), not every object in the account (app/core/data.py `_dim_scope_count`). Example on the fake account: costcenter = ANALYTICS on `sf_wh_idle_minutes` reads 1 of 1 warehouses, not 1 of 12. Test: tests/test_core_changes.py `test_tag_filter_follows_the_warehouse_tag_and_the_account_tag_order`.
+

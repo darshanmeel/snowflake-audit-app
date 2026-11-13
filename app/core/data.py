@@ -863,7 +863,7 @@ def finding_columns(query_id: str) -> list[str]:
 def _dim_scope_count(
     con: duckdb.DuckDBPyConnection, dim_table: str, id_col: str,
     account_ids: list[str] | None, env: list[str] | str | None,
-    attributes: dict[str, list[str]] | None,
+    attributes: dict[str, list[str]] | None, tag_filter=None, query_id: str = "", domain: str | None = None,
 ) -> int:
     """count(DISTINCT id_col) FROM dims.<dim_table>, scoped by account_ids/env/attributes the
     same way _build_filters' own branches do -- for affected.total, against a dim table (no window_days of its own, so
@@ -896,9 +896,19 @@ def _dim_scope_count(
                 f'account_id IN (SELECT account_id FROM dims.dim_account WHERE "{key}" IN ({placeholders}))'
             )
             params.extend(values)
+    if tag_filter is not None and domain is not None:
+        # the same tag chain the finding's rows were filtered by, so "N of M" counts M in that tag too
+        cols = [r[0] for r in con.execute(f"DESCRIBE dims.{dim_table}").fetchall()]
+        chain = app_core_tags.tag_chain(query_id, cols, domain)
+        filter_set = (tag_filter if isinstance(tag_filter, app_core_tags.TagFilterSet)
+                      else app_core_tags.TagFilterSet.single(tag_filter))
+        clause = app_core_tags.tag_set_clause(chain, f"dims.{dim_table} t", filter_set) if chain.kind == "entity" else None
+        if clause is not None:
+            clauses.append(f"({clause.where_sql})")
+            params.extend(clause.params)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     try:
-        row = con.execute(f"SELECT count(DISTINCT {_entity_key_sql(id_col, True)}) FROM dims.{dim_table}{where}", params).fetchone()
+        row = con.execute(f"SELECT count(DISTINCT {_entity_key_sql(id_col, True)}) FROM dims.{dim_table} t{where}", params).fetchone()
     except duckdb.Error:
         return 0
     return int(row[0]) if row and row[0] is not None else 0
@@ -1215,6 +1225,8 @@ def finding_window_counts(
                     else:
                         dim_total = _dim_scope_count(
                             con, dim_table, entity["dim_key"], account_ids, env, attributes,
+                            tag_filter=None if spend_table else effective_tag_filter, query_id=query_id,
+                            domain=specs_by_id[query_id].domain,
                         )
                         total = max(dim_total, own_total)
                     affected = {"column": entity["columns"][-1], "columns": entity["columns"], "noun": noun,
