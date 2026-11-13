@@ -48,7 +48,7 @@ flowchart LR
 
 ## Key facts it states
 
-- Read-only: checks are `SELECT`, `WITH`, `SHOW`; deploy to Streamlit is the only step that creates objects (README.md:8-11). Enforced in code by `assert_read_only` (tools/export_results.py:660-665).
+- Read-only: checks are `SELECT`, `WITH`, `SHOW`; deploy to Streamlit is the only step that creates objects (README.md:8-11). Enforced in code by `assert_read_only` (tools/export_results.py:455-460).
 - A check that did not run shows "–" and the reason, never $0 (README.md:589-590, 636).
 - Spend, change, waste and savings are never added together (README.md:583, 647-650).
 - Prices: CLI → rate sheet → 90-day invoice rate → settings 3.00 / 2.00 (README.md:378-396).
@@ -63,5 +63,5 @@ flowchart LR
 
 - Title is the brand "Crosshire" (README.md:1); the project and Streamlit app are called "Snowflake audit" elsewhere (CLAUDE.md:1; tools/streamlit_deploy/deploy.py:25, 139). Brand is a setting (README.md:714).
 - "`first_run.py` takes `--windows` and the three prices" (README.md:356) but it also takes `--workers` (tools/first_run.py:84-87).
-- `SNOWFLAKE_AUTHENTICATOR` is read by the export (tools/export_results.py:49, 692) but not documented in README or `.env.example`.
+- `SNOWFLAKE_AUTHENTICATOR` is read by the export (tools/export_results.py:52, 487) but not documented in README or `.env.example`.
 - Network allowlist: README says `*.snowflake.app` and WebSockets (README.md:535); the deploy README adds `*.snowflake.com` and `*.snowflakecomputing.app` (tools/streamlit_deploy/README.md:50).

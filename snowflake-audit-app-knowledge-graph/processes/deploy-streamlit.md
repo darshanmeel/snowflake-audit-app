@@ -75,11 +75,11 @@ Defaults: `--database AUDIT_APP`, `--schema PUBLIC`, `--stage AUDIT_APP_STAGE`, 
 
 ## Not yet verified
 
-- Nothing has run in Snowflake: packages, DuckDB, the security policy, speed and `--run` are open (STATUS.md:22; README.md:504-505).
-- v1 custom components on warehouse runtime: Snowflake's limitations page lists only `html` and `iframe`, so this may be disallowed (STATUS.md:22; tools/streamlit_deploy/README.md:7).
+- Nothing has run in Snowflake: packages, DuckDB, the security policy, speed and `--run` are open (STATUS.md:45; README.md:504-505).
+- v1 custom components on warehouse runtime: Snowflake's limitations page lists only `html` and `iframe`, so this may be disallowed (STATUS.md:45; tools/streamlit_deploy/README.md:7).
 - DuckDB `.so` files may be unsupported on warehouse runtime (tools/streamlit_deploy/README.md:150).
-- The per-file PUT and the named warehouse runtime in CREATE STREAMLIT have not run live (STATUS.md:22).
-- Checked only with Streamlit run locally, 1.52.2 and 1.56 on Python 3.11 (STATUS.md:22).
+- The per-file PUT and the named warehouse runtime in CREATE STREAMLIT have not run live (STATUS.md:45).
+- Checked only with Streamlit run locally, 1.52.2 and 1.56 on Python 3.11 (STATUS.md:45).
 - No automated test covers `tools/streamlit_deploy/` (no test file references it; checked tests/*.py).
 
 ## Diagnostics built in

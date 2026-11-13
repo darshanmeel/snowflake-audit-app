@@ -108,6 +108,6 @@ erDiagram
 
 ## Join rule in one line
 
-- Findings carry ids; names come from the dims at read time: `warehouse_id` -> `dims.dim_warehouse.warehouse_name`, shown `name (id)` (web/src/components/names.tsx:1-3, 45-48; app/api/app.py:1345).
+- Findings carry ids; names come from the dims at read time: `warehouse_id` -> `dims.dim_warehouse.warehouse_name`, shown `name (id)` (web/src/components/names.tsx:1-3, 45-48; app/api/app.py:1350).
 - Example: finding row `(FAKE01, warehouse_id '1001', CRITICAL, window 30)` + dim row `('1001', 'WH_ETL')` -> cell `WH_ETL (1001)` (test DB `tests/db_audit_test.duckdb`; fake source tests/fake_snowflake/data.py:168).
 - A missing dim -> empty stub, the id shows instead of the name (tools/load_results.py:788-791).

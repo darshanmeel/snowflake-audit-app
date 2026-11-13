@@ -65,4 +65,4 @@ sequenceDiagram
 
 ## Status
 
-- Checked only with Streamlit run locally; not run in Snowflake (STATUS.md:22). Whether v1 components are allowed on warehouse runtime is unclear (tools/streamlit_deploy/README.md:7).
+- Checked only with Streamlit run locally; not run in Snowflake (STATUS.md:45). Whether v1 components are allowed on warehouse runtime is unclear (tools/streamlit_deploy/README.md:7).

@@ -1,6 +1,6 @@
 # tags_src.* (temporary) and tags.* (built)
 
-One-line summary: the export runs five `app/queries/tag_sources/*.sql` into `tags_src/*.parquet`; the loader loads them into a temporary `tags_src` schema, `tools/build_tags.build` derives eight `tags.*` tables, the account tag is copied onto `dims.dim_account`, and `tags_src` is dropped (tools/export_results.py:1329-1342; tools/load_results.py:384-424; tools/build_tags.py:1-14).
+One-line summary: the export runs five `app/queries/tag_sources/*.sql` into `tags_src/*.parquet`; the loader loads them into a temporary `tags_src` schema, `tools/build_tags.build` derives eight `tags.*` tables, the account tag is copied onto `dims.dim_account`, and `tags_src` is dropped (tools/export_results.py:1097-1110; tools/load_results.py:384-424; tools/build_tags.py:1-14).
 
 ```mermaid
 flowchart LR

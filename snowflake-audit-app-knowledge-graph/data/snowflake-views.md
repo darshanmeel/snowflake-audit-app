@@ -42,10 +42,10 @@ flowchart LR
   - TAG_REFERENCES;
   - masking and row access policies.
 
-  The export skips these checks as `edition_too_low` (`tools/export_results.py:1235-1245`).
+  The export skips these checks as `edition_too_low` (`tools/export_results.py:1003-1013`).
 - **Retention.** AU keeps 365 days (`references/traps.md:56`). `common/cost_lines.sql:20` asks for 400 days, and AU silently returns 365.
 - **Latency.** 45 min (queries) to 3 h for most views; cloud services 6 h; attribution 8 h; OU billing 72 h (`references/traps.md:45-53`).
-- **Probe.** Before any check runs, the export probes every view the checks read with `SELECT 1 ... LIMIT 0` (`tools/export_results.py:955-972`).
+- **Probe.** Before any check runs, the export probes every view the checks read with `SELECT 1 ... LIMIT 0` (`tools/export_results.py:721-737`).
 - **Which views a check may read.** The registry allows only the views in `SOURCE_CONTRACT` (`app/core/registry.py:33-60`).
 
 ## Notes on specific views
@@ -54,7 +54,7 @@ flowchart LR
 - **CORTEX_FUNCTIONS_USAGE_HISTORY** is still in `SOURCE_CONTRACT` (`app/core/registry.py:44`), but no check reads it; the counts below show it is absent.
 - **OU.REPLICATION_USAGE_HISTORY** is read by `sf_org_replication_cost` (`checks/sf_org_replication_cost.sql:6, 39`). `traps.md:190` lists REPLICATION_USAGE_HISTORY as deprecated, without saying which schema.
 - **Views not in the skill catalog.** Rows marked "not in catalog" below are views the checks read that have no row in `views.md`. The skill says to look a view up there first, and add a row if it is missing (`SKILL.md:12-14`). Some of these are listed in `traps.md:201-205` as still to verify.
-- **Budgets.** `sf_acct_budgets` runs `SHOW SNOWFLAKE.CORE.BUDGET INSTANCES IN ACCOUNT` (manifest `reads:`). `SKILL.md:69` says budgets need `CALL ... GET_SPENDING_HISTORY` and `SHOW SNOWFLAKE.CORE.BUDGET INSTANCES`, "which are CALLs and not allowed"; the SHOW is not a CALL, and the read-only guard accepts SHOW (`tools/export_results.py:660-666`), so the skill wording is out of date.
+- **Budgets.** `sf_acct_budgets` runs `SHOW SNOWFLAKE.CORE.BUDGET INSTANCES IN ACCOUNT` (manifest `reads:`). `SKILL.md:69` says budgets need `CALL ... GET_SPENDING_HISTORY` and `SHOW SNOWFLAKE.CORE.BUDGET INSTANCES`, "which are CALLs and not allowed"; the SHOW is not a CALL, and the read-only guard accepts SHOW (`tools/export_results.py:455-461`), so the skill wording is out of date.
 - **`reads:` vs SQL.** The header `reads:` list and the views the SQL actually names agree for all but one check: `sf_secx_direct_user_grants` lists AU.ROLES in `reads:` but its SQL never reads it (see the last table).
 
 ## Views by number of checks

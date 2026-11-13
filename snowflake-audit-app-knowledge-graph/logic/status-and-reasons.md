@@ -15,17 +15,17 @@ flowchart TD
   NA --> R[checks_ran_summary not_ran<br/>data.py:2245-2266]
 ```
 
-## 1. App state (GET /api/status, app.py:445-472)
+## 1. App state (GET /api/status, app.py:449-476)
 
 | state | When | Source |
 |---|---|---|
-| settings_invalid | `config/settings.yml` (+ local) fails to load; wins over every db state | app.py:454-465 |
+| settings_invalid | `config/settings.yml` (+ local) fails to load; wins over every db state | app.py:458-469 |
 | no_database | db file missing | data.py:201-219 |
 | build_incomplete | file unreadable/corrupt, or no `dims.dim_account` | data.py:201-219 |
 | ready | otherwise | data.py:201-219 |
 
 - Examples (tests/test_api.py:228-273): unknown key `default_windw` on line 2 -> `settings_invalid`, `key "default_windw"`, `line 2`; a YAML syntax error on line 3 -> `line 3`, `key null`; a missing dim_account -> `build_incomplete` with "dim_account" in the detail.
-- Every other route answers a broken settings file with 503 `{state: "settings_invalid", key, line}` (app.py:177-187).
+- Every other route answers a broken settings file with 503 `{state: "settings_invalid", key, line}` (app.py:181-191).
 
 ## 2. Request outcome (one check, service.load_outcome service.py:277-425)
 

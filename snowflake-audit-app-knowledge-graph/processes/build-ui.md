@@ -40,8 +40,8 @@ From `web/` with Node 20+ (README.md:907-915; web/package.json scripts):
 
 ## Serving
 
-- FastAPI mounts `app/web/dist` last at `/` so it never shadows `/api/*`; a path with no extension gets `index.html`; `index.html` is served `no-cache` with the settings brand put in `<title>` and `window.APP_BRAND` (app/api/app.py:1418-1466).
-- No `dist` → `GET /` returns 404 text "The UI is not built. Run: cd web && npm ci && npm run build" (app/api/app.py:1462-1466; README.md:843).
+- FastAPI mounts `app/web/dist` last at `/` so it never shadows `/api/*`; a path with no extension gets `index.html`; `index.html` is served `no-cache` with the settings brand put in `<title>` and `window.APP_BRAND` (app/api/app.py:1423-1471).
+- No `dist` → `GET /` returns 404 text "The UI is not built. Run: cd web && npm ci && npm run build" (app/api/app.py:1467-1471; README.md:843).
 - Streamlit deploy reuses the same `dist/assets` (tools/streamlit_deploy/deploy.py:21, 60-72; tools/streamlit_deploy/streamlit_app.py:176-183).
 
 ## Gate

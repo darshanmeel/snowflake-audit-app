@@ -28,7 +28,7 @@ flowchart TD
 
 - Dev deps: pytest 9.1.1, sqlfluff 3.5.0 (requirements-dev.txt:1-4).
 - Gate order, none stops early: `lint_headers`, `build_manifest --check`, `check_queries`, `check_registry_ids`, web (tsc + vitest, or skip), pytest; prints `gate summary: ...` then `GATE OK` or exit 1 (tools/gate.py:52-66).
-- Cost: the full suite takes ~25 minutes and several GB of memory (README.md:876); it last passed at 485 tests (STATUS.md:24).
+- Cost: the full suite takes ~25 minutes and several GB of memory (README.md:876); it last passed at 485 tests (STATUS.md:47).
 
 ## The test database
 
@@ -42,7 +42,7 @@ flowchart TD
 ## Fake account
 
 - Code, not a file: `tests/fake_snowflake/schema.py` defines fake `SNOWFLAKE.*` views and SHOW outputs as DuckDB tables (tests/fake_snowflake/schema.py docstring; README.md:880-881).
-- Base account used by tests: `data.py` (deterministic, fixed seed and as-of), `gap_*.py`, `new_checks_data.py`, `batch3_data.py`; do not change them, tests depend on them (STATUS.md:26).
+- Base account used by tests: `data.py` (deterministic, fixed seed and as-of), `gap_*.py`, `new_checks_data.py`, `batch3_data.py`; do not change them, tests depend on them (STATUS.md:49).
   - Fake identity: locator `FAKE01`, name `FAKE_ACCOUNT`, org `FAKE_ORG` (tests/fake_snowflake/data.py:25-28). The Streamlit deploy refuses any DB carrying `FAKE%` (tools/streamlit_deploy/deploy.py:43-57).
 - Demo layers `demo_*.py`: 57 warehouses across 8 teams, ~120 users, tasks, pipes, AI, policies, partial tags, 90 days (README.md:882-883). One module per area: billing, compute, entities, gov_fit, lifecycle, pipe_fit, pipelines, platform, queries, review_fit, security, storage, tags, wh_fit, ai_perf, worst_case (module docstrings in tests/fake_snowflake/).
 - `live_catalog.json` holds live column names and types; refresh it with `python tools/dump_live_catalog.py` against a live account. It reads names and types only (`INFORMATION_SCHEMA.COLUMNS`, `DESCRIBE RESULT` of each SHOW); views the role can't see keep their old entry (tools/dump_live_catalog.py:1-8).
@@ -68,7 +68,7 @@ flowchart TD
 - Guard: refuses a `--db` inside the repo outside `data/`, and refuses the real `audit.duckdb` path (tools/build_demo_db.py:139-146).
 - Expected output: `N of 298 checks have rows, M flag something; per check: ....coverage.json` then `built <db>: ...` (tools/build_demo_db.py:148-153).
 - Run the app on it: `AUDIT_DB=data/demo/db_audit_demo.duckdb python -m app.api` (PowerShell: `$env:AUDIT_DB="..."`) (README.md:889-904).
-- Cost: about 4 min and 2.3 GB per build, one at a time (STATUS.md:28).
+- Cost: about 4 min and 2.3 GB per build, one at a time (STATUS.md:51).
 
 ## Key rules tested, with examples
 

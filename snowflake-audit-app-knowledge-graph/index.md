@@ -2,7 +2,7 @@
 
 A read-only Snowflake account audit: 302 SQL checks read `SNOWFLAKE.ACCOUNT_USAGE` / `ORGANIZATION_USAGE`, the export writes the results to a local folder, a loader turns that folder into a DuckDB file, and a FastAPI + React app on the user's machine (or in Streamlit in Snowflake) shows them.
 
-Built at commit `556a877` (see [README.md](README.md) for counts and how to rebuild).
+Built at commit `556a877`, cites last updated at commit `8cf5924` (see [README.md](README.md) for counts and how to rebuild).
 
 ## Big picture
 
@@ -19,7 +19,7 @@ flowchart LR
   API -. "same API + build + DB file" .-> ST["Streamlit in Snowflake<br/>tools/streamlit_deploy"]
 ```
 
-- Read-only guard on every statement: tools/export_results.py:660-665, applied in run_sql at 724-732.
+- Read-only guard on every statement: tools/export_results.py:455-460, applied in run_sql at 724-732.
 - Load is atomic (`<db>.tmp` then `os.replace`): tools/load_results.py:497-502, 671-683.
 - The app opens `AUDIT_DB`, else the `current_db.txt` pointer, else `audit.duckdb`: app/core/data.py:103-112.
 
@@ -29,15 +29,15 @@ flowchart LR
 |---|---|
 | One command: venv, sign-in, 7-day export, load, open app | start.py:275 (`main`), args start.py:50-56 |
 | First run (export + load, 30 days) | tools/first_run.py:183 |
-| Export CLI | tools/export_results.py:1528 (`build_parser`), 1547 (`main`) |
+| Export CLI | tools/export_results.py:1296 (`build_parser`), 1547 (`main`) |
 | Load CLI | tools/load_results.py:711 (`build_parser`), 727 (`main`) |
 | API server (`python -m app.api`) | app/api/__main__.py:35 (`uvicorn.run`) |
-| FastAPI app object and routers | app/api/app.py:124, 736-737 |
-| Static UI mount (last, never shadows `/api/*`) | app/api/app.py:1460-1466 |
+| FastAPI app object and routers | app/api/app.py:128, 736-738 |
+| Static UI mount (last, never shadows `/api/*`) | app/api/app.py:1465-1471 |
 | React root | web/src/main.tsx:30 |
-| Area registry (which checks each sub-tab owns) | web/src/components/tab_registry.tsx:470-501 |
+| Area registry (which checks each sub-tab owns) | web/src/components/tab_registry.tsx:472-503 |
 | Check catalog generator | tools/build_manifest.py:105 |
-| Export kit generator / kit runner | tools/make_export_kit.py:247 / tools/export_kit/run_export.py:1484 |
+| Export kit generator / kit runner | tools/make_export_kit.py:262 / tools/export_kit/run_export.py:1535 |
 | Streamlit deploy / Streamlit app | tools/streamlit_deploy/deploy.py:162 / tools/streamlit_deploy/streamlit_app.py:1-221 |
 | Pre-commit check runner | tools/gate.py:52 |
 | Demo database builder | tools/build_demo_db.py:121 |
@@ -95,6 +95,6 @@ flowchart LR
 | Shared SQL includes | 21 | app/queries/common/ |
 | Dims | 5 | app/queries/dims/ |
 | HTTP routes | 37: 29 in app.py, 2 in explorer.py, 5 in access_log.py, 1 in guide.py (36 `/api/*` + the `GET /` no-build fallback) | `@app.get`/`@router.*` in app/api/*.py |
-| UI top-level tabs | 19 | web/src/components/tab_registry.tsx:499-502 (`AREA_ORDER`) |
+| UI top-level tabs | 19 | web/src/components/tab_registry.tsx:501-504 (`AREA_ORDER`) |
 | UI sub-tabs | 68 | [flows/ui-navigation.md](flows/ui-navigation.md) |
 | Lenses ("View as") | 5 | [flows/roles.md](flows/roles.md) |

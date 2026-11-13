@@ -64,7 +64,7 @@ flowchart LR
 
 ### Severity cap for reports
 - 45 ids in `REPORT_IDS_CAPPED_AT_WARN` (materiality.py:48-95): period-over-period, chargebacks, spikes, spend-only checks. Reason: CRITICAL means broken, wasting money or exposing data; a spend swing is WARN at most (materiality.py:20-24).
-- Example (tests/test_materiality.py:404-421): `cost_period_over_period` has raw CRITICAL rows in the fixture -> `status_counts` has no CRITICAL; rows read `status: WARN`, `status_raw: CRITICAL`; `/api/findings` row carries `severity_cap: "WARN"` (app.py:844-846).
+- Example (tests/test_materiality.py:404-421): `cost_period_over_period` has raw CRITICAL rows in the fixture -> `status_counts` has no CRITICAL; rows read `status: WARN`, `status_raw: CRITICAL`; `/api/findings` row carries `severity_cap: "WARN"` (app.py:849-851).
 
 ## What the API reports
 

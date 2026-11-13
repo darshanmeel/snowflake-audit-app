@@ -25,7 +25,7 @@ flowchart TD
 - Parameter rules (tags.py:109-146):
   - `tag=<key>` = any real value of the key; `tag=<key>:<value>` = one value; split on the first `:`.
   - Same normalised key repeated = OR; different keys = AND; "All" on a key swallows specific values.
-  - `tag_value` without `tag_key`, or a key that normalises to empty -> 422 (app.py:220-233).
+  - `tag_value` without `tag_key`, or a key that normalises to empty -> 422 (app.py:224-237).
   - Example: `tag=Cost-Center:ANALYTICS&tag=cost_center:DATA_SCIENCE&tag=team` -> groups `[costcenter: (ANALYTICS, DATA_SCIENCE)] AND [team: All]`.
 - Chain order, most specific first (tags.py:408-437): query tag -> object tags (task, or table -> schema -> database) -> warehouse tag -> user tag -> role tag -> account tag (no account column: the warehouse's account from dims.dim_warehouse).
   - Example (tests/test_core_changes.py:154-165): columns `query_tag, table_name, database_name, schema_name, warehouse_id, user_name, role_name, account_id` -> `chain_words = ["query","object","object","object","compute","user","role","account"]`.
@@ -60,7 +60,7 @@ flowchart TD
 
 ## 3. Which key means "cost center" (cost_center.py)
 
-- Setting `cost_center_tag_keys` (default `["cost_center"]`, 1-5 non-empty strings; tests/test_config_cost_center.py:26-42). PUT /api/settings/cost-center writes only `config/settings.local.yml` (app.py:354-362; tests/test_config_cost_center.py:50-60).
+- Setting `cost_center_tag_keys` (default `["cost_center"]`, 1-5 non-empty strings; tests/test_config_cost_center.py:26-42). PUT /api/settings/cost-center writes only `config/settings.local.yml` (app.py:358-366; tests/test_config_cost_center.py:50-60).
 - Default and `dims.dim_account.cost_center` exists -> nothing overridden (cost_center.py:49-84).
 - Otherwise, per account, the first configured key that has a `tags.tag_account` row wins; `__untagged__` -> `not_tagged`, `__mixed__` -> `mixed` (cost_center.py:87-120).
   - Example (inferred from code): keys `["cc", "costcentre"]`, account A has rows for both -> the `cc` value; account B has neither and its base value is not `no_usage` -> `not_tagged` with reason "no usage row on this workspace carried any of the configured cost-center tag key(s)" (cost_center.py:140-155).
@@ -70,7 +70,7 @@ flowchart TD
   - the rollup when asked for `cost_center` (rollup.py:72-92).
 - Example (test DB): `/api/accounts[0].cost_center == "DATA_PLATFORM"` (tests/test_core_changes.py:167-169).
 - `suggestions` lists tag keys from tags.tag_index by credits then object count (cost_center.py:185-220).
-- An attribute key's filter is offered only if at least one account has a real value or `mixed` (not `not_tagged`/`no_usage`) (app.py:309-329).
+- An attribute key's filter is offered only if at least one account has a real value or `mixed` (not `not_tagged`/`no_usage`) (app.py:313-333).
 
 ## 4. Required-tag compliance (GET /api/tags/compliance, tag_compliance.py)
 

@@ -59,7 +59,7 @@ flowchart TD
 ### 6. Discount what-if
 - `effective_discount_pct` = configured `discount_pct`, except 0 when the credit price came from the invoice/rate sheet (already discounted) (data.py:2221-2226).
 - Examples (tests/test_api_features.py:239-251): source `usage_in_currency_daily`, configured 0.2 -> effective 0.0, `ignored: true`; source `cli` -> 0.2.
-- `/api/findings` money is discounted; `/aggregate` returns raw `total_value` plus `discount_pct` for the caller (app.py:1172-1174). Example: discount 0.25 on a CLI price -> list usd = round(raw x 0.75, 2), aggregate total unchanged (tests/test_totals_agree.py:131-148).
+- `/api/findings` money is discounted; `/aggregate` returns raw `total_value` plus `discount_pct` for the caller (app.py:1177-1179). Example: discount 0.25 on a CLI price -> list usd = round(raw x 0.75, 2), aggregate total unchanged (tests/test_totals_agree.py:131-148).
 
 ### 7. The same $ on every page
 - Five cuts of total spend must be the same number at 7/30/90 days: chargeback by account, by service, period-over-period current, daily spikes (tests/test_totals_agree.py:21-55).
@@ -74,7 +74,7 @@ flowchart TD
 - `cost_cutoff` data.py:2149-2183: `as_of_date` is the first day left out; without today the last complete day is `as_of_date - 1` (capped by `last_complete_day`); with `includes_today`, that day is `partial_day`, and `data_through` is the day before it (also capped by `last_complete_day`), `partial_from` = `data_through + 1`.
 - Example (test DB, no today): `as_of 2026-09-21T12:00:00Z` -> `{"data_through": "2026-09-20", "partial_day": null, ...}` (tests/test_totals_agree.py:85-87; tests/test_api.py:306-311).
 - Example (inferred from code): `as_of_date 2026-11-11`, `includes_today`, `as_of 2026-11-10T09:30Z`, `last_complete_day 2026-11-08` -> `data_through 2026-11-08`, `partial_from 2026-11-09`, `partial_day 2026-11-10`, `partial_until "09:30"`.
-- Served once in `/api/meta.cost_cutoff` (app.py:539-541).
+- Served once in `/api/meta.cost_cutoff` (app.py:543-545).
 
 ### 10. Windows the export could not fill
 - `window_status` per 7/30/90: `available`, `covered_days`, `partial` (data.py:1720-1735); a window never exported reads NOT_ASSESSED `not_exported`, never "nothing in this window" (service.py:212-220, 329-338).
@@ -98,4 +98,4 @@ flowchart TD
 
 - Rollup tree discount differs from its total: `_build_tree` reads the configured `discount_pct` itself (rollup.py:874-874) while `rollup()` uses `effective_discount_pct` for `total` (rollup.py:545-551, 605). With an invoice-derived price and a non-zero what-if, every tree node's `usd_disc` applies the what-if on top of an already-discounted rate; `total.usd_disc` does not, so the tree and its total disagree.
 - On the test DB the rollup's `reconciliation.spend_usd` (26,708.15) is lower than `billing_usd` (27,577.18): `spend_gap_usd = -869.03` (observed via GET /api/rollup?tag_key=cost_center&window=30; fields at rollup.py:682-721). The page text "spend = split + outside_split" does not hold there; cause unclear.
-- `/api/meta.checks` carries both `ok` (296 from run results) and `ran` (290) (app.py:544-556). The comment says use `ran` everywhere; a UI reading `ok` would show a second count (no `checks.ok` use found in web/src by grep).
+- `/api/meta.checks` carries both `ok` (296 from run results) and `ran` (290) (app.py:548-560). The comment says use `ran` everywhere; a UI reading `ok` would show a second count (no `checks.ok` use found in web/src by grep).

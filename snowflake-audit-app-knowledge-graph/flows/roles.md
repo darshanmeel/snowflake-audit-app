@@ -46,7 +46,7 @@ flowchart LR
 | Role areas | Actions and All findings filter to the lens's content areas. The CFO's also include `ai` | governance → `[actions, access, pii, lineage, activity, sharing, storage, audit, coverage]`; unknown role → finops (`roles.test.ts:30-33`) | `ROLE_AREAS` `App.tsx:131-140`, used by `useActions` `tab_actions.tsx:304-305` |
 | Lit entry | The sub-tab entry wins over the area entry | governance + access/users → "Users & sign-ins"; cfo + cost/trend → the plain Cost entry (`roles.test.ts:35-38`) | `activeNavItem` `lens_nav.ts:86-89` |
 | Clamp | A tab the lens doesn't list goes to the lens's home | `queries` under finops → `overview`; under data_engineer → `queries`; `tasks` under cfo → `money` (`roles.test.ts:40-44`) | `clampTabForRole` `App.tsx:146-148`; applied on load `App.tsx:780`, on role change `App.tsx:800-806`, as a safety net `App.tsx:795-799` |
-| Old links | Old tab keys are still accepted | `roles.test.ts:46-48` | `OLD_TAB_REDIRECTS` `tab_registry.tsx:532-535` |
+| Old links | Old tab keys are still accepted | `roles.test.ts:46-48` | `OLD_TAB_REDIRECTS` `tab_registry.tsx:534-537` |
 
 - `money` and `tags` are accepted in the hash for every lens (`App.tsx:100-104`). The clamp still sends them home in any lens that doesn't list them, so a CFO `money` link pasted under FinOps lands on Overview (`App.tsx:146-148`, `lens_nav.ts:37-42`). The comment "still a real, linkable tab" (`App.tsx:100-101`) only holds within lenses that list it.
 - README's lens table matches `LENS_NAV` (`README.md:599-607`).

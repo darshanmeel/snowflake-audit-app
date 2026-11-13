@@ -28,10 +28,10 @@ flowchart TD
 
 - Initial nav: the hash, after old-key redirects and the role clamp. With no hash it is the role's home (`web/src/App.tsx:777-782`).
 - Rail click → `setNav({tab, subtab})`, with focus cleared (`web/src/App.tsx:985`). A sub-tab click keeps the tab and clears focus (`web/src/App.tsx:986`).
-- A cross-area jump (`onExternalJump`) looks up the check's home in `QUERY_HOME`. Unknown ids fall back to All findings (`web/src/App.tsx:978-983`, `web/src/components/tab_registry.tsx:561-575`).
+- A cross-area jump (`onExternalJump`) looks up the check's home in `QUERY_HOME`. Unknown ids fall back to All findings (`web/src/App.tsx:978-983`, `web/src/components/tab_registry.tsx:563-577`).
 - A focused check opens the drawer. Closing it clears `focus` (`web/src/components/primitives.tsx:692-707`). Changing area or sub-tab closes the drawer (`primitives.tsx:696-700`).
 - AreaPage opens on the hash sub-tab when it is visible, else on the first visible sub-tab (`web/src/components/primitives.tsx:650-653`).
-- Org sub-tabs (`org: true`) are hidden when none of their checks ran (`web/src/components/tab_registry.tsx:544-556`).
+- Org sub-tabs (`org: true`) are hidden when none of their checks ran (`web/src/components/tab_registry.tsx:546-558`).
 
 ## Shell (every ready screen)
 
@@ -110,28 +110,28 @@ Every row: the sub-tab is registered by `registerAreaContent` (`tab_area.tsx:472
 | ai (AI & apps) | cortex | `:288` | `ApAiCortex` `area_ai_storage.tsx:342` | +agg |
 | ai | apps | `:298` | `ApAiApps` `area_ai_storage.tsx:565` | |
 | ai | serving | `:307` | `ApAiServing` `area_ai_storage.tsx:722` | |
-| access | roles | `:316` | `ApAccessRoles` `area_governance.tsx:174` | |
-| access | users | `:326` | `ApAccessUsers` `area_governance.tsx:368` | |
-| access | perimeter | `:336` | `ApAccessPerimeter` `area_governance.tsx:484` | |
+| access | roles | `:316` | `ApAccessRoles` `area_governance.tsx:175` | |
+| access | users | `:326` | `ApAccessUsers` `area_governance.tsx:369` | |
+| access | perimeter | `:336` | `ApAccessPerimeter` `area_governance.tsx:485` | |
 | access | explorer | `:347` | `ApAccessExplorer` `area_access_explorer.tsx:439` | `GET /api/access/names` (`:451`), `GET /api/access/explore` (`:460`) |
-| audit | admins | `:356` | `ApAuditAdmins` `area_governance.tsx:571` | |
-| audit | changes | `:361` | `ApAuditChanges` `area_governance.tsx:733` | |
-| pii (PII & policies) | sensitive | `:370` | `ApPiiSensitive` `area_governance.tsx:829` | |
-| pii | policies | `:375` | `ApPiiPolicies` `area_governance.tsx:920` | |
-| pii | reads | `:380` | `ApPiiReads` `area_governance.tsx:1033` | |
-| pii | quality | `:385` | `ApPiiQuality` `area_governance.tsx:1117` | |
-| lineage | dependencies | `:394` | `ApLineageDeps` `area_governance.tsx:1193` | |
+| audit | admins | `:356` | `ApAuditAdmins` `area_governance.tsx:572` | |
+| audit | changes | `:361` | `ApAuditChanges` `area_governance.tsx:734` | |
+| pii (PII & policies) | sensitive | `:370` | `ApPiiSensitive` `area_governance.tsx:830` | |
+| pii | policies | `:375` | `ApPiiPolicies` `area_governance.tsx:922` | |
+| pii | reads | `:380` | `ApPiiReads` `area_governance.tsx:1035` | |
+| pii | quality | `:385` | `ApPiiQuality` `area_governance.tsx:1120` | |
+| lineage | dependencies | `:394` | `ApLineageDeps` `area_governance.tsx:1196` | |
 | lineage | explorer | `:399` | `ApLineageExplorer` `area_lineage_explorer.tsx:77` | |
-| activity | databases | `:410` | `ApActivityDatabases` `area_activity.tsx:77` | |
-| activity | schemas (no own ids) | `:412` | `ApActivitySchemas` `area_activity.tsx:151` | |
-| activity | tables | `:413` | `ApActivityTables` `area_activity.tsx:262` | |
-| activity | lastactive | `:414` | `ApActivityLastActive` `area_activity.tsx:989` | |
-| activity | users | `:415` | `ApActivityUsers` `area_activity.tsx:622` | |
-| activity | objects | `:416` | `ApActivityObjects` `area_activity.tsx:771` | |
-| sharing (Sharing & org) | shares | `:423` | `ApSharingShares` `area_governance.tsx:1258` | |
-| sharing | accounts (org) | `:428` | `ApSharingAccounts` `area_governance.tsx:1367` | |
-| sharing | spend (org) | `:433` | `ApSharingSpend` `area_governance.tsx:1477` | |
-| sharing | replication | `:442` | `ApSharingReplication` `area_governance.tsx:1576` | |
+| activity | databases | `:410` | `ApActivityDatabases` `area_activity.tsx:78` | |
+| activity | schemas (no own ids) | `:412` | `ApActivitySchemas` `area_activity.tsx:152` | |
+| activity | tables | `:413` | `ApActivityTables` `area_activity.tsx:263` | |
+| activity | lastactive | `:414` | `ApActivityLastActive` `area_activity.tsx:990` | |
+| activity | users | `:415` | `ApActivityUsers` `area_activity.tsx:623` | |
+| activity | objects | `:416` | `ApActivityObjects` `area_activity.tsx:772` | |
+| sharing (Sharing & org) | shares | `:423` | `ApSharingShares` `area_governance.tsx:1261` | |
+| sharing | accounts (org) | `:428` | `ApSharingAccounts` `area_governance.tsx:1370` | |
+| sharing | spend (org) | `:433` | `ApSharingSpend` `area_governance.tsx:1480` | |
+| sharing | replication | `:442` | `ApSharingReplication` `area_governance.tsx:1579` | |
 | storage | growth | `:451` | `ApStorageGrowth` `area_ai_storage.tsx:825` | |
 | storage | unused | `:456` | `ApStorageUnused` `area_ai_storage.tsx:931` | |
 | storage | retention | `:461` | `ApStorageRetention` `area_ai_storage.tsx:1067` | |
@@ -140,8 +140,8 @@ Every row: the sub-tab is registered by `registerAreaContent` (`tab_area.tsx:472
 | coverage | couldnt | `:509` | `CoverageCouldntPanel` `tab_coverage.tsx:381` | `/api/coverage` |
 | coverage | limits | `:510` | `CoverageLimitsPanel` `tab_coverage.tsx:552` | `/api/coverage` |
 
-- "+agg" comes from counting `useFindingAgg`/`useAgg` in each file (`area_compute.tsx:60`, `area_ai_storage.tsx:57-60`), not from tracing each sub-tab. The edges are marked `inferred` in `graph/extra_web.jsonl`.
-- Pages with their own tiles set `ownsTiles`/`ownsLede`, so the generic tile row is skipped (`area_governance.tsx:1964`, `area_ai_storage.tsx:1305`, `area_activity.tsx:1026`, `tab_area.tsx:402-436`).
+- "+agg" comes from counting `useFindingAgg`/`useAgg` in each file (`area_compute.tsx:60`, `area_ai_storage.tsx:58-60`), not from tracing each sub-tab. The edges are marked `inferred` in `graph/extra_web.jsonl`.
+- Pages with their own tiles set `ownsTiles`/`ownsLede`, so the generic tile row is skipped (`area_governance.tsx:1967`, `area_ai_storage.tsx:1305`, `area_activity.tsx:1027`, `tab_area.tsx:402-436`).
 
 ## Drawer and drill-down
 

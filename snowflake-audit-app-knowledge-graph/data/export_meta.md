@@ -29,7 +29,7 @@ flowchart LR
 - `as_of` = manifest, else zip entry date, else newest file mtime (tools/load_results.py:635).
 - Read by `direct_export_info()`, cached on file mtime (app/core/data.py:1625-1671).
 - Example (test DB): `as_of 2026-09-21T12:00:00Z`, `as_of_date 2026-09-21`, `includes_today false`, `windows [7,30,90]`, `window_coverage {"7":7,"30":30,"90":30}`, `window_aliases {"90":"30"}`, `last_complete_day 2026-09-20`, `lag_hours 8`.
-- `last_complete_day` = (now - lag) date - 1 day (tools/export_results.py:1362).
+- `last_complete_day` = (now - lag) date - 1 day (tools/export_results.py:1130).
 
 ## main.direct_export_findings_meta
 

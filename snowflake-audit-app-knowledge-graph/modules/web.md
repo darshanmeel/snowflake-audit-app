@@ -57,9 +57,9 @@ flowchart TD
 | `tab_area.tsx` | `AreaSubtabContent`: page component or tiles + up to 2 charts. Registered for every drill-down sub-tab | `web/src/tabs/tab_area.tsx:389-491` |
 | `area_pages.tsx` | `AREA_CHART_PAGES` map plus `ApPanel` (one check → one chart, or the reason there is none) | `web/src/components/area_pages.tsx:68-101`, `181-190` |
 | `area_compute.tsx` | Warehouses and Queries sub-tab pages (`COMPUTE_PAGES`) | `web/src/components/area_compute.tsx:1945-1948` |
-| `area_governance.tsx` | Access, Audit, PII, Lineage and Sharing pages (`GOV_CHART_PAGES`) | `web/src/components/area_governance.tsx:1957-1964` |
+| `area_governance.tsx` | Access, Audit, PII, Lineage and Sharing pages (`GOV_CHART_PAGES`) | `web/src/components/area_governance.tsx:1960-1967` |
 | `area_ai_storage.tsx` | AI and Storage pages, plus the shared `useCheck`, `chkOf` and `useLede` | `web/src/components/area_ai_storage.tsx:50-80`, `327-330`, `1301-1305` |
-| `area_activity.tsx` | Activity pages | `web/src/components/area_activity.tsx:1023-1026` |
+| `area_activity.tsx` | Activity pages | `web/src/components/area_activity.tsx:1024-1027` |
 | `area_pipelines.tsx` | Tasks, Loading and Serverless pages | `web/src/components/area_pages.tsx:22`, `184-186` |
 | `drawer.tsx` | `DrawerBus` (one open drawer, mirrored to `open=`), `CheckDrawer` | `web/src/components/drawer.tsx:25-53`, `86` |
 | `waste_total.tsx` | The one waste, saving and storage-per-month calculation | `web/src/components/waste_total.tsx:1-12`, `143-193` |
@@ -121,7 +121,7 @@ One place reads and writes `location.hash`: `HashState`. It holds plain `key=val
 - Tokens are checked against `^[A-Za-z0-9_.:-]{1,200}$`. A `tab` outside the accepted list makes the whole nav read null (`web/src/components/nav_hash.tsx:5-21`).
   - Example: `#tab=cost&subtab=trend&focus=sf_cost_x&view=critical` with valid tabs `[cost, overview]` → `{tab:cost, subtab:trend, view:critical, focusQueryId:sf_cost_x, domain:null}`. With only `[overview]` → `null`. `subtab=<script>` → `null` (`web/src/test/hash_state.test.ts:34-47`).
 - `HashState.set({w:7, tab:null, subtab:""})` on `#role=cto&w=30&tab=cost` leaves `role=cto&w=7` (`web/src/test/hash_state.test.ts:10-18`).
-- Old keys are redirected: tabs such as `query→queries`, `mlai→ai`, `governance→access`; `access/admins` → `audit`; `lineage/usage` → `activity/databases`; old sub-tab keys such as `config→idle` (`web/src/components/tab_registry.tsx:532-539`, `web/src/App.tsx:692-707`).
+- Old keys are redirected: tabs such as `query→queries`, `mlai→ai`, `governance→access`; `access/admins` → `audit`; `lineage/usage` → `activity/databases`; old sub-tab keys such as `config→idle` (`web/src/components/tab_registry.tsx:534-541`, `web/src/App.tsx:692-707`).
 - Accepted tabs: `AREA_ORDER` plus `guide`, `money`, `tags` and the old keys (`web/src/App.tsx:97-105`).
 - Kept in localStorage only: `role` and `theme` (`web/src/App.tsx:117-124`, `157-199`).
 
@@ -147,6 +147,6 @@ One place reads and writes `location.hash`: `HashState`. It holds plain `key=val
 
 - **Dead code:** `StateNote` and `NoDataBlock` were removed, but their CSS rules remain in `web/src/styles/styles.css` (not verified line by line).
 - **summaryOnly is never true:** `App` always passes `summaryOnly={false}` (`App.tsx:1123`), so `AreaPage`'s summary mode and `summaryGoTo` (`primitives.tsx:660-662`, `906-916`) never run. `setCanDrill(true)` is constant (`App.tsx:837`). The comment saying the CTO lens picks "summary or full drill-down" is stale (`App.tsx:111-113`).
-- **STATUS.md conflict:** STATUS.md says "don't keep compatibility with older versions" (`STATUS.md:32`), yet the UI keeps old-hash redirects (`tab_registry.tsx:531-539`, `App.tsx:691-707`) and the Databricks-era names (`api.ts:67-67`).
+- **STATUS.md conflict:** STATUS.md says "don't keep compatibility with older versions" (`STATUS.md:55`), yet the UI keeps old-hash redirects (`tab_registry.tsx:533-541`, `App.tsx:691-707`) and the Databricks-era names (`api.ts:67-67`).
 - **Hash key clash (inferred):** the Access explorer reads `open=` as "schema box to open" (`area_access_explorer.tsx:32-33`), while `DrawerBus` reads the same `open=` as the drawer's check id (`drawer.tsx:33-34`). A shared explorer link therefore also sets the drawer target. It is harmless while the value is not a query id, because no finding matches (`primitives.tsx:707`).
-- **Registry comment wrong:** the header says every id sits in exactly one sub-tab (`tab_registry.tsx:4`). `sf_use_query_profile` and `sf_use_top_query_shapes` sit in both Activity › Tables `ids` and Activity › Users `refIds` (`tab_registry.tsx:399`, `415`). `QUERY_HOME` keeps the first, Tables (`tab_registry.tsx:563`).
+- **Registry comment wrong:** the header says every id sits in exactly one sub-tab (`tab_registry.tsx:4`). `sf_use_query_profile` and `sf_use_top_query_shapes` sit in both Activity › Tables `ids` and Activity › Users `refIds` (`tab_registry.tsx:400`, `415`). `QUERY_HOME` keeps the first, Tables (`tab_registry.tsx:565`).

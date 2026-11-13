@@ -8,7 +8,7 @@ How one page request travels through the backend, shown for GET /api/findings (t
 sequenceDiagram
   participant UI as Browser (web/src/api.ts)
   participant API as app.py
-  UI->>API: GET /api/status (app.py:445-472)
+  UI->>API: GET /api/status (app.py:449-476)
   alt state != ready
     API-->>UI: settings_invalid | no_database | build_incomplete -> friendly screen
   else ready
@@ -18,23 +18,23 @@ sequenceDiagram
   end
 ```
 
-- `/api/status` is called first and never raises (app.py:439-472; api.ts:196).
-- `open_window` = settings.default_window if this db has it, else the largest available window (app.py:203-209).
+- `/api/status` is called first and never raises (app.py:443-476; api.ts:196).
+- `open_window` = settings.default_window if this db has it, else the largest available window (app.py:207-213).
 
 ## GET /api/findings (list)
 
 ```mermaid
 sequenceDiagram
   participant UI as Browser
-  participant MW as cache middleware<br/>app.py:140-171
-  participant R as get_findings<br/>app.py:870-908
+  participant MW as cache middleware<br/>app.py:144-175
+  participant R as get_findings<br/>app.py:875-913
   participant S as service.list_findings<br/>service.py:623-806
   participant D as data.py
   participant DB as DuckDB (read-only)
   UI->>MW: GET /api/findings?window=30
   Note over MW: not a cached prefix -> pass through
   MW->>R: request
-  R->>R: _resolve_window, _read_attribute_filters,<br/>_parse_tag_filter (app.py:886-891)
+  R->>R: _resolve_window, _read_attribute_filters,<br/>_parse_tag_filter (app.py:891-896)
   R->>S: list_findings(30, accounts, env, attributes, tag, owner, dims)
   alt same data_stamp + args seen before
     S-->>R: deep copy from _LIST_CACHE (service.py:626-637)
@@ -50,7 +50,7 @@ sequenceDiagram
     S->>S: _mark_storage_overlap (service.py:805, 799-844)
   end
   S-->>R: list[FindingRow]
-  R->>D: checks_ran_summary(), price_basis(), discount_info() (app.py:904-906)
+  R->>D: checks_ran_summary(), price_basis(), discount_info() (app.py:909-911)
   R-->>UI: JSON {window_days, count, checks_ran, price_basis, discount, findings[]}
 ```
 
@@ -60,7 +60,7 @@ sequenceDiagram
 sequenceDiagram
   participant UI as Browser
   participant MW as cache middleware
-  participant R as get_finding<br/>app.py:926-1071
+  participant R as get_finding<br/>app.py:931-1076
   participant S as service.load_outcome<br/>service.py:277-425
   participant D as data.py
   participant DB as DuckDB
@@ -82,14 +82,14 @@ sequenceDiagram
       S-->>R: ok_empty_filters or ok_rows (+ window_coverage)
     end
   end
-  R->>R: header params substituted (service.py:172-205), prose cleaned (app.py:916-923)
-  R->>R: ok_rows: pricing.apply(df, effective discount) -> *_disc columns,<br/>page slice, classify_columns, records (masking) (app.py:1030-1037)
+  R->>R: header params substituted (service.py:172-205), prose cleaned (app.py:921-928)
+  R->>R: ok_rows: pricing.apply(df, effective discount) -> *_disc columns,<br/>page slice, classify_columns, records (masking) (app.py:1035-1042)
   R-->>MW: 200 JSON
-  MW->>MW: store if body <= cap (app.py:163-169)
+  MW->>MW: store if body <= cap (app.py:167-173)
   MW-->>UI: JSON
 ```
 
-- The API layer never builds finding SQL; paging is a Python slice of the already capped frame (app.py:1027-1032).
+- The API layer never builds finding SQL; paging is a Python slice of the already capped frame (app.py:1032-1037).
 - Filters a check cannot apply are ignored and reported (`scope.*_applied`, `dim_applied`), never an empty result (data.py:408-421, 572-599).
 
 ## Real example (tests/db_audit_test.duckdb, fake account, as of 2026-09-21)
@@ -131,7 +131,7 @@ Request: `GET /api/finding/sf_wh_idle_minutes/aggregate?window=30&agg=sum&value=
 ```
 
 - The list's `money.usd` (13,827.60) equals the aggregate `total_value` over WARN+CRITICAL rows; tests/test_totals_agree.py:101-128 checks this for every priced check.
-- `group=warehouse_name` on this check returns 422 `unknown group column` because the table carries `warehouse_id` only; names come from GET /api/dims (app.py:595-669; data.py:1406-1410).
+- `group=warehouse_name` on this check returns 422 `unknown group column` because the table carries `warehouse_id` only; names come from GET /api/dims (app.py:599-673; data.py:1406-1410).
 
 Request: `GET /api/finding/sf_org_dormant_accounts?window=30` (failed on purpose in the fixture, tests/fixtures/build_fixtures.py:46-48):
 

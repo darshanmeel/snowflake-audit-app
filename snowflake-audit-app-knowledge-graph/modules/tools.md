@@ -28,8 +28,8 @@ flowchart LR
 ### export_results.py — run the checks on Snowflake, write a results folder
 - Purpose: tools/export_results.py:1-8. Flow: flows/export.md. Prices: logic/pricing.md. Fallbacks: logic/fallbacks.md.
 - Main functions: `run_export` (1129-1366), `run_validate` (1382-1447), `render` (600-639), `assert_read_only` (642-647), `connect` (672-695), `account_context` (821-873), `probe_visibility` (938-975), `detect_edition` (788-818), `run_shims` (444-544), `run_query_feed` (410-441), `expand_shims` (142-180), `fallback_blocked` (242-254), `load_sources` (1080-1092), `render_report` (1095-1126), `main` (1547-1596).
-- Flags (tools/export_results.py:1528-1551): `--out DIR` (required, outside repo), `--windows` (30), `--credit-price`, `--ai-credit-price`, `--storage-price`, `--use-fallbacks`, `--max-rows` (50,000, tools/common.py:18), `--statement-timeout SECONDS` (900), `--only ID...`, `--workers N` (4, or 1 with browser sign-in), `--mask KINDS`, `--mask-salt TEXT`, `--validate`.
-- Exit: 0 ok, 1 connection error (or SQL errors in `--validate`), 2 config error (tools/export_results.py:1586-1616).
+- Flags (tools/export_results.py:1296-1319): `--out DIR` (required, outside repo), `--windows` (30), `--credit-price`, `--ai-credit-price`, `--storage-price`, `--use-fallbacks`, `--max-rows` (50,000, tools/common.py:18), `--statement-timeout SECONDS` (900), `--only ID...`, `--workers N` (4, or 1 with browser sign-in), `--mask KINDS`, `--mask-salt TEXT`, `--validate`.
+- Exit: 0 ok, 1 connection error (or SQL errors in `--validate`), 2 config error (tools/export_results.py:1354-1384).
 
 ### load_results.py — load a results folder or .zip into DuckDB
 - Purpose: tools/load_results.py:1-7. Main: `load_folder` (306), `safe_unzip` (191), `normalise_timestamps` (87), `build_finding_counts` (426), `main` (727). Masks person columns with `common.apply_masking` (tools/load_results.py:403, 555).
@@ -56,11 +56,11 @@ flowchart LR
 
 ### make_export_kit.py — rebuild tools/export_kit/
 - Purpose: tools/make_export_kit.py:1-8. Main: `build` (168-243), `zip_kit` (246-258), `grants_sql` (127-136), `roles_section` (111-124), `refresh_masking` (162-165): rewrites the masking and shared blocks of the kit's run_export.py. Process: processes/export-kit.md.
-- Flags: `--zip DIR` (writes `DIR/export_kit.zip`, outside the repo) (tools/make_export_kit.py:247-259).
+- Flags: `--zip DIR` (writes `DIR/export_kit.zip`, outside the repo) (tools/make_export_kit.py:262-274).
 
 ### export_kit/run_export.py — the standalone export the customer runs
 - Docstring and install: tools/export_kit/run_export.py:1-16. Main: `run_export` (1218-1438), `main` (1441-1485), `mask_folder` (401), `parse_sources`/`apply_sources` (64-101, copies of app/core/config.py:367-404).
-- Flags (tools/export_kit/run_export.py:1486-1503): `--out` (`sf-audit-out`), `--windows` (30), `--credit-price`, `--ai-credit-price`, `--storage-price`, `--use-fallbacks`, `--only`, `--max-rows`, `--statement-timeout` (900), `--no-zip`, `--mask`, `--mask-salt`, `--source VIEW=COPY` (repeatable).
+- Flags (tools/export_kit/run_export.py:1537-1554): `--out` (`sf-audit-out`), `--windows` (30), `--credit-price`, `--ai-credit-price`, `--storage-price`, `--use-fallbacks`, `--only`, `--max-rows`, `--statement-timeout` (900), `--no-zip`, `--mask`, `--mask-salt`, `--source VIEW=COPY` (repeatable).
 
 ## Change checks (the "gate")
 

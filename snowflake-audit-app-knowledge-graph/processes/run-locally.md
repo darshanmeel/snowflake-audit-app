@@ -26,8 +26,8 @@ flowchart TD
 | Command | What it does | Default days | Source |
 |---|---|---|---|
 | `python start.py` | venv + .env + sign-in check + export + load + app | 7 | start.py:4-12, 52 |
-| `python tools/first_run.py` | export + load (no venv, no prompt, no app) | export's own default, 30 | tools/first_run.py:4-13, 119-131; tools/export_results.py:1531 |
-| `python tools/export_results.py --out DIR` | export only | 30 | tools/export_results.py:1528-1561 |
+| `python tools/first_run.py` | export + load (no venv, no prompt, no app) | export's own default, 30 | tools/first_run.py:4-13, 119-131; tools/export_results.py:1299 |
+| `python tools/export_results.py --out DIR` | export only | 30 | tools/export_results.py:1296-1329 |
 | `python tools/load_results.py [DIR or .zip]` | load only (newest export if none given) | – | tools/load_results.py:711-801 |
 | `python -m app.api` | start FastAPI on 127.0.0.1:8000 | – | app/api/__main__.py:27-35 |
 
@@ -39,19 +39,19 @@ flowchart TD
   - Example: edit `requirements.txt` → next `python start.py` prints "Installing packages (a few minutes the first time) ..." again; unchanged → skipped (start.py:78-81).
 - By hand: `py -3.12 -m venv .venv`, activate, `python -m pip install -r requirements.txt`, `copy .env.example .env` (README.md:265-290).
 - Runtime packages: duckdb 1.5.1, snowflake-connector-python >=3.12,<5, sqlglot, pyarrow, pyyaml, pandas 3.0.3, fastapi, uvicorn, httpx (requirements.txt:1-9).
-- Node is not needed: the built UI is committed in `app/web/dist` (README.md:72; app/api/app.py:1460-1466).
+- Node is not needed: the built UI is committed in `app/web/dist` (README.md:72; app/api/app.py:1465-1471).
 
 ## 2. Key pair and sign-in
 
 - Make the key: `openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt` then `openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub` (README.md:79-82). Encrypted variant `-v2 des3` + `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` (README.md:84-90).
 - Paste the public key (no BEGIN/END lines, no line breaks) into `CREATE USER ... RSA_PUBLIC_KEY` or `ALTER USER ... SET RSA_PUBLIC_KEY` (README.md:94-96).
-- Sign-in choice, first match wins (tools/export_results.py:690-713):
+- Sign-in choice, first match wins (tools/export_results.py:485-508):
   1. `SNOWFLAKE_PRIVATE_KEY_FILE` (+ passphrase) → key pair.
   2. `SNOWFLAKE_PASSWORD` → password.
   3. neither → `SNOWFLAKE_AUTHENTICATOR` or `externalbrowser`, with a cached temporary credential.
-- Browser sign-in forces 1 worker, else 4 (tools/export_results.py:56, 748-755).
+- Browser sign-in forces 1 worker, else 4 (tools/export_results.py:59, 543-546).
   - Example: `.env` with only ACCOUNT and USER → `--workers` default 1; with a `.p8` → 4.
-- Where values come from: environment first, then the first matching line of `.env` per key; `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_USER` are required, else exit 2 "missing ..." (tools/export_results.py:47-52, 655-666).
+- Where values come from: environment first, then the first matching line of `.env` per key; `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_USER` are required, else exit 2 "missing ..." (tools/export_results.py:50-55, 450-461).
 - `start.py` prompts in this order: account, user, role, warehouse, key file; a blank key means browser (start.py:37-43, 120-147).
   - Account cleanup: `https://myorg-myacct.snowflakecomputing.com/` → `myorg-myacct` (start.py:114-117).
   - A key path that is not a file is asked again (start.py:130-132).
@@ -78,18 +78,18 @@ flowchart LR
 - Without `IMPORTED PRIVILEGES`, the four database roles open 249 of 298 checks (269 with an org role); the 10 task checks need `TASK_VERSIONS` which none of the four opens (README.md:153-159, 212, 217).
 - No bulk `MONITOR` on warehouses or resource monitors exists; grant per object (README.md:246-249).
 - Check a role before a run: `USE ROLE AUDIT_ROLE; USE WAREHOUSE AUDIT_WH; SELECT COUNT(*) FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY;` (README.md:130-134).
-- Dry run, nothing exported: `python tools/export_results.py --out <folder outside the repo> --windows 7 --validate` → `validate.md`; exit 1 only on a real SQL error (README.md:347-354; tools/export_results.py:1579-1603).
-  - Expected line: `validated N statements: A ok, B not readable by this role or account, C SQL errors`, then one GRANT line per cause (tools/export_results.py:1593-1598).
+- Dry run, nothing exported: `python tools/export_results.py --out <folder outside the repo> --windows 7 --validate` → `validate.md`; exit 1 only on a real SQL error (README.md:347-354; tools/export_results.py:1347-1371).
+  - Expected line: `validated N statements: A ok, B not readable by this role or account, C SQL errors`, then one GRANT line per cause (tools/export_results.py:1361-1366).
 
 ## 4. Export
 
 - `first_run.py` makes `<data dir>/results/<UTC stamp>` such as `results/20260929T101500Z` (tools/first_run.py:106-113; app/core/datasource.py:45-49).
 - Data dir: `AUDIT_DATA_DIR`, else Windows `%LOCALAPPDATA%\snowflake-audit`, macOS `~/Library/Application Support/snowflake-audit`, Linux `$XDG_DATA_HOME` or `~/.local/share/snowflake-audit` (app/core/datasource.py:16-33; README.md:479-487).
-- An `--out` inside the repo is refused: exit 2 "is inside the repository; choose a folder outside it" (tools/export_results.py:1162-1163, 1392-1393; app/core/datasource.py:36-38).
-- Every statement must be one `SELECT`/`WITH`/`SHOW` or it is refused (tools/export_results.py:660-665).
-- Session: `TIMEZONE=UTC`, `QUERY_TAG` from settings `query_source`, `STATEMENT_TIMEOUT_IN_SECONDS` 900 default (tools/export_results.py:55, 680-683).
-- Expected output: one line per check, `[12/298] check_id: ok, 34 rows, 1.2s` (README.md:339; tools/export_results.py:1553-1562), then `wrote <folder>: N empty, N ok, ...` and `next: python tools/load_results.py <folder> --db PATH` (tools/export_results.py:1616-1623).
-- Exit codes: 2 config error, 1 connection error, 0 ok (tools/export_results.py:1610-1624); `first_run.py` passes the first failing step's code on, 130 = interrupted (tools/first_run.py:21-22, 194-199).
+- An `--out` inside the repo is refused: exit 2 "is inside the repository; choose a folder outside it" (tools/export_results.py:930-931, 1160-1161; app/core/datasource.py:36-38).
+- Every statement must be one `SELECT`/`WITH`/`SHOW` or it is refused (tools/export_results.py:455-460).
+- Session: `TIMEZONE=UTC`, `QUERY_TAG` from settings `query_source`, `STATEMENT_TIMEOUT_IN_SECONDS` 900 default (tools/export_results.py:58, 475-478).
+- Expected output: one line per check, `[12/298] check_id: ok, 34 rows, 1.2s` (README.md:339; tools/export_results.py:1321-1330), then `wrote <folder>: N empty, N ok, ...` and `next: python tools/load_results.py <folder> --db PATH` (tools/export_results.py:1384-1391).
+- Exit codes: 2 config error, 1 connection error, 0 ok (tools/export_results.py:1378-1392); `first_run.py` passes the first failing step's code on, 130 = interrupted (tools/first_run.py:21-22, 194-199).
 - Prices: CLI flag → `RATE_SHEET_DAILY` → 90-day `USAGE_IN_CURRENCY_DAILY` rate → `config/settings.yml` 3.00 / 2.00 (README.md:378-396).
   - Example: `python tools/first_run.py --credit-price 3.0 --storage-price 23` (README.md:391-393).
 - Main options: `--windows`, `--max-rows` (50,000), `--statement-timeout` (900), `--workers` (4), `--only`, `--mask`, `--mask-salt`, `--use-fallbacks`, `--validate` (README.md:360-371).
@@ -109,7 +109,7 @@ flowchart LR
 - Which DB opens, first match wins: `AUDIT_DB` → `current_db.txt` pointer → `<data dir>/audit.duckdb` (app/core/data.py:103-112).
   - Example: after `load_results.py` into the data dir and no `AUDIT_DB`, the pointer names that file.
 - `start.py` picks 8000 or the next free of 50 ports by binding, and opens the browser when the port answers (start.py:199-218, 267-272).
-- `GET /` serves `app/web/dist/index.html` with the brand injected; any non-file path falls back to index.html; no build → 404 "The UI is not built. Run: cd web && npm ci && npm run build" (app/api/app.py:1422-1466).
+- `GET /` serves `app/web/dist/index.html` with the brand injected; any non-file path falls back to index.html; no build → 404 "The UI is not built. Run: cd web && npm ci && npm run build" (app/api/app.py:1427-1471).
 
 ## 7. Later runs
 

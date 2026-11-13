@@ -85,7 +85,7 @@ flowchart TD
 - Key functions: `_effective` rollup.py:200-210; `_fetch_cost_paths` rollup.py:225-282 (untagged remainder = unit usd minus tagged work usd); `_resolve_cost_center_alias` rollup.py:72-92; `_resolve_account_scope` rollup.py:372-400; `_matching_unit_ids` rollup.py:414-459; `rollup` rollup.py:481-618; `_reconciliation` rollup.py:682-728; `_build_tree` rollup.py:819-873; `_build_by_value` rollup.py:876-908; `rollup_keys` rollup.py:933-933.
 - Reads: `tags.cost_unit`, `cost_unit_tag`, `cost_reconciliation`, `perf_unit`, `perf_unit_tag`, `tag_account` (rollup.py:60-66) and `findings.f_cost_dollarized_by_service_day` (rollup.py:665-679).
 - Stubs: `_source_status` and `_degraded_effect` always return "nothing degraded" (rollup.py:106-113).
-- Called by: app.py:765, 797, 817, 830.
+- Called by: app.py:770, 802, 822, 835.
 
 ## materiality.py (floors and severity cap)
 
@@ -118,8 +118,8 @@ flowchart TD
 ## masking.py (export-time masking)
 
 - Purpose: replace chosen kinds of names with salted tokens in every parquet file and the manifest before anything is written (masking.py:1-22).
-- `parse_kinds` masking.py:115-126; `Masker.token` masking.py:174-184; `Masker.column_rule` masking.py:187-206; `Masker.cell` masking.py:212-232; `freeze`/`text` masking.py:244-264; `mask_folder` masking.py:334-353.
-- Called by: app.py `put_privacy_settings` (validation only, app.py:399) and `_privacy_body` (`MASK_KINDS`, app.py:377); the export (`tools/export_results.py`, tests/test_masking.py:172-176).
+- `parse_kinds` masking.py:116-127; `Masker.token` masking.py:175-185; `Masker.column_rule` masking.py:188-207; `Masker.cell` masking.py:213-233; `freeze`/`text` masking.py:245-265; `mask_folder` masking.py:335-354.
+- Called by: app.py `put_privacy_settings` (validation only, app.py:403) and `_privacy_body` (`MASK_KINDS`, app.py:381); the export (`tools/export_results.py`, tests/test_masking.py:172-176).
 
 ## tags.py (tag filter and tag index)
 
@@ -140,7 +140,7 @@ flowchart TD
 ## tag_compliance.py (required tags)
 
 - `compliance` tag_compliance.py:148-244; `_universes` tag_compliance.py:49-93; `_spend` tag_compliance.py:104-145.
-- Reads tags.tag_entity, tags.tag_account, tags.cost_unit, tags.cost_unit_tag, dims.*, findings.f_sf_chg_tag_coverage. Called by app.py:1415. See logic/tags-and-cost-center.md.
+- Reads tags.tag_entity, tags.tag_account, tags.cost_unit, tags.cost_unit_tag, dims.*, findings.f_sf_chg_tag_coverage. Called by app.py:1420. See logic/tags-and-cost-center.md.
 
 ## cost_center.py (which tag key means cost center)
 

@@ -2,7 +2,7 @@
 
 298 read-only SQL checks over `SNOWFLAKE.ACCOUNT_USAGE` / `ORGANIZATION_USAGE`, each one file with a comment header that drives the export, the manifest and every number the app shows.
 
-Sources opened: `app/queries/README.md:1-74`, `tools/header_schema.py:1-272`, `tools/build_manifest.py:20-100`, `tools/export_results.py:55-678, 985-1045, 1129-1275`, `tools/common.py:20-86`, `app/core/registry.py:1-60, 100-130, 239-301`, `app/core/finding_columns.py:1-1`, `app/core/data.py:1105-1239`, `tools/check_queries.py:1-72`, `tools/sql_smoke.py:1-519`, `tools/check_registry_ids.py:1-70`, every `app/queries/common/*.sql`, samples of `checks/`, `fallback/`, `shims/`, `verify/`.
+Sources opened: `app/queries/README.md:1-74`, `tools/header_schema.py:1-272`, `tools/build_manifest.py:20-100`, `tools/export_results.py:58-473, 751-813, 897-1043`, `tools/common.py:20-86`, `app/core/registry.py:1-60, 100-130, 239-301`, `app/core/finding_columns.py:1-1`, `app/core/data.py:1105-1239`, `tools/check_queries.py:1-72`, `tools/sql_smoke.py:1-519`, `tools/check_registry_ids.py:1-70`, every `app/queries/common/*.sql`, samples of `checks/`, `fallback/`, `shims/`, `verify/`.
 
 ## Folder layout
 
@@ -26,13 +26,13 @@ flowchart LR
 
 | Folder | What it holds | Evidence |
 |---|---|---|
-| `checks/<query_id>.sql` | One check; file name = `query_id` (export refuses a mismatch). `sf_*` = Snowflake-only; other names are ports of the Databricks app's checks with the same columns. | `README.md:7-8`, `tools/export_results.py:97-106` |
+| `checks/<query_id>.sql` | One check; file name = `query_id` (export refuses a mismatch). `sf_*` = Snowflake-only; other names are ports of the Databricks app's checks with the same columns. | `README.md:7-8`, `tools/export_results.py:100-109` |
 | `dims/` | `dim_account`, `dim_database`, `dim_task`, `dim_user`, `dim_warehouse` name lookups | `README.md:9`, `ls app/queries/dims` |
 | `common/<name>.sql` | Shared CTE fragments pasted in with `__INCLUDE_<name>__` | `README.md:10` |
-| `fallback/<query_id>.sql` | Same check from INFORMATION_SCHEMA, same columns; run when the role cannot read AU (or `--use-fallbacks`). 80 are `-- shim: yes` stubs, 5 are hand-written (`access_login_concentration`, `query_failed_queries_daily`, `query_queuing_waits`, `sf_qry_daily_by_warehouse`, `sf_storage_growth_by_database`). | `README.md:11-15`, `tools/export_results.py:109-117` |
+| `fallback/<query_id>.sql` | Same check from INFORMATION_SCHEMA, same columns; run when the role cannot read AU (or `--use-fallbacks`). 80 are `-- shim: yes` stubs, 5 are hand-written (`access_login_concentration`, `query_failed_queries_daily`, `query_queuing_waits`, `sf_qry_daily_by_warehouse`, `sf_storage_growth_by_database`). | `README.md:11-15`, `tools/export_results.py:112-120` |
 | `shims/<VIEW>.sql` | An AU view rebuilt from IS table functions / views / SHOW, with the view's columns (NULL where missing). Header: `reads`, `needs`, `note`, optional `each`, `show`, `columns`. | `README.md:16-23`, `shims/WAREHOUSE_METERING_HISTORY.sql:1-9`, `shims/TABLES.sql:1-5` |
 | `tag_sources/` | 5 aggregates written to `tags_src/` for the tag filters | `README.md:69-74` |
-| `verify/<section>.sql` | Paste-into-worksheet queries that recompute app figures by hand (ai, cost, governance, pipelines, queries, storage, warehouses) | `verify/cost.sql:1-5`, `STATUS.md:21` |
+| `verify/<section>.sql` | Paste-into-worksheet queries that recompute app figures by hand (ai, cost, governance, pipelines, queries, storage, warehouses) | `verify/cost.sql:1-5`, `STATUS.md:44` |
 | `manifest.json` | Domain-keyed list of every check's parsed header; never hand-edited | `tools/build_manifest.py:2-8, 83-98` |
 
 ## Lifecycle of one check
@@ -55,9 +55,9 @@ flowchart TD
   DB -->|app/core/data.py money + entity| UI[tiles, N of M counts]
 ```
 
-- Edition gate, role gate, fallback branch: `tools/export_results.py:1230-1291`.
-- Probe: `tools/export_results.py:955-992`.
-- Run per window and overwrite `window_days` with the label: `tools/export_results.py:1006-1020`.
+- Edition gate, role gate, fallback branch: `tools/export_results.py:998-1059`.
+- Probe: `tools/export_results.py:721-758`.
+- Run per window and overwrite `window_days` with the label: `tools/export_results.py:772-788`.
 
 ## Header format
 
@@ -86,7 +86,7 @@ wh AS ( ... )
 ```
 
 Field rules:
-- `params:` grammar is `:name (default X) meaning; ...` (`tools/header_schema.py:75, 116-137`). A chunk that does not match is skipped silently (`tools/header_schema.py:125-127`); `render` then fails on the unresolved `:name` (`tools/export_results.py:654-656`).
+- `params:` grammar is `:name (default X) meaning; ...` (`tools/header_schema.py:75, 116-137`). A chunk that does not match is skipped silently (`tools/header_schema.py:125-127`); `render` then fails on the unresolved `:name` (`tools/export_results.py:449-451`).
 - `empty_if:` vocabulary: `edition_too_low, role_cannot_see, org_account_only, view_missing, retention_window, no_activity, ingestion_lag` (`tools/header_schema.py:50-59`).
 - `entity:` is `<noun> = <col>[, <col>]`; malformed raises (`tools/header_schema.py:167-177`).
 - `reads:` is validated against `SOURCE_CONTRACT` at load; unknown source = `RegistryError` (`app/core/registry.py:11-13, 33-60`).
@@ -105,20 +105,20 @@ flowchart LR
   L -- no --> S["apply_sources (settings sources:)"]
 ```
 
-- Implementation: `tools/export_results.py:614-657` (`render`).
+- Implementation: `tools/export_results.py:409-452` (`render`).
 - **Includes** are CTE fragments (`name AS (...)`), pasted once, not recursive; no `common/*.sql` file contains another include. A check writes `WITH __INCLUDE_a__, __INCLUDE_b__, own AS (...)` (`checks/cost_daily_by_resource.sql:34`). Order matters: `sf_use_query_metrics` and `sf_use_query_roles` read `sf_use_ah`, which only `sf_use_access_events` defines (`common/sf_use_query_metrics.sql:2, 13`, `common/sf_use_access_events.sql:4-10`).
 - Include use across checks (grep of `checks/*.sql`, 124 checks use one): `warehouse_config` 22, `sf_sec_users` 22, `sf_sec_user_roles` 22, `sf_storage_live_tables` 19, `sf_gov_sensitive_columns` 12, `sf_cs_billed_ratio` 12, `sf_task_dim` 10, `sf_use_access_events` 9, `cost_lines` 8, `sf_chg_query_credits` 7, `sf_dt_dim` 5, `sf_storage_table_use` 4, `sf_chg_cost_tags` 3, `sf_wh_size_rate` / `sf_use_query_roles` / `sf_use_query_metrics` / `sf_use_object_inventory` / `sf_cs_window_ratio` 2 each, `sf_cost_object_reads` 1. `is_query_history*` are fallback-only.
-- **Params**: values = header defaults overridden by `config/thresholds.yml` per check or `_all` (`tools/export_results.py:270-277`); `period_days` comes from the window, not the header (`tools/export_results.py:620`). The lookbehind `(?<![:\w])` keeps `::NUMBER` casts and `o:COL` variant paths untouched (`tools/export_results.py:59`).
+- **Params**: values = header defaults overridden by `config/thresholds.yml` per check or `_all` (`tools/export_results.py:212-219`); `period_days` comes from the window, not the header (`tools/export_results.py:415`). The lookbehind `(?<![:\w])` keeps `::NUMBER` casts and `o:COL` variant paths untouched (`tools/export_results.py:62`).
   - Example: `:top_n` in `cost_daily_by_resource` -> `100`; `:period_days` -> `7`, `30` or `30` again for the 90 label when the export has 30 days.
-- Literal rules: `None` -> `CAST(NULL AS DOUBLE)`, bool -> `TRUE/FALSE`, string quoted (`tools/export_results.py:290-297`). So an unpriced export renders `__CREDIT_PRICE__` as `CAST(NULL AS DOUBLE)` and every `credits * price` is NULL, never 0.
-- Read-only guard: one `SELECT`/`WITH`/`SHOW`, no `;` outside quotes (`tools/export_results.py:660-666`).
-- `pre:` SHOW lines run first on the same cursor; the check reads them with `RESULT_SCAN(LAST_QUERY_ID())`, pinned to the SHOW's id (`tools/export_results.py:1010-1012, 713`; `common/warehouse_config.sql:8-10`).
+- Literal rules: `None` -> `CAST(NULL AS DOUBLE)`, bool -> `TRUE/FALSE`, string quoted (`tools/export_results.py:231-231`). So an unpriced export renders `__CREDIT_PRICE__` as `CAST(NULL AS DOUBLE)` and every `credits * price` is NULL, never 0.
+- Read-only guard: one `SELECT`/`WITH`/`SHOW`, no `;` outside quotes (`tools/export_results.py:455-461`).
+- `pre:` SHOW lines run first on the same cursor; the check reads them with `RESULT_SCAN(LAST_QUERY_ID())`, pinned to the SHOW's id (`tools/export_results.py:778-780, 508`; `common/warehouse_config.sql:8-10`).
 
 ## Windows
 
 - `WINDOW_LABELS = (7, 30, 90)`; `window_plan(30)` -> `[(7,7),(30,30),(90,30)]`; `window_sources` runs each distinct day count once at its smallest label (`tools/common.py:18, 24-34`).
-- Export default `--windows 30` (`tools/export_results.py:1531`). Windowed checks run per source; others once with label 0 (`tools/export_results.py:1233`).
-- Body rule: first column `:period_days AS window_days` (or `0`), window filter `col >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND col < __AS_OF_DATE__` (`README.md:51-52`). The export overwrites `window_days` with the label (`tools/export_results.py:1014-1016`).
+- Export default `--windows 30` (`tools/export_results.py:1299`). Windowed checks run per source; others once with label 0 (`tools/export_results.py:1001`).
+- Body rule: first column `:period_days AS window_days` (or `0`), window filter `col >= DATEADD(day, -:period_days, __AS_OF_DATE__) AND col < __AS_OF_DATE__` (`README.md:51-52`). The export overwrites `window_days` with the label (`tools/export_results.py:782-784`).
 - 219 of 298 checks are `windowed: yes` (manifest.json).
 
 ## Money and entity fields drive the app
@@ -136,7 +136,7 @@ flowchart LR
 - `money:` names the one headline column (59 of 298 checks declare one); others fall back to name maps (`app/core/finding_columns.py:25-51, 135-152`).
 - Kinds are never added together; waste/saving/gap count flagged rows only (`app/core/finding_columns.py:15-24, 55`; `app/core/data.py:1119-1129`).
 - Unpriced: no non-null amount -> `reason: unpriced`, `usd: None`, never $0 (`app/core/data.py:1157-1172`).
-- Export blanks `est_wasted_*`, `est_saving_*`, `est_idle_usd*` on rows that are not WARN/CRITICAL (`tools/common.py:66-85`, called at `tools/export_results.py:1019`).
+- Export blanks `est_wasted_*`, `est_saving_*`, `est_idle_usd*` on rows that are not WARN/CRITICAL (`tools/common.py:66-85`, called at `tools/export_results.py:787`).
 - `is_total_row` rows are left out of sums and entity counts; `is_alt_basis` rows are left out of the money sum only (`app/core/finding_columns.py:61-68`; `app/core/data.py:1113-1118, 1128-1129`). 10 checks set `is_total_row`, 3 set `is_alt_basis` (grep).
 - `entity:` gives the "N of M" count; with no header the most specific id column wins (task before warehouse, table before schema) (`app/core/finding_columns.py:72-100, 169-190`). Rows named `(...)` (remainders such as `(unallocated idle)`) stay in money but are not entities (`app/core/data.py:1191-1199`). When a check lists only flagged rows, M comes from the dim table (`app/core/data.py:1210-1220`).
   - Example: `sf_secx_password_policy_posture` declares `entity: password policies = policy_name` (`checks/sf_secx_password_policy_posture.sql:4`).

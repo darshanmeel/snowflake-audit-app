@@ -1,6 +1,6 @@
 # manifest.json — two different files with one name
 
-One-line summary: `app/queries/manifest.json` is the check catalog generated from the SQL headers (298 checks in 7 domains) and read by `app/core/registry.py`; the export's `manifest.json` (in each results folder) is the run record read by the loader — do not confuse them (tools/build_manifest.py:1-10; app/core/registry.py:1-17; tools/export_results.py:1355-1383; tools/load_results.py:458-464).
+One-line summary: `app/queries/manifest.json` is the check catalog generated from the SQL headers (298 checks in 7 domains) and read by `app/core/registry.py`; the export's `manifest.json` (in each results folder) is the run record read by the loader — do not confuse them (tools/build_manifest.py:1-10; app/core/registry.py:1-17; tools/export_results.py:1123-1151; tools/load_results.py:458-464).
 
 ```mermaid
 flowchart LR
@@ -35,7 +35,7 @@ flowchart LR
 
 ## B. Export run manifest: results/<stamp>/manifest.json
 
-- Written once per export (tools/export_results.py:1355-1383). Keys the loader uses:
+- Written once per export (tools/export_results.py:1123-1151). Keys the loader uses:
 
 | Key | Loader use | Evidence |
 |---|---|---|
@@ -48,4 +48,4 @@ flowchart LR
 | `pricing.credit_price_usd` | tag cost tables priced or empty | tools/load_results.py:416-420 |
 
 - No manifest -> import mode; nothing is truncated or failed (tools/load_results.py:486-495).
-- Export also writes `sources`, `monitor_usage`, `manage_grants`, `days`, `mode`, `export_date`, `statement_timeout_s`, `include_snowflake_tasks` that the loader does not store (tools/export_results.py:1355-1383 vs tools/load_results.py:637-661).
+- Export also writes `sources`, `monitor_usage`, `manage_grants`, `days`, `mode`, `export_date`, `statement_timeout_s`, `include_snowflake_tasks` that the loader does not store (tools/export_results.py:1123-1151 vs tools/load_results.py:637-661).

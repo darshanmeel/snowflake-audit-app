@@ -1,6 +1,6 @@
 # STATUS.md
 
-The project's current state: what is built, what ran live, what is not verified, and how the work is done (STATUS.md:1-36, last updated 6 Nov 2026).
+The project's current state: what is built, what ran live, what is not verified, and how the work is done (STATUS.md:1-59, last updated 6 Nov 2026).
 
 ```mermaid
 flowchart LR
@@ -30,7 +30,7 @@ flowchart LR
 | Fake data | base files `data.py`, `gap_*.py`, `new_checks_data.py`, `batch3_data.py` (don't change); demo `demo_*.py`; demo DB ~4 min, ~2.3 GB; nine scenarios; `worst_case` | 25-28 | tests/fake_snowflake/demo_scenarios.py:40-58 (nine entries) |
 | History | squashed to one commit on 15 Oct 2026 | 29 | `git log` now shows 91 commits since |
 
-## Working preferences (STATUS.md:31-36)
+## Working preferences (STATUS.md:54-59)
 
 - Commit and push to `main` after every finished change; don't over-engineer; no backward compatibility.
 - Push back on costly or rule-breaking requests.
@@ -40,5 +40,5 @@ flowchart LR
 
 ## Notes
 
-- "History: squashed to one commit" (STATUS.md:29) is history, not current state; there are 91 commits now (git log).
-- "Tests and the browser review only at the end" (STATUS.md:35) reads softer than CLAUDE.md's "Check every changed page in a real browser ... before calling it done" (CLAUDE.md:80). Compatible if "done" means end of batch; unclear.
+- "History: squashed to one commit" (STATUS.md:52) is history, not current state; there are 91 commits now (git log).
+- "Tests and the browser review only at the end" (STATUS.md:58) reads softer than CLAUDE.md's "Check every changed page in a real browser ... before calling it done" (CLAUDE.md:80). Compatible if "done" means end of batch; unclear.

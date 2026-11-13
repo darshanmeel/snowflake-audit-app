@@ -16,14 +16,14 @@ flowchart TD
 
 ## 1. Price source order
 
-Code: `account_context` (tools/export_results.py:839-891); the kit has the same with `index.json` defaults in place of settings (tools/export_kit/run_export.py:1004-1048).
+Code: `account_context` (tools/export_results.py:623-675); the kit has the same with `index.json` defaults in place of settings (tools/export_kit/run_export.py:1108-1152).
 
-- Each price is filled independently; a CLI price for one never blocks the invoice for another (tools/export_results.py:853-855, 854-864).
-- The org views are read only when some price is still missing (tools/export_results.py:858). No access is normal and prints a note (tools/export_results.py:861-863).
-- Rate sheet wins over the invoice for credit and AI, never for storage (`key != "storage"`, tools/export_results.py:876-877).
-- Invoice storage rate is per TB-day, so it is multiplied by `DAYS_PER_MONTH = 30.4` (tools/export_results.py:53, 860-862).
+- Each price is filled independently; a CLI price for one never blocks the invoice for another (tools/export_results.py:637-639, 638-648).
+- The org views are read only when some price is still missing (tools/export_results.py:642). No access is normal and prints a note (tools/export_results.py:646-647).
+- Rate sheet wins over the invoice for credit and AI, never for storage (`key != "storage"`, tools/export_results.py:660-661).
+- Invoice storage rate is per TB-day, so it is multiplied by `DAYS_PER_MONTH = 30.4` (tools/export_results.py:56, 644-646).
 - Settings defaults: `credit_price_usd: 3.0`, `ai_credit_price_usd: 2.0`, `storage_price_usd_tb_month:` empty (config/settings.yml:20-22). Code defaults are all `None` (app/core/config.py:162-164). So storage is unpriced unless the CLI or invoice gives it.
-- No price anywhere stays `None` and `main` warns that $ columns are empty (tools/export_results.py:1621-1623).
+- No price anywhere stays `None` and `main` warns that $ columns are empty (tools/export_results.py:1389-1391).
 
 Examples (tests/test_export_more.py, fake cursor returns compute rate 3.0, storage 0.75/TB-day, tests/test_export_more.py:60-62):
 
@@ -37,8 +37,8 @@ Examples (tests/test_export_more.py, fake cursor returns compute rate 3.0, stora
 
 ## 2. The rate SQL
 
-- **Rate sheet** (`rate_sheet_sql`, tools/export_results.py:894-909): latest `effective_rate` before as-of, USD, `billing_type = consumption`, not an adjustment; `rating_type = ai_compute` -> AI, `compute` with `service_type = WAREHOUSE_METERING` -> credit.
-- **Invoice** (`org_rate_sql`, tools/export_results.py:912-934): `SUM(usage_in_currency) / SUM(usage)` over the 90 days before as-of, per `rating_type` in compute/storage/ai_compute; consumption only, no adjustments, no `overage` balance; service types matching `(^|_)(AI|CORTEX)(_|$)` are left out of the compute rate.
+- **Rate sheet** (`rate_sheet_sql`, tools/export_results.py:677-677): latest `effective_rate` before as-of, USD, `billing_type = consumption`, not an adjustment; `rating_type = ai_compute` -> AI, `compute` with `service_type = WAREHOUSE_METERING` -> credit.
+- **Invoice** (`org_rate_sql`, tools/export_results.py:680-702): `SUM(usage_in_currency) / SUM(usage)` over the 90 days before as-of, per `rating_type` in compute/storage/ai_compute; consumption only, no adjustments, no `overage` balance; service types matching `(^|_)(AI|CORTEX)(_|$)` are left out of the compute rate.
   - Example (tests/test_export_more.py:93-101): `CORTEX_FUNCTIONS` and `AI_SERVICES` match, `CLOUD_SERVICES`, `WAREHOUSE_METERING`, `SNOWPIPE_STREAMING` don't.
 
 ## 3. Invoice-derived prices and the discount what-if
@@ -61,7 +61,7 @@ Rule: each day, cloud services up to 10% of that day's warehouse compute are fre
 ## 5. AI credits
 
 - In `cost_lines`, a service type matching `(^|.*_)(AI|CORTEX|COCO|COWORK)(_.*|$)` is priced at `__AI_CREDIT_PRICE__`, every other at `__CREDIT_PRICE__` (app/queries/common/cost_lines.sql:16-18).
-- The price comes from rate sheet `ai_compute`, else invoice `ai_compute`, else `ai_credit_price_usd` (tools/export_results.py:894-934, 852-864).
+- The price comes from rate sheet `ai_compute`, else invoice `ai_compute`, else `ai_credit_price_usd` (tools/export_results.py:677-702, 636-648).
 - First live run read $3.00/credit and $2.00/AI credit from `RATE_SHEET_DAILY` (STATUS.md, "First live run").
 
 ## 6. Storage and data transfer $
@@ -69,7 +69,7 @@ Rule: each day, cloud services up to 10% of that day's warehouse compute are fre
 - Storage TB-days = `(storage + stage + failsafe + hybrid) bytes / 1024^4` per day, rate = `__STORAGE_PRICE_TB_MONTH__ / 30.4` (app/queries/common/cost_lines.sql:25-30).
   - Example: 10 TB on one day at $23/TB-month -> 10 x 23 / 30.4 = $7.57 for that day.
 - Archive (cool/cold) tiers have rate NULL: unpriced, never $0 (app/queries/common/cost_lines.sql:32-38).
-- Data transfer is an estimate per TB: same cloud, other region, or other cloud (app/queries/common/cost_lines.sql:42-46). The two $/TB rates come from the `sf_cost_data_transfer_egress` check's params (`EGRESS_CHECK`, `transfer_rates` tools/export_results.py:280-283), default 20 and 90 (tools/export_results.py:631-632); the Guide SQL fills the same values (app/api/guide.py).
+- Data transfer is an estimate per TB: same cloud, other region, or other cloud (app/queries/common/cost_lines.sql:42-46). The two $/TB rates come from the `sf_cost_data_transfer_egress` check's params (`EGRESS_CHECK`, `transfer_rates` tools/export_results.py:222-225), default 20 and 90 (tools/export_results.py:426-427); the Guide SQL fills the same values (app/api/guide.py).
 
 ## 7. Waste $ only on flagged rows
 
@@ -78,5 +78,5 @@ Rule: each day, cloud services up to 10% of that day's warehouse compute are fre
 
 ## Open points
 
-- The invoice AI exclusion regex `(AI|CORTEX)` (tools/export_results.py:932) is narrower than the AI pricing regex `(AI|CORTEX|COCO|COWORK)` (app/queries/common/cost_lines.sql:17). A `*_COCO_*` or `*_COWORK_*` service's invoice dollars would sit in the compute rate while its credits are priced at the AI rate. Inferred; not tested.
-- `account_context` docstrings say "CLI, else invoice, else settings" and omit the rate sheet step (tools/export_results.py:841-843; tools/export_kit/run_export.py:1004-1005). Code and README.md:379-389 include it.
+- The invoice AI exclusion regex `(AI|CORTEX)` (tools/export_results.py:700) is narrower than the AI pricing regex `(AI|CORTEX|COCO|COWORK)` (app/queries/common/cost_lines.sql:17). A `*_COCO_*` or `*_COWORK_*` service's invoice dollars would sit in the compute rate while its credits are priced at the AI rate. Inferred; not tested.
+- `account_context` docstrings say "CLI, else invoice, else settings" and omit the rate sheet step (tools/export_results.py:625-627; tools/export_kit/run_export.py:1108-1109). Code and README.md:379-389 include it.
