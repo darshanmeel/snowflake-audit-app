@@ -132,22 +132,37 @@ def grants_sql() -> str:
 
 MASK_START = "# ---- masking: a copy of app/core/masking.py, made by tools/make_export_kit.py; edit it there ----"
 MASK_END = "# ---- end of masking ----"
+SHARED_START = "# ---- shared: a copy of tools/export_shared.py, made by tools/make_export_kit.py; edit it there ----"
+SHARED_END = "# ---- end of shared ----"
 
 
-def masking_block() -> str:
-    """app/core/masking.py without its docstring and imports (run_export.py imports the same modules)."""
-    src = (ROOT / "app" / "core" / "masking.py").read_text(encoding="utf-8").replace("\r\n", "\n")
+def module_block(path: Path) -> str:
+    """A module without its docstring and imports (run_export.py imports the same modules)."""
+    src = path.read_text(encoding="utf-8").replace("\r\n", "\n")
     body = src.split('"""', 2)[2]
     lines = [line for line in body.split("\n") if not line.startswith(("import ", "from "))]
     return "\n".join(lines).strip("\n")
 
 
-def refresh_masking(script: Path) -> None:
-    """Rewrite the masking block of the kit's run_export.py from app/core/masking.py."""
+def masking_block() -> str:
+    return module_block(ROOT / "app" / "core" / "masking.py")
+
+
+def shared_block() -> str:
+    return module_block(ROOT / "tools" / "export_shared.py")
+
+
+def _refresh(script: Path, start: str, end: str, block: str) -> None:
     text = script.read_text(encoding="utf-8").replace("\r\n", "\n")
-    head, rest = text.split(MASK_START + "\n", 1)
-    _, tail = rest.split(MASK_END + "\n", 1)
-    _write(script, head + MASK_START + "\n" + masking_block() + "\n" + MASK_END + "\n" + tail)
+    head, rest = text.split(start + "\n", 1)
+    _, tail = rest.split(end + "\n", 1)
+    _write(script, head + start + "\n" + block + "\n" + end + "\n" + tail)
+
+
+def refresh_masking(script: Path) -> None:
+    """Rewrite the masking and shared blocks of the kit's run_export.py from their sources in the repo."""
+    _refresh(script, MASK_START, MASK_END, masking_block())
+    _refresh(script, SHARED_START, SHARED_END, shared_block())
 
 
 def build(kit: Path = KIT) -> Path:

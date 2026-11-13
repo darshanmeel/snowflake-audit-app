@@ -31,7 +31,8 @@ sequenceDiagram
    - `grants.sql`: cut from README "### The grant script", so the two never differ (tools/make_export_kit.py:128-131);
    - `verify/*.sql` from `app/queries/verify` (tools/make_export_kit.py:223-224);
    - `README.md` = fixed head + README "Roles and privileges" with the `--validate` bullet removed (tools/make_export_kit.py:32-102, 110-123, 217);
-   - the masking block inside `run_export.py`, copied from `app/core/masking.py` between marker lines (tools/make_export_kit.py:134-151, 220).
+   - the masking block inside `run_export.py`, copied from `app/core/masking.py` between marker lines (tools/make_export_kit.py `refresh_masking`);
+   - the shared block inside `run_export.py`, copied from `tools/export_shared.py` the same way: SQL literals, the read-only SHOW runner `run_all`, shim and fallback helpers, `normalise`, `info_schema_db`, `short`. `tools/export_results.py` imports the same module, so a change there reaches both exports. `tests/test_export_kit.py::test_the_committed_kit_is_up_to_date` fails when the kit was not refreshed.
    - A kit folder elsewhere must be outside the repo (tools/make_export_kit.py:156-157).
 3. **Zip to send.** `--zip DIR` (outside the repo) copies the kit without `.env`, `*.p8`, `sf-audit-out*`, `__pycache__` and writes `DIR/export_kit.zip` (tools/make_export_kit.py:232-244). Test: tests/test_export_kit.py:59-64.
 4. **Customer grants.** `grants.sql` creates placeholder `AUDIT_ROLE`, service `AUDIT_USER` with a public key, XS `AUDIT_WH`; grants `IMPORTED PRIVILEGES` (or four `SNOWFLAKE.*_VIEWER` database roles: 249 of 298 checks), `MONITOR USAGE`, `MONITOR EXECUTION`, Trust Center / Budget / Data quality application roles, optional `APPLY AUTHENTICATION|PASSWORD POLICY` (commented out: they let the role change those policies); per-warehouse `MONITOR` and org billing roles are commented (tools/export_kit/grants.sql:1-57). What each grant opens: README.md:203-230.

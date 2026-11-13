@@ -437,6 +437,78 @@ def mask_folder(folder: Path, kinds, salt: str | None = None, manifest: dict | N
 # ---- the SQL -------------------------------------------------------------------------------
 
 
+# ---- shared: a copy of tools/export_shared.py, made by tools/make_export_kit.py; edit it there ----
+_SHIM_TOKEN_RE = re.compile(r"__SHIM_([A-Z_]+)__")
+
+
+def shims_in(text: str) -> list[str]:
+    """The shims a fallback reads."""
+    return sorted(set(_SHIM_TOKEN_RE.findall(text)))
+
+
+def info_schema_db(cur) -> str | None:
+    """A database whose INFORMATION_SCHEMA the role can call table functions from: the session's own,
+    else the first one SHOW DATABASES lists outside SNOWFLAKE (which needs IMPORTED PRIVILEGES)."""
+    try:
+        cur.execute("SELECT CURRENT_DATABASE()")
+        current = cur.fetchone()[0]
+        if current:
+            return current
+        cur.execute("SHOW TERSE DATABASES")
+        rows = cur.fetchall()
+        # A standard database first: a shared or application one may not run the table functions.
+        names = ([r[1] for r in rows if len(r) > 2 and str(r[2] or "").upper() == "STANDARD"]
+                 + [r[1] for r in rows])
+    except Exception:  # noqa: BLE001 -- no database to use means no fallback, never a failed export
+        return None
+    return next((n for n in names if n.upper() != "SNOWFLAKE"), names[0] if names else None)
+
+
+def has_monitor_usage(cur, ctx: dict) -> bool:
+    """Whether the role sees account-wide usage in INFORMATION_SCHEMA (ACCOUNTADMIN or MONITOR USAGE).
+    Every database has a storage row a day, and the table function returns none without the grant."""
+    info = '"' + str(ctx.get("info_schema_db") or "").replace('"', '""') + '".INFORMATION_SCHEMA'
+    try:
+        cur.execute(f"SELECT COUNT(*) FROM TABLE({info}.DATABASE_STORAGE_USAGE_HISTORY("
+                    f"DATE_RANGE_START => DATEADD(day, -3, CURRENT_DATE())))")
+        return bool(cur.fetchone()[0])
+    except Exception:  # noqa: BLE001 -- unreadable reads as no grant, never a failed export
+        return False
+
+
+def account_privileges(cur) -> set[str]:
+    """The account-level privileges of the roles in this session, or {"ACCOUNTADMIN"} when it is one of
+    them. MANAGE GRANTS is what lets SHOW list every user, role, grant and policy."""
+    try:
+        cur.execute("SELECT f.value::STRING FROM TABLE(FLATTEN(PARSE_JSON(CURRENT_AVAILABLE_ROLES()))) f "
+                    "WHERE IS_ROLE_IN_SESSION(f.value::STRING)")
+        roles = [r[0] for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001 -- unreadable reads as no privileges, never a failed export
+        return set()
+    if "ACCOUNTADMIN" in roles:
+        return {"ACCOUNTADMIN"}
+    privileges = {"MANAGE GRANTS"} if "SECURITYADMIN" in roles else set()
+    # SHOW GRANTS ON ACCOUNT is quick; SHOW GRANTS TO ROLE can take a minute on a role with many grants.
+    rows = show_rows(cur, ["SHOW GRANTS ON ACCOUNT"], "account privileges")[0] or []
+    return privileges | {str(r.get("privilege")).upper() for r in rows
+                         if str(r.get("granted_to")).upper() == "ROLE" and r.get("grantee_name") in roles}
+
+
+def fallback_blocked(head: dict, ctx: dict) -> str | None:
+    """Why a fallback cannot give a true answer for this role, or None. A table function that needs
+    MONITOR USAGE returns no rows without it, and SHOW without MANAGE GRANTS lists only the objects the
+    role holds a privilege on; either would read as "nothing found"."""
+    needs = [n.strip().upper() for n in head.get("needs", "").split(",") if n.strip()]
+    privileges = ctx.get("account_privileges") or set()
+    missing = [n for n in needs if "ACCOUNTADMIN" not in privileges and not (
+        ctx.get("monitor_usage") if n == "MONITOR USAGE" else n in privileges)]
+    if missing:
+        return (f"role_cannot_see: the INFORMATION_SCHEMA fallback ({head.get('reads')}) needs ACCOUNTADMIN "
+                f"or the {' and '.join(missing)} privilege{'s' if len(missing) > 1 else ''}, and without it "
+                f"returns only part or nothing")
+    return None
+
+
 def _literal(value) -> str:
     if value is None:
         return "CAST(NULL AS DOUBLE)"
@@ -445,10 +517,6 @@ def _literal(value) -> str:
     if isinstance(value, (int, float)):
         return repr(value)
     return "'" + str(value).replace("'", "''") + "'"
-
-
-QUERY_FEED_SCANS = "__IS_QUERY_HISTORY_SCANS__"
-QUERY_FEED_SLICES = 28  # six-hour slices over the 7 days QUERY_HISTORY keeps
 
 
 RUN_ALL_IN_FLIGHT = 40  # statements one session keeps running at once
@@ -520,9 +588,6 @@ def show_rows(cur, sqls: list[str], label: str) -> list[list[dict] | None]:
     return out
 
 
-# What one call of an `each:` shim is made for, listed with SHOW.
-SHIM_ITEM_KINDS = {"database": "database", "warehouse": "warehouse", "role": "role",
-                   "database_role": "database role", "policy": "policy"}
 _POLICY_KINDS = ("MASKING", "ROW ACCESS", "PROJECTION", "AGGREGATION")
 
 
@@ -564,6 +629,120 @@ def _empty_sql(columns: str) -> str:
     """A typed empty result from a shim's `columns:` header ("NAME TYPE, ...")."""
     cols = re.findall(r"([A-Za-z0-9_]+) ([A-Za-z_]+(?:\(\d+(?:,\s*\d+)?\))?)", columns)
     return "SELECT " + ", ".join(f'CAST(NULL AS {t}) AS "{n}"' for n, t in cols) + " WHERE FALSE"
+
+
+def shim_gap_note(text: str, ctx: dict) -> str | None:
+    """The note a fallback adds when a shim it reads lost some of its parts."""
+    gaps = [f"{v}: {ctx['shim_gaps'][v]}" for v in shims_in(text) if (ctx.get("shim_gaps") or {}).get(v)]
+    return "; ".join(gaps) or None
+
+
+SHIM_INLINE_ROWS = 5000
+
+
+_SHIM_TYPES = {0: "NUMBER(38, {scale})", 1: "FLOAT", 2: "VARCHAR", 3: "DATE", 6: "TIMESTAMP_LTZ",
+               7: "TIMESTAMP_LTZ", 8: "TIMESTAMP_LTZ", 13: "BOOLEAN"}
+
+
+def _value_literal(value) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, (dt.datetime, dt.date)):
+        return "'" + value.isoformat() + "'"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)) or type(value).__name__ == "Decimal":
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def shim_rows_sql(cur, sfqid: str) -> str:
+    """How the checks read a shim's result: its rows as literal VALUES when it is small, else RESULT_SCAN.
+    Snowflake aborts with an internal error (300010) when a statement reads table-function rows through
+    a CTE used twice; literal rows avoid that."""
+    scan = f"(SELECT * FROM TABLE(RESULT_SCAN({_literal(sfqid)})))"
+    try:
+        cur.execute(f"SELECT * FROM TABLE(RESULT_SCAN({_literal(sfqid)})) LIMIT {SHIM_INLINE_ROWS + 1}")
+        rows = cur.fetchall()
+        types = [_SHIM_TYPES[c.type_code].format(scale=c.scale or 0) for c in cur.description]
+        names = [c.name for c in cur.description]
+    except Exception:  # noqa: BLE001 -- an unknown type or a test cursor: read the result as is
+        return scan
+    if len(rows) > SHIM_INLINE_ROWS:
+        return scan
+    if not rows:
+        return "(SELECT " + ", ".join(f'CAST(NULL AS {t}) AS "{n}"' for t, n in zip(types, names)) + " WHERE FALSE)"
+    cols = ", ".join(f'CAST(column{i + 1} AS {t}) AS "{n}"' for i, (t, n) in enumerate(zip(types, names)))
+    values = ", ".join("(" + ", ".join(_value_literal(v) for v in row) + ")" for row in rows)
+    return f"(SELECT {cols} FROM VALUES {values})"
+
+
+def query_feed_gap(ctx: dict) -> str | None:
+    """The note a feed-reading fallback adds when some slices failed."""
+    missing = ctx.get("query_feed_missing") or 0
+    if not missing or not ctx.get("query_feed_ids"):
+        return None
+    return (f"{missing * 6} of the last 168 hours are missing (a six-hour slice of the query history "
+            f"failed or timed out: {ctx.get('query_feed_error')})")
+
+
+def normalise(table: pa.Table, renames: dict[str, str] | None = None) -> pa.Table:
+    """Lower-case names (Snowflake upper-cases them) and turn NUMBER into int64/float64."""
+    renames = renames or {}
+    cols, names = [], []
+    for field in table.schema:
+        col = table.column(field.name)
+        if pa.types.is_decimal(field.type):
+            col = pc.cast(col, pa.int64() if field.type.scale == 0 else pa.float64())
+        cols.append(col)
+        names.append(renames.get(field.name.lower(), field.name.lower()))
+    return pa.Table.from_arrays(cols, names=names)
+
+
+def rate_sheet_sql(account_locator: str, as_of: dt.date) -> str:
+    """The contract's latest USD rate per credit (warehouse compute) and per AI credit from the rate
+    sheet: exact, where the invoice view's daily amounts are rounded to cents."""
+    return f"""
+SELECT kind AS usage_kind, MAX_BY(effective_rate, "DATE") AS rate
+FROM (
+  SELECT IFF(LOWER(rating_type) = 'ai_compute', 'ai', 'compute') AS kind, "DATE", effective_rate
+  FROM SNOWFLAKE.ORGANIZATION_USAGE.RATE_SHEET_DAILY
+  WHERE account_locator = {_literal(account_locator)} AND currency = 'USD'
+    AND "DATE" < CAST('{as_of.isoformat()}' AS DATE)
+    AND LOWER(billing_type) = 'consumption' AND COALESCE(is_adjustment, FALSE) = FALSE
+    AND (LOWER(rating_type) = 'ai_compute'
+         OR (LOWER(rating_type) = 'compute' AND service_type = 'WAREHOUSE_METERING'))
+)
+GROUP BY kind
+"""
+
+
+def short(exc: Exception, limit: int = 160) -> str:
+    return " ".join(str(exc).split())[:limit]
+# ---- end of shared ----
+
+
+QUERY_FEED_SCANS = "__IS_QUERY_HISTORY_SCANS__"
+QUERY_FEED_SLICES = 28  # six-hour slices over the 7 days QUERY_HISTORY keeps
+
+
+
+
+
+
+
+
+
+
+# What one call of an `each:` shim is made for, listed with SHOW.
+SHIM_ITEM_KINDS = {"database": "database", "warehouse": "warehouse", "role": "role",
+                   "database_role": "database role", "policy": "policy"}
+
+
+
+
+
+
 
 
 SHIM_SHOW_CHUNK = 50  # reads of SHOW results joined into one statement
@@ -709,65 +888,18 @@ def run_shims(cur, ctx: dict, views: list[str], queries: Path) -> None:
           f"{time.monotonic() - started:.1f}s", flush=True)
 
 
-def shim_gap_note(text: str, ctx: dict) -> str | None:
-    """The note a fallback adds when a shim it reads lost some of its parts."""
-    gaps = [f"{v}: {ctx['shim_gaps'][v]}" for v in shims_in(text) if (ctx.get("shim_gaps") or {}).get(v)]
-    return "; ".join(gaps) or None
 
 
-SHIM_INLINE_ROWS = 5000
-_SHIM_TYPES = {0: "NUMBER(38, {scale})", 1: "FLOAT", 2: "VARCHAR", 3: "DATE", 6: "TIMESTAMP_LTZ",
-               7: "TIMESTAMP_LTZ", 8: "TIMESTAMP_LTZ", 13: "BOOLEAN"}
 
 
-def _value_literal(value) -> str:
-    if value is None:
-        return "NULL"
-    if isinstance(value, (dt.datetime, dt.date)):
-        return "'" + value.isoformat() + "'"
-    if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float)) or type(value).__name__ == "Decimal":
-        return str(value)
-    return "'" + str(value).replace("'", "''") + "'"
 
 
-def shim_rows_sql(cur, sfqid: str) -> str:
-    """How the checks read a shim's result: its rows as literal VALUES when it is small, else RESULT_SCAN.
-    Snowflake aborts with an internal error (300010) when a statement reads table-function rows through
-    a CTE used twice; literal rows avoid that."""
-    scan = f"(SELECT * FROM TABLE(RESULT_SCAN({_literal(sfqid)})))"
-    try:
-        cur.execute(f"SELECT * FROM TABLE(RESULT_SCAN({_literal(sfqid)})) LIMIT {SHIM_INLINE_ROWS + 1}")
-        rows = cur.fetchall()
-        types = [_SHIM_TYPES[c.type_code].format(scale=c.scale or 0) for c in cur.description]
-        names = [c.name for c in cur.description]
-    except Exception:  # noqa: BLE001 -- an unknown type or a test cursor: read the result as is
-        return scan
-    if len(rows) > SHIM_INLINE_ROWS:
-        return scan
-    if not rows:
-        return "(SELECT " + ", ".join(f'CAST(NULL AS {t}) AS "{n}"' for t, n in zip(types, names)) + " WHERE FALSE)"
-    cols = ", ".join(f'CAST(column{i + 1} AS {t}) AS "{n}"' for i, (t, n) in enumerate(zip(types, names)))
-    values = ", ".join("(" + ", ".join(_value_literal(v) for v in row) + ")" for row in rows)
-    return f"(SELECT {cols} FROM VALUES {values})"
 
 
-def query_feed_gap(ctx: dict) -> str | None:
-    """The note a feed-reading fallback adds when some slices failed."""
-    missing = ctx.get("query_feed_missing") or 0
-    if not missing or not ctx.get("query_feed_ids"):
-        return None
-    return (f"{missing * 6} of the last 168 hours are missing (a six-hour slice of the query history "
-            f"failed or timed out: {ctx.get('query_feed_error')})")
 
 
-_SHIM_TOKEN_RE = re.compile(r"__SHIM_([A-Z_]+)__")
 
 
-def shims_in(text: str) -> list[str]:
-    """The shims a fallback reads."""
-    return sorted(set(_SHIM_TOKEN_RE.findall(text)))
 
 
 def load_shims(queries: Path) -> dict[str, tuple[dict, str]]:
@@ -891,17 +1023,6 @@ def connect(timeout_s: int, query_tag: str):
     return snowflake.connector.connect(**{k: v for k, v in kwargs.items() if v is not None})
 
 
-def normalise(table: pa.Table, renames: dict | None = None) -> pa.Table:
-    """Lower-case names (Snowflake upper-cases them) and turn NUMBER into int64/float64."""
-    renames = renames or {}
-    cols, names = [], []
-    for field in table.schema:
-        col = table.column(field.name)
-        if pa.types.is_decimal(field.type):
-            col = pc.cast(col, pa.int64() if field.type.scale == 0 else pa.float64())
-        cols.append(col)
-        names.append(renames.get(field.name.lower(), field.name.lower()))
-    return pa.Table.from_arrays(cols, names=names)
 
 
 def run_show(cur, sql: str) -> None:
@@ -925,8 +1046,6 @@ def error_code(exc: Exception) -> str | None:
     return str(code) if code else None
 
 
-def short(exc: Exception, limit: int = 160) -> str:
-    return " ".join(str(exc).split())[:limit]
 
 
 def normalise_edition(value) -> str | None:
@@ -965,22 +1084,6 @@ def detect_edition(cur) -> dict:
     return {"edition": None, "source": None, "evidence": []}
 
 
-def rate_sheet_sql(account_locator: str, as_of: dt.date) -> str:
-    """The contract's latest USD rate per credit (warehouse compute) and per AI credit from the rate
-    sheet: exact, where the invoice view's daily amounts are rounded to cents."""
-    return f"""
-SELECT kind AS usage_kind, MAX_BY(effective_rate, "DATE") AS rate
-FROM (
-  SELECT IFF(LOWER(rating_type) = 'ai_compute', 'ai', 'compute') AS kind, "DATE", effective_rate
-  FROM SNOWFLAKE.ORGANIZATION_USAGE.RATE_SHEET_DAILY
-  WHERE account_locator = {_literal(account_locator)} AND currency = 'USD'
-    AND "DATE" < CAST('{as_of.isoformat()}' AS DATE)
-    AND LOWER(billing_type) = 'consumption' AND COALESCE(is_adjustment, FALSE) = FALSE
-    AND (LOWER(rating_type) = 'ai_compute'
-         OR (LOWER(rating_type) = 'compute' AND service_type = 'WAREHOUSE_METERING'))
-)
-GROUP BY kind
-"""
 
 
 def org_rate_sql(account_locator: str, as_of: dt.date) -> str:
@@ -1049,67 +1152,12 @@ def account_context(cur, *, as_of: dt.date, credit_price, storage_price, ai_cred
             "rate_basis": {k: {"days": v.get("days"), "usage": v.get("usage")} for k, v in by_type.items()} or None}
 
 
-def info_schema_db(cur) -> str | None:
-    """A database whose INFORMATION_SCHEMA the role can call table functions from: the session's own,
-    else the first one SHOW DATABASES lists outside SNOWFLAKE."""
-    try:
-        cur.execute("SELECT CURRENT_DATABASE()")
-        current = cur.fetchone()[0]
-        if current:
-            return current
-        cur.execute("SHOW TERSE DATABASES")
-        rows = cur.fetchall()
-        # A standard database first: a shared or application one may not run the table functions.
-        names = ([r[1] for r in rows if len(r) > 2 and str(r[2] or "").upper() == "STANDARD"]
-                 + [r[1] for r in rows])
-    except Exception:  # noqa: BLE001 -- no database to use means no fallback
-        return None
-    return next((n for n in names if n.upper() != "SNOWFLAKE"), names[0] if names else None)
 
 
-def has_monitor_usage(cur, ctx: dict) -> bool:
-    """Whether the role sees account-wide usage in INFORMATION_SCHEMA (ACCOUNTADMIN or MONITOR USAGE).
-    Every database has a storage row a day, and the table function returns none without the grant."""
-    info = '"' + str(ctx.get("info_schema_db") or "").replace('"', '""') + '".INFORMATION_SCHEMA'
-    try:
-        cur.execute(f"SELECT COUNT(*) FROM TABLE({info}.DATABASE_STORAGE_USAGE_HISTORY("
-                    f"DATE_RANGE_START => DATEADD(day, -3, CURRENT_DATE())))")
-        return bool(cur.fetchone()[0])
-    except Exception:  # noqa: BLE001 -- unreadable reads as no grant, never a failed export
-        return False
 
 
-def account_privileges(cur) -> set[str]:
-    """The account-level privileges of the roles in this session, or {"ACCOUNTADMIN"} when it is one of
-    them. MANAGE GRANTS is what lets SHOW list every user, role, grant and policy."""
-    try:
-        cur.execute("SELECT f.value::STRING FROM TABLE(FLATTEN(PARSE_JSON(CURRENT_AVAILABLE_ROLES()))) f "
-                    "WHERE IS_ROLE_IN_SESSION(f.value::STRING)")
-        roles = [r[0] for r in cur.fetchall()]
-    except Exception:  # noqa: BLE001 -- unreadable reads as no privileges, never a failed export
-        return set()
-    if "ACCOUNTADMIN" in roles:
-        return {"ACCOUNTADMIN"}
-    privileges = {"MANAGE GRANTS"} if "SECURITYADMIN" in roles else set()
-    # SHOW GRANTS ON ACCOUNT is quick; SHOW GRANTS TO ROLE can take a minute on a role with many grants.
-    rows = show_rows(cur, ["SHOW GRANTS ON ACCOUNT"], "account privileges")[0] or []
-    return privileges | {str(r.get("privilege")).upper() for r in rows
-                         if str(r.get("granted_to")).upper() == "ROLE" and r.get("grantee_name") in roles}
 
 
-def fallback_blocked(head: dict, ctx: dict) -> str | None:
-    """Why a fallback cannot give a true answer for this role, or None. A table function that needs
-    MONITOR USAGE returns no rows without it, and SHOW without MANAGE GRANTS lists only the objects the
-    role holds a privilege on; either would read as "nothing found"."""
-    needs = [n.strip().upper() for n in head.get("needs", "").split(",") if n.strip()]
-    privileges = ctx.get("account_privileges") or set()
-    missing = [n for n in needs if "ACCOUNTADMIN" not in privileges and not (
-        ctx.get("monitor_usage") if n == "MONITOR USAGE" else n in privileges)]
-    if missing:
-        return (f"role_cannot_see: the INFORMATION_SCHEMA fallback ({head.get('reads')}) needs ACCOUNTADMIN "
-                f"or the {' and '.join(missing)} privilege{'s' if len(missing) > 1 else ''}, and without it "
-                f"returns only part or nothing")
-    return None
 
 
 def probe_visibility(cur, checks: dict, *, as_of: dt.date) -> dict:

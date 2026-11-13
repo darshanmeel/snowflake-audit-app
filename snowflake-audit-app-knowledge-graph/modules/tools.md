@@ -51,8 +51,11 @@ flowchart LR
 
 ## Export kit
 
+### export_shared.py — helpers the export and the kit share
+- SQL literals, the SHOW runner `run_all`, shim and fallback helpers, `normalise`, `info_schema_db`, `short`; standard library and pyarrow only, because `make_export_kit.py` copies it into the kit. `export_results.py` imports it.
+
 ### make_export_kit.py — rebuild tools/export_kit/
-- Purpose: tools/make_export_kit.py:1-8. Main: `build` (152-221), `zip_kit` (224-236), `grants_sql` (126-129), `roles_section` (110-123), `refresh_masking` (144-149). Process: processes/export-kit.md.
+- Purpose: tools/make_export_kit.py:1-8. Main: `build` (168-243), `zip_kit` (246-258), `grants_sql` (127-136), `roles_section` (111-124), `refresh_masking` (162-165): rewrites the masking and shared blocks of the kit's run_export.py. Process: processes/export-kit.md.
 - Flags: `--zip DIR` (writes `DIR/export_kit.zip`, outside the repo) (tools/make_export_kit.py:247-259).
 
 ### export_kit/run_export.py — the standalone export the customer runs
