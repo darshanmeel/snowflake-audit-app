@@ -102,7 +102,7 @@ def sub(t):
 manifest = json.loads((REPO / "app/queries/manifest.json").read_text(encoding="utf-8"))
 DOMAINS = {k: len(v) for k, v in manifest.items()}
 TOTAL = sum(DOMAINS.values())
-assert TOTAL == 298, TOTAL
+assert TOTAL == 302, TOTAL
 
 # ================================================================= 1. architecture
 def l0():
@@ -110,7 +110,7 @@ def l0():
     w, h, g = 138, 92, 34
     xs = [i * (w + g) for i in range(6)]
     m.box("sf", xs[0], 40, w, h, "Snowflake account", "usage views", "data", "DATA", "read-only: SELECT, WITH, SHOW")
-    m.box("ex", xs[1], 40, w, h, "Export", "export_results.py", "routine", "", "298 checks, 3 windows")
+    m.box("ex", xs[1], 40, w, h, "Export", "export_results.py", "routine", "", "302 checks, 3 windows")
     m.box("fo", xs[2], 40, w, h, "Results folder", "parquet + manifest.json", "data", "DATA", "outside the repo")
     m.box("ld", xs[3], 40, w, h, "Loader", "load_results.py", "routine", "", "atomic swap")
     m.box("db", xs[4], 40, w, h, "DuckDB file", "findings dims summary tags", "data", "DATA", "audit.duckdb")
@@ -132,7 +132,7 @@ def l2():
     m.grp(235, 0, 255, 440, "EXPORT (tools/)")
     m.grp(510, 0, 205, 440, "DISK (outside repo)")
     m.grp(735, 0, 265, 440, "APP (local process)")
-    m.box("au", 15, 40, 165, 80, "ACCOUNT_USAGE ORGANIZATION_USAGE", "views, 298 checks", "data", "DATA", "SELECT / WITH / SHOW only")
+    m.box("au", 15, 40, 165, 80, "ACCOUNT_USAGE ORGANIZATION_USAGE", "views, 302 checks", "data", "DATA", "SELECT / WITH / SHOW only")
     m.box("is", 15, 160, 165, 80, "INFORMATION_SCHEMA SHOW", "fallback source", "data", "DATA", "used when ACCOUNT_USAGE is unreadable")
     m.box("q", 250, 40, 225, 80, "app/queries/", "checks fallback shims common dims", "routine", "", "headers drive everything")
     m.box("ex", 250, 160, 225, 80, "export_results.py", "probe, render, run, mask", "routine entry", "ENTRY", "run_export: tools/export_results.py:1146")
@@ -140,7 +140,7 @@ def l2():
     m.box("res", 525, 40, 175, 80, "results/STAMP/", "findings dims tags_src manifest", "data", "DATA", "kept: newest 2 folders")
     m.box("ld", 525, 160, 175, 80, "load_results.py", "build_tags.py", "routine", "", "builds into audit.duckdb.tmp")
     m.box("db", 525, 280, 175, 80, "audit.duckdb", "findings dims summary tags", "data", "DATA", "read-only in the app")
-    m.box("api", 750, 40, 235, 80, "app/api/app.py", "32 routes, service.py, explorer", "routine entry", "ENTRY", "FastAPI app: app/api/app.py:124")
+    m.box("api", 750, 40, 235, 80, "app/api/app.py", "37 routes, service.py, explorer, access log", "routine entry", "ENTRY", "FastAPI app: app/api/app.py:124")
     m.box("core", 750, 160, 235, 80, "app/core/data.py", "money, status, filters", "routine", "", "one cut-off, one price basis")
     m.box("ui", 750, 280, 235, 80, "React UI", "web/src built to app/web/dist", "", "", "mounted last at /")
     m.arrow([(180, 80), (250, 80)], "au", "q")
@@ -183,7 +183,8 @@ def sec_arch():
         [c("app/core/data.py"), "every DuckDB read: filters, money, status, cut-off", cite("app/core/data.py:1-40")],
         [c("web/src/main.tsx"), "React 18 + TypeScript root, built by Vite", cite("web/src/main.tsx:30")],
         [c("tools/streamlit_deploy/"), "ships the same build plus a DuckDB file to a stage", cite("tools/streamlit_deploy/deploy.py:162")],
-        [c("tools/make_export_kit.py"), "zip a customer can run themselves, SQL pasted flat", cite("tools/make_export_kit.py:247")],
+        [c("tools/make_export_kit.py"), "zip a customer can run themselves, SQL pasted flat; copies <code>app/core/masking.py</code> and <code>tools/export_shared.py</code> into the kit script between marker lines", cite("tools/make_export_kit.py:133-165")],
+        [c("tools/export_shared.py"), "helpers the export and the kit share: SQL literals, the SHOW runner, shim and fallback helpers; standard library and pyarrow only", cite("tools/export_shared.py:1-5")],
     ])
     b += "<p class=\"key\">Other helpers: <code>tools/gate.py</code> (pre-commit runner), <code>tools/build_manifest.py</code>, <code>tools/lint_headers.py</code>, <code>tools/build_demo_db.py</code>.</p>"
     return section("arch", "1 · Architecture", b)
@@ -257,7 +258,7 @@ def sec_export():
     b += pair(
         payload("IN", "export one window set", "python tools/export_results.py --out <folder outside the repo> --windows 30", "sh"),
         payload("OUT", "console (README.md:343, tools/export_results.py:1616-1623)",
-                "[12/298] <check_id>: ok, 34 rows, 1.2s\n...\nwrote <folder>: N empty, N ok, ...\nnext: python tools/load_results.py <folder> --db PATH", "sh"))
+                "[12/302] <check_id>: ok, 34 rows, 1.2s\n...\nwrote <folder>: N empty, N ok, ...\nnext: python tools/load_results.py <folder> --db PATH", "sh"))
     b += sub("Per-check decision order")
     b += table(["Condition", "Status written", "Where"], [
         ["edition below Enterprise and the check needs it", f"{c('not_assessed')} / {c('edition_too_low')}, not run", cite("tools/export_results.py:1235-1245")],
@@ -332,7 +333,7 @@ WITH __INCLUDE_sf_cs_billed_ratio__,
     b += cap("the header is the single source of truth; the manifest, the registry and the lint all derive from it.")
     b += sub("Folder layout (app/queries)")
     b += table(["Folder", "Holds", "Count"], [
-        [c("checks/QID.sql"), "one check; file name = <code>query_id</code> (export refuses a mismatch). <code>sf_*</code> = Snowflake-only", "298"],
+        [c("checks/QID.sql"), "one check; file name = <code>query_id</code> (export refuses a mismatch). <code>sf_*</code> = Snowflake-only", "302"],
         [c("common/"), "shared CTEs pasted in with <code>__INCLUDE_name__</code> (e.g. <code>cost_lines</code>, <code>sf_cs_billed_ratio</code>)", "21"],
         [c("dims/"), "name lookups: account, warehouse, task, user, database", "5"],
         [c("fallback/QID.sql"), "same check from INFORMATION_SCHEMA; 80 are <code>-- shim: yes</code> stubs, 5 hand-written", "85"],
@@ -387,7 +388,7 @@ WITH __INCLUDE_sf_cs_billed_ratio__,
         "Gates keep a partial answer honest: <code>MONITOR USAGE</code>, <code>MANAGE GRANTS</code>, <code>APPLY ... POLICY</code>; missing one reads <code>not_assessed</code> " + cite("tools/export_results.py:215-257"),
         "Query feed: 28 six-hour slices of <code>INFORMATION_SCHEMA.QUERY_HISTORY</code>, read once for all query fallbacks; a slice at the 10,000-row limit is not flagged " + cite("tools/export_results.py:423-454; README.md:452-453"),
         "Not covered by a fallback: 22 coverable checks left out on purpose, plus views with no equivalent (access history, tag references, org views) " + cite("README.md:426-442"),
-        "Result: 85 of 298 checks have a fallback, built on 52 rebuilt views " + cite("STATUS.md:17"),
+        "Result: 85 of 302 checks have a fallback, built on 52 rebuilt views " + cite("STATUS.md:17"),
     ])
     b += exset(
         card("ok", "Shim per database", [("view", "<code>COPY_HISTORY</code>, <code>each: database</code>"), ("databases", "3")],
@@ -540,7 +541,7 @@ def sec_backend():
         ("DuckDB read-only connection", "one shared connection per file identity", "rows from <code>findings.f_sf_wh_idle_minutes</code>"),
     ])
     b += cite("app/api/app.py:126-200, 1003-1148; app/api/service.py:277-425; app/core/data.py:120-164, 688-793")
-    b += sub("Important endpoints (32 routes: 29 in app.py, 2 in explorer.py, 1 in guide.py)")
+    b += sub("Important endpoints (37 routes: 29 in app.py, 2 in explorer.py, 5 in access_log.py, 1 in guide.py)")
     b += table(["Method", "Path", "Returns", "Where"], [
         ["GET", c("/api/status"), "<code>{state, settings_error, database, brand}</code>; state = settings_invalid, no_database, build_incomplete, ready. Never raises", cite("app.py:445-472")],
         ["GET", c("/api/meta"), "as_of, windows, discount, price_basis, edition, <code>cost_cutoff</code>, <code>checks_ran</code>", cite("app.py:494-557")],
@@ -551,11 +552,22 @@ def sec_backend():
         ["GET", c("/api/coverage"), "per-source state, <code>checks_not_ok</code>, visibility, edition", cite("app.py:680-719")],
         ["GET", c("/api/rollup"), "nested cost/perf tree for one tag key, with reconciliation", cite("app.py:744-774")],
         ["GET", c("/api/access/explore"), "grants with every path, roles reached, holders", cite("explorer.py:209-245")],
+        ["GET", c("/api/access/log"), "one object: queries per day or hour, and who used it (user, role, client, statement types, off-hours); <code>truncated</code> when the export cut the log", cite("access_log.py:105-124")],
+        ["GET", c("/api/access/tag"), "one tag value: its objects, who can read each (grant paths) and who queried it, from one grouped scan", cite("access_log.py:157-198")],
         ["GET", c("/api/guide"), "Guide feed: every check's prose, params, columns, grants, traps", cite("guide.py:506-564")],
         ["GET/PUT", c("/api/settings/{cost-center,privacy,required-tags}"), "PUT writes <code>config/settings.local.yml</code>", cite("app.py:349-436")],
         ["POST", c("/api/refresh"), "one background export + load into a new db file; second call returns the running state", cite("app.py:485-488; refresh.py:32-39")],
     ])
-    b += "<p class=\"key\">Other routes: <code>/api/accounts</code>, <code>/api/dims</code>, <code>/api/warehouses</code>, <code>/api/databases</code>, <code>/api/tags</code>, <code>/api/tags/compliance</code>, <code>/api/guide/sql/{id}</code>, <code>/api/access/names</code>, <code>/api/rollup/keys</code>.</p>"
+    b += "<p class=\"key\">Other routes: <code>/api/accounts</code>, <code>/api/dims</code>, <code>/api/warehouses</code>, <code>/api/databases</code>, <code>/api/tags</code>, <code>/api/tags/compliance</code>, <code>/api/guide/sql/{id}</code>, <code>/api/access/names</code>, <code>/api/access/log/objects</code>, <code>/api/access/log/offhours</code>, <code>/api/access/tags</code>, <code>/api/rollup/keys</code>.</p>"
+    b += sub("Access log, off-hours use and the tag explorer")
+    b += ul([
+        "<code>sf_use_access_log</code> runs once over 90 days of <code>ACCESS_HISTORY</code> and keeps one row per object x user x role x client x day (hour with <code>grain: hour</code> in config/thresholds.yml), with read, write and DDL query counts, statement types and DDL operations. No query text " + cite("app/queries/checks/sf_use_access_log.sql"),
+        "The aggregation runs in Snowflake; the API only slices the DuckDB table to the window (<code>[as_of - window, as_of)</code>) and one object, so a page never loads the log whole " + cite("app/api/access_log.py:38-56"),
+        "A check may declare <code>:row_cap</code>; the log keeps up to 1,000,000 rows, newest first, and the page says from when counts are complete when the cap was reached " + cite("tools/export_results.py; app/api/access_log.py:45-56"),
+        "Off hours: outside <code>business_start_hour</code>–<code>business_end_hour</code> in <code>business_tz</code>, or at weekends; only users whose TYPE is PERSON are flagged",
+        "The tag explorer joins <code>sf_gov_tag_objects</code> (direct tags on databases, schemas, tables, columns) with the grant walk of explorer.py (who can read) and the log (who did), in one grouped scan " + cite("app/api/access_log.py:157-198"),
+        "<code>sf_gov_sensitive_suggestions</code> matches column names (never values) to Snowflake's semantic categories; <code>sf_gov_file_downloads</code> lists GET and unloads per user and stage. Result downloads from Snowsight or drivers are not logged by Snowflake",
+    ])
     b += sub("Core modules")
     b += table(["Name", "Does", "Example"], [
         [c("data.py"), "every DuckDB read: filters pushed into SQL as bound params, money, cut-off, checks-ran", "<code>sf_wh_idle_minutes</code>, 30 d: <code>money.usd 13827.6</code>"],
@@ -569,7 +581,7 @@ def sec_backend():
         [c("rollup.py / tags.py / tag_compliance.py"), "nested tag rollup, tag filters, required-tag coverage", "work tag, then compute tag, then account tag: first real value wins"],
         [c("datasource.py / config.py"), "data folder, pointer file, settings with line-numbered errors", "bad key <code>default_windw</code>: state <code>settings_invalid</code>, line 2"],
     ])
-    b += "<p class=\"key\">Other helpers: <code>explorer.py</code>, <code>guide.py</code>, <code>refresh.py</code>, <code>app/core/envmap.py</code>, <code>cost_center.py</code>, <code>tag_keys.py</code>. Examples run on this repo or from tests/test_materiality.py:172-218, tests/test_api.py:228-273.</p>"
+    b += "<p class=\"key\">Other helpers: <code>explorer.py</code>, <code>access_log.py</code> (the access log and the tag explorer, read through the API, never whole), <code>guide.py</code>, <code>refresh.py</code>, <code>app/core/envmap.py</code>, <code>cost_center.py</code>, <code>tag_keys.py</code>. Examples run on this repo or from tests/test_materiality.py:172-218, tests/test_api.py:228-273.</p>"
     b += cite("modules/core.md in the knowledge graph; app/core/*.py")
     return section("backend", "5 · Backend", b)
 
@@ -670,7 +682,7 @@ def sec_money():
         card("ok", "Test DB, today off", [("as_of", "2026-09-21T12:00:00Z")], "<code>data_through 2026-09-20</code>, <code>partial_day null</code>", "run via GET /api/meta; tests/test_totals_agree.py:85-87"),
         card("edge", "Today on (illustrative)", [("as_of_date", "2026-11-11"), ("as_of", "2026-11-10T09:30Z"), ("last_complete_day", "2026-11-08")],
              "<code>data_through 2026-11-08</code>, <code>partial_day 2026-11-10</code>, <code>partial_until 09:30</code> (traced by hand)", "derived from app/core/data.py:2149-2183"),
-        card("ok", "Checks that ran", [("test DB", "298 checks")], "<code>ran 290</code>, <code>not_ran {build_failed: 2, all_rows_not_assessed: 6}</code>", "run via GET /api/meta"),
+        card("ok", "Checks that ran", [("test DB", "302 checks")], "<code>ran 293</code>, <code>not_ran {build_failed: 2, all_rows_not_assessed: 7}</code>", "run via GET /api/meta"),
     )
     b += sub("6 · Materiality floor and discount")
     b += exset(
@@ -691,8 +703,8 @@ TABS = [
     ("Queries", ["heavy", "efficiency", "failures", "waiting", "team", "trend"]),
     ("Tasks & pipelines", ["failures", "cost", "hygiene", "dynamic"]), ("Data loading", ["pipes", "copy"]),
     ("AI & apps", ["cortex", "apps", "serving"]),
-    ("Access", ["roles", "users", "perimeter", "explorer"]), ("PII & policies", ["sensitive", "policies", "reads", "quality"]),
-    ("Lineage", ["dependencies", "explorer"]), ("Activity", ["databases", "schemas", "tables", "lastactive", "users", "objects"]),
+    ("Access", ["roles", "users", "perimeter", "explorer"]), ("PII & policies", ["sensitive", "policies", "reads", "tags", "quality"]),
+    ("Lineage", ["dependencies", "explorer"]), ("Activity", ["databases", "schemas", "tables", "lastactive", "accesslog", "users", "objects"]),
     ("Audit", ["admins", "changes"]), ("Sharing & org", ["shares", "accounts", "spend", "replication"]),
     ("Storage", ["growth", "unused", "retention", "backups"]), ("All findings", []), ("Coverage & gaps", ["sources", "couldnt", "limits"]),
 ]
@@ -731,7 +743,7 @@ def sec_ui():
     b += sub("Number rules the UI enforces")
     b += table(["Rule", "Example"], [
         ["A check that did not run shows &quot;–&quot; and why, never $0", "<code>sf_org_dormant_accounts</code>: &quot;the role can't see it&quot; + the GRANT line"],
-        ["Counts name their unit", "&quot;12 of 48 warehouses&quot;, &quot;290 of 298 checks&quot;"],
+        ["Counts name their unit", "&quot;12 of 48 warehouses&quot;, &quot;293 of 302 checks&quot;"],
         ["Loading shows &quot;…&quot;, never interim values", "all tiles wait for the findings call"],
         ["Empty window", "&quot;No data for this in 16–22 Sep 2026&quot;"],
     ])
@@ -885,7 +897,7 @@ def sec_deploy():
     b += ul([
         "One script, in README &quot;The grant script&quot;, copied by <code>make_export_kit.py</code> to <code>tools/export_kit/grants.sql</code> " + cite("README.md:148-205; tools/make_export_kit.py:112-132"),
         "Creates <code>AUDIT_ROLE</code>, service user <code>AUDIT_USER</code> (<code>TYPE = SERVICE</code>, RSA key), warehouse <code>AUDIT_WH</code> (XSMALL, auto-suspend 60 s)",
-        "<code>GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE</code>, or the four viewer roles (USAGE, OBJECT, GOVERNANCE, SECURITY): 249 of 298 checks, 269 with an org role",
+        "<code>GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE</code>, or the four viewer roles (USAGE, OBJECT, GOVERNANCE, SECURITY): 253 of 302 checks, 273 with an org role",
         "Plus <code>MONITOR USAGE</code>, <code>MONITOR EXECUTION</code> on the account (<code>APPLY AUTHENTICATION|PASSWORD POLICY</code> optional, commented out: they let the role change those policies); app roles <code>TRUST_CENTER_VIEWER</code>, <code>BUDGET_VIEWER</code>, <code>DATA_QUALITY_MONITORING_VIEWER</code>",
         "<code>MONITOR</code> per warehouse and per resource monitor, repeated for new ones",
         "Optional org billing: <code>ORGANIZATION_BILLING_VIEWER</code>, <code>ORGANIZATION_USAGE_VIEWER</code>",
@@ -929,7 +941,7 @@ def sec_deploy():
         ["All checks pass", c("python tools/gate.py"), "ends <code>GATE OK</code> (about 25 min)"],
         ["Check headers vs manifest", c("python tools/build_manifest.py --check"), "exit 0; fails when the manifest is stale"],
         ["States of /api/status", "no_database, build_incomplete, settings_invalid, ready", "<code>ready</code>"],
-        ["Cut-off and count", c("GET /api/meta"), "<code>checks_ran {ran 290, total 298}</code> on the test DB"],
+        ["Cut-off and count", c("GET /api/meta"), "<code>checks_ran {ran 293, total 302}</code> on the test DB"],
         ["Coverage gaps", c("GET /api/coverage"), "<code>checks_not_ok</code> names each gap and its GRANT"],
     ])
     b += cite("tools/gate.py:52-66; tests/test_api.py:228-273; app/api/app.py:445-472")
@@ -1004,13 +1016,13 @@ def main():
 <div class="eyebrow">Technical view · for engineers</div><h1>Snowflake audit app</h1>
 <section id="top"><h2>What it is</h2>
 {ul([
-    "A read-only audit of one Snowflake account: 298 SQL checks in 7 domains read <code>ACCOUNT_USAGE</code> and <code>ORGANIZATION_USAGE</code>.",
+    f"A read-only audit of one Snowflake account: {TOTAL} SQL checks in 7 domains read <code>ACCOUNT_USAGE</code> and <code>ORGANIZATION_USAGE</code>.",
     "Pipeline: export, results folder, loader, DuckDB file, FastAPI, React. The app itself never connects to Snowflake.",
     "Runs on the user's machine; an optional Streamlit in Snowflake build ships the same API and UI.",
 ])}
-<div class="facts"><div class="fact"><b>298</b><span>checks, 7 domains</span></div><div class="fact"><b>85</b><span>INFORMATION_SCHEMA fallbacks</span></div>
-<div class="fact"><b>32</b><span>HTTP routes</span></div><div class="fact"><b>19 / 60</b><span>tabs / sub-tabs</span></div><div class="fact"><b>296</b><span>findings tables (test DB)</span></div></div>
-<p class="key">Built from the knowledge graph at commit 556a877, key steps checked in the code. Examples marked &quot;run&quot; were executed on this repo; the rest cite a test or a code line.</p>
+<div class="facts"><div class="fact"><b>{TOTAL}</b><span>checks, 7 domains</span></div><div class="fact"><b>85</b><span>INFORMATION_SCHEMA fallbacks</span></div>
+<div class="fact"><b>37</b><span>HTTP routes</span></div><div class="fact"><b>{len(TABS)} / {sum(len(x) for _, x in TABS)}</b><span>tabs / sub-tabs</span></div><div class="fact"><b>300</b><span>findings tables (test DB)</span></div></div>
+<p class="key">Built from the knowledge graph, last updated with the access log (commit 6180c11), key steps checked in the code. Examples marked &quot;run&quot; were executed on this repo; the rest cite a test or a code line.</p>
 <ul class="toc">{"".join(f'<li><a href="#{i}">{n}</a></li>' for i, n in SECTIONS)}</ul></section>
 """
     body = "".join([sec_arch(), sec_export(), sec_checks(), sec_model(), sec_backend(), sec_money(), sec_ui(),
