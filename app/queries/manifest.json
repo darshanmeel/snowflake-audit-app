@@ -5384,6 +5384,46 @@
       "sql_url": "app/queries/checks/sf_acc_sensitive_reach.sql"
     },
     {
+      "query_id": "sf_acc_streamlit_shares",
+      "title": "Who each Streamlit app was shared with, by whom and when",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "apps",
+        "columns": [
+          "app_name"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one grant on a Streamlit app, which is how an app is shared: GRANT USAGE ON STREAMLIT app TO ROLE role. granted_at is when it was granted, revoked_at when it was revoked (NULL while it stands), granted_by the role that granted it. Live grants say who can open the app today; the page walks the role hierarchy from them to the users.",
+      "healthy": "status = OK when the app is shared with named roles; this check lists, it does not judge beyond PUBLIC.",
+      "investigate_if": "WARN when the app is shared with PUBLIC (every user can open it).",
+      "actions": [
+        "share the app with the roles of the people who need it, not PUBLIC (free)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_use_streamlit_access",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_acc_streamlit_shares.sql"
+    },
+    {
       "query_id": "sf_acct_object_counts",
       "title": "Inventory of account objects by type",
       "domain": "governance_access",
@@ -9634,7 +9674,7 @@
     },
     {
       "query_id": "sf_use_streamlit_access",
-      "title": "Who opened each Streamlit app, and when",
+      "title": "Who opened each Streamlit app, when and from where, and what the app ran as",
       "domain": "governance_access",
       "tier": "standard",
       "runnable": true,
@@ -9653,6 +9693,8 @@
       },
       "reads": [
         "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.SESSIONS",
+        "SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY",
         "SNOWFLAKE.ACCOUNT_USAGE.USERS"
       ],
       "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
@@ -9664,16 +9706,16 @@
         }
       ],
       "confidence": "needs_confirmation",
-      "confidence_note": "Not yet run on a live account. Snowflake's docs do not say whether user_name on a Streamlit query is the viewer or the app owner; confirm on a live account before reading it as the viewer.",
-      "read_this": "one row = one Streamlit app x user x role x UTC day. Streamlit in Snowflake tags its queries with the app's name ({\"StreamlitEngine\": \"ExecuteStreamlit\", \"StreamlitName\": \"DB.SCHEMA.APP\"}, or the older text form); runs counts the app's own queries (the app starting or rerunning for that user), child_queries the queries the app ran for them (\"ChildQuery\": \"true\"). first_at and last_at are the first and last of them that day. Only the app name is read from the tag; no query text.",
+      "confidence_note": "Not yet run on a live account. Apps run with owner's rights, so the app's own queries carry the owner; the open (the top-level ExecuteStreamlit query) is read as the viewer. Confirm on a live account.",
+      "read_this": "one row = one Streamlit app x kind x user x role x UTC day. kind open = the app starting or rerunning for a viewer (the query Snowflake tags with the app name and no ChildQuery), with the viewer's session client and sign-in IPs; kind app_query = queries the app ran itself (\"ChildQuery\": \"true\"), with the user and role they ran as (the app owner under owner's rights). queries counts statements, sessions distinct sessions; first_at and last_at are the first and last that day. Only the app name is read from the tag; no query text.",
       "healthy": "status = OK on every row; this check is a log of app use, it does not judge.",
       "investigate_if": "n/a - inventory of app use",
       "actions": [
-        "check that each user of an app that shows sensitive data is meant to see it; revoke USAGE on the app otherwise (free)"
+        "check that each viewer of an app that shows sensitive data is meant to see it; revoke the role's USAGE on the app otherwise (free)"
       ],
       "next": [
         {
-          "query_id": "sf_use_access_log",
+          "query_id": "sf_acc_streamlit_shares",
           "if": ""
         }
       ],

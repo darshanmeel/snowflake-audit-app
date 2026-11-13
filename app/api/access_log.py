@@ -32,6 +32,7 @@ router = APIRouter()
 LOG = "findings.f_sf_use_access_log"
 HOURS = "findings.f_sf_use_access_hours"
 APPS = "findings.f_sf_use_streamlit_access"
+SHARES = "findings.f_sf_acc_streamlit_shares"
 # object kinds the page filters and rolls up by, from ACCESS_HISTORY's objectDomain
 KINDS = {"table": "('TABLE', 'DYNAMIC TABLE', 'ICEBERG TABLE', 'EXTERNAL TABLE', 'HYBRID TABLE')",
          "view": "('VIEW', 'MATERIALIZED VIEW', 'SECURE VIEW')", "stage": "('STAGE')", "procedure": "('PROCEDURE')",
@@ -342,31 +343,62 @@ def get_rollup(window: int = 30, level: str = "schema") -> dict:
 
 @router.get("/api/access/apps")
 def get_apps(window: int = 30, app: str = "") -> dict:
-    """Streamlit apps from their query tags: who opened which app and when; what one app read and wrote."""
+    """Streamlit apps: who they are shared with, who can open them, who opened them (when, from where), what
+    they ran as, and what they read. Opens are the viewer's own query; the app's queries run as its owner."""
     start, end = _range(window)
     try:
-        apps = _rows(f"SELECT app_name, COUNT(DISTINCT user_name) AS users, SUM(runs) AS runs, SUM(child_queries) AS queries, "
-                     f"COUNT(DISTINCT usage_date) AS days, MAX(last_at) AS last_at FROM {APPS} WHERE app_name IS NOT NULL "
-                     f"AND usage_date >= ? AND usage_date < ? GROUP BY 1 ORDER BY users DESC, runs DESC", [start, end])
+        apps = _rows(f"SELECT app_name, COUNT(DISTINCT user_name) FILTER (WHERE kind = 'open') AS users, "
+                     f"SUM(queries) FILTER (WHERE kind = 'open') AS runs, SUM(queries) FILTER (WHERE kind = 'app_query') AS queries, "
+                     f"COUNT(DISTINCT usage_date) FILTER (WHERE kind = 'open') AS days, MAX(last_at) AS last_at FROM {APPS} "
+                     f"WHERE app_name IS NOT NULL AND usage_date >= ? AND usage_date < ? GROUP BY 1 ORDER BY users DESC, runs DESC",
+                     [start, end])
     except duckdb.Error:
         raise HTTPException(503, "No Streamlit app log in this export: run it again with sf_use_streamlit_access.")
+    try:  # shared apps nobody opened in the window still list
+        shared = [r["app_name"] for r in _rows(f"SELECT DISTINCT app_name FROM {SHARES}", [])]
+    except duckdb.Error:
+        shared = []
+    for n in shared:
+        if n not in {r["app_name"] for r in apps}:
+            apps.append({"app_name": n, "users": 0, "runs": 0, "queries": 0, "days": 0, "last_at": None})
     name = app or (apps[0]["app_name"] if apps else "")
+    if not name:
+        return {"window": window, "start": start, "end": end, "apps": apps, "app": "", "who": [], "runs_as": [], "objects": [],
+                "shares": None, "can_open": None}
     who = _rows(f"SELECT user_name, MAX(user_type) AS user_type, array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles, "
-                f"SUM(runs) AS runs, SUM(child_queries) AS queries, COUNT(DISTINCT usage_date) AS days, MIN(first_at) AS first_at, "
-                f"MAX(last_at) AS last_at, list(DISTINCT CAST(usage_date AS VARCHAR)) AS dates FROM {APPS} WHERE app_name = ? "
-                f"AND usage_date >= ? AND usage_date < ? GROUP BY 1 ORDER BY runs DESC", [name, start, end]) if name else []
+                f"SUM(queries) AS runs, SUM(sessions) AS sessions, COUNT(DISTINCT usage_date) AS days, MIN(first_at) AS first_at, "
+                f"MAX(last_at) AS last_at, {_merged('clients')} AS clients, {_merged('client_ips')} AS client_ips, "
+                f"list(DISTINCT CAST(usage_date AS VARCHAR)) AS dates FROM {APPS} WHERE app_name = ? AND kind = 'open' "
+                f"AND usage_date >= ? AND usage_date < ? GROUP BY 1 ORDER BY runs DESC", [name, start, end])
     for w in who:
         w["user_name"] = _who(w["user_name"])
         w["dates"] = sorted(w["dates"] or [])
+    runs_as = _rows(f"SELECT user_name, role_name, SUM(queries) AS queries, MAX(last_at) AS last_at FROM {APPS} "
+                    f"WHERE app_name = ? AND kind = 'app_query' AND usage_date >= ? AND usage_date < ? GROUP BY 1, 2", [name, start, end])
+    for w in runs_as:
+        w["user_name"] = _who(w["user_name"])
+    try:
+        shares = _rows(f"SELECT privilege, grantee_name, granted_to, granted_by, granted_at, revoked_at, status FROM {SHARES} "
+                       f"WHERE app_name = ? ORDER BY granted_at DESC", [name])
+    except duckdb.Error:
+        shares = None
+    can_open = None
+    try:
+        g = explorer._load(None)
+        roles = [r for r, priv, on, _ in g["holders"].get(name, []) if priv in ("USAGE", "OWNERSHIP")]
+        can_open = sorted({h["name"] for h in explorer._holders_of(g, roles, identity.masking_enabled()) if h["kind"] == "user"}) if roles else []
+    except HTTPException:
+        pass
     read = _log_or_503(
         f"SELECT object_fqn, MAX(object_domain) AS object_domain, SUM(read_queries) AS reads, SUM(write_queries) AS writes, "
         f"SUM(ddl_queries) AS ddl, COUNT(DISTINCT user_name) AS users, MAX(last_at) AS last_at FROM {LOG} WHERE via = ? "
         f"AND bucket_start >= ? AND bucket_start < ? GROUP BY 1 ORDER BY reads + writes + ddl DESC",
-        [f"streamlit {name}", start, end]) if name else []
+        [f"streamlit {name}", start, end])
     sens = _sensitive()
     for r in read:
         r["sensitive"] = sens.get(r["object_fqn"])
-    return {"window": window, "start": start, "end": end, "apps": apps, "app": name, "who": who, "objects": read}
+    return {"window": window, "start": start, "end": end, "apps": apps, "app": name, "who": who, "runs_as": runs_as,
+            "shares": shares, "can_open": can_open, "objects": read}
 
 
 @router.get("/api/access/people")
@@ -378,18 +410,25 @@ def get_people(window: int = 30) -> dict:
         f"AND bucket_start < ? GROUP BY 1 ORDER BY queries DESC", [start, end])
     for r in rows:
         r["user_name"] = _who(r["user_name"])
-    return {"window": window, "people": rows}
+    roles = _log_or_503(
+        f"SELECT role_name, SUM({Q}) AS queries, COUNT(DISTINCT user_name) AS users, COUNT(DISTINCT object_fqn) AS objects "
+        f"FROM {LOG} WHERE role_name IS NOT NULL AND bucket_start >= ? AND bucket_start < ? GROUP BY 1 ORDER BY queries DESC", [start, end])
+    return {"window": window, "people": rows, "roles": roles}
 
 
 @router.get("/api/access/person")
-def get_person(user: str, window: int = 30, split: str = "object", offset: int | None = None) -> dict:
+def get_person(user: str = "", role: str = "", window: int = 30, split: str = "object", offset: int | None = None) -> dict:
+    """One user, or one role (every user's queries under it): what they touched, when and how."""
     start, end = _range(window)
-    real = _real_user(user)
-    where = f"FROM {LOG} WHERE user_name = ? AND bucket_start >= ? AND bucket_start < ?"
+    if not user and not role:
+        raise HTTPException(422, "Give a user or a role.")
+    real = _real_user(user) if user else role
+    where = f"FROM {LOG} WHERE {'user_name' if user else 'role_name'} = ? AND bucket_start >= ? AND bucket_start < ?"
     params = [real, start, end]
     tiles = _log_or_503(
         f"SELECT SUM(read_queries) AS reads, SUM(write_queries) AS writes, SUM(ddl_queries) AS ddl, "
         f"COUNT(DISTINCT object_fqn) AS objects, COUNT(DISTINCT role_name) AS roles, COUNT(DISTINCT client) AS clients, "
+        f"COUNT(DISTINCT user_name) AS users, array_to_string(list_sort(list(DISTINCT user_name)), ', ') AS user_list, "
         f"MAX(user_type) AS user_type, BOOL_OR(is_person) AS is_person, "
         f"array_to_string(list_sort(list(DISTINCT client)), ', ') AS client_list {where}", params)[0]
     objects = _log_or_503(
@@ -402,6 +441,19 @@ def get_person(user: str, window: int = 30, split: str = "object", offset: int |
     sens = _sensitive()
     for o in objects:
         o["sensitive"] = sens.get(o["object_fqn"])
+    kinds = []
+    for k, v in KINDS.items():
+        r = _log_or_503(f"SELECT COUNT(DISTINCT object_fqn) AS objects, SUM(read_queries) AS reads, SUM(write_queries) AS writes, "
+                        f"SUM(ddl_queries) AS ddl, MAX(last_at) AS last_at {where} AND object_domain IN {v}", params)[0]
+        if r["objects"]:
+            kinds.append({"kind": k, **r})
+    apps = []
+    if user:
+        try:
+            apps = _rows(f"SELECT app_name, SUM(queries) AS runs, COUNT(DISTINCT usage_date) AS days, MAX(last_at) AS last_at FROM {APPS} "
+                         f"WHERE kind = 'open' AND user_name = ? AND usage_date >= ? AND usage_date < ? GROUP BY 1 ORDER BY runs DESC", params)
+        except duckdb.Error:
+            apps = []
     cfg = hours_settings()
     offset = cfg["offset"] if offset is None else offset
     off_sql, off_params = _off(offset, cfg["start"], cfg["end"])
@@ -411,13 +463,15 @@ def get_person(user: str, window: int = 30, split: str = "object", offset: int |
         f"FROM {HOURS} WHERE user_name = ? AND usage_date >= ? AND usage_date < ? GROUP BY 1",
         [offset, *off_params, *off_params, *params])
     hours = None
-    if prof is not None and tiles["is_person"]:
+    if prof is not None and tiles["is_person"] and user:
         hours = {"on": [0] * 24, "off": [0] * 24}
         for r in prof:
             hours["on"][r["h"]] += r["on_hours"] or 0
             hours["off"][r["h"]] += r["off"] or 0
-    return {"user": _who(real), "window": window, "start": start, "end": end, "offset": offset, "tiles": tiles,
-            "objects": objects, "hours": hours, "per_day": _series(where, params, split), **_cut()}
+    if not user:
+        tiles["user_list"] = ", ".join(_who(u) for u in str(tiles.get("user_list") or "").split(", ") if u)
+    return {"user": _who(real) if user else None, "role": role or None, "window": window, "start": start, "end": end,
+            "offset": offset, "tiles": tiles, "objects": objects, "kinds": kinds, "apps": apps, "hours": hours, "per_day": _series(where, params, split), **_cut()}
 
 
 @router.get("/api/access/tags")

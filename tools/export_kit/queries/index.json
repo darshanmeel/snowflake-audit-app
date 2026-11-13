@@ -778,6 +778,16 @@
    },
    "needs_enterprise": true
   },
+  "sf_acc_streamlit_shares": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.GRANTS_TO_ROLES"
+   ],
+   "params": {},
+   "needs_enterprise": false
+  },
   "sf_acct_budgets": {
    "domain": "cost",
    "windowed": true,
@@ -5098,6 +5108,8 @@
    "pre": [],
    "sources": [
     "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.LOGIN_HISTORY",
     "ACCOUNT_USAGE.USERS"
    ],
    "params": {
@@ -5828,5 +5840,5 @@
   "dim_user",
   "dim_warehouse"
  ],
- "queries_sha256": "bca43c6605665a468b98b02ebeb806b66a5b7a75f0a0dfe497925343175e4698"
+ "queries_sha256": "bccec7ee4ae2dab4c6a70de432d4ab28a32fb125c9c6953cb599aec87d722926"
 }

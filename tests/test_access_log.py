@@ -95,3 +95,20 @@ def test_streamlit_apps_list_who_opened_them_and_what_they_read():
     assert body["app"] == "ANALYTICS_DB.APPS.SALES_DASH"
     assert {w["user_name"] for w in body["who"]} == {"ANALYST_CARA", "ANALYST_DAN", "ADMIN_ALICE", "ANALYST_EVA"}
     assert [o["object_fqn"] for o in body["objects"]] == ["ANALYTICS_DB.CORE.CUSTOMERS"]
+
+
+def test_a_streamlit_app_shows_shares_who_can_open_who_opened_from_where_and_what_it_ran_as():
+    body = client.get("/api/access/apps", params={"window": 30, "app": "ANALYTICS_DB.APPS.SALES_DASH"}).json()
+    shares = {(r["grantee_name"], r["privilege"]): r for r in body["shares"]}
+    assert shares[("PUBLIC", "USAGE")]["revoked_at"] and not shares[("ANALYST_ROLE", "USAGE")]["revoked_at"]
+    assert "ANALYST_CARA" in body["can_open"]
+    cara = next(w for w in body["who"] if w["user_name"] == "ANALYST_CARA")
+    assert cara["client_ips"] == "203.0.113.21" and cara["runs"] == 4
+    assert {(r["user_name"], r["role_name"]) for r in body["runs_as"]} == {("SVC_BI", "BI_ROLE")}
+
+
+def test_a_role_lists_its_users_and_a_user_lists_kinds_and_apps():
+    role = client.get("/api/access/person", params={"role": "ETL_ROLE", "window": 30}).json()
+    assert role["role"] == "ETL_ROLE" and role["tiles"]["users"] >= 1 and role["hours"] is None
+    user = client.get("/api/access/person", params={"user": "ANALYST_CARA", "window": 30}).json()
+    assert {k["kind"] for k in user["kinds"]} >= {"table"} and user["apps"][0]["app_name"] == "ANALYTICS_DB.APPS.SALES_DASH"

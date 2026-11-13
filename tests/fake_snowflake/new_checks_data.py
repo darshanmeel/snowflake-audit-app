@@ -833,20 +833,34 @@ def access_extras(b: _B) -> None:
     fn = {"objectDomain": "Function", "objectId": 8802, "objectName": "ANALYTICS_DB.PUBLIC.FORMAT_PHONE"}
     for k in range(1, 4):
         q(f"01fn-{k}", "ANALYST_DAN", "ANALYST_ROLE", 91002, "SELECT", _ts(b.back(k), 10), {"base_objects_accessed": [fn, cust]})
-    # a Streamlit app: three people open SALES_DASH; its child queries read CUSTOMERS
+    # a Streamlit app: four people open SALES_DASH from their own sessions; the app's own queries run with
+    # owner's rights, so they carry the owner (SVC_BI, BI_ROLE) and read CUSTOMERS
     app = "ANALYTICS_DB.APPS.SALES_DASH"
     run_tag = json.dumps({"StreamlitEngine": "ExecuteStreamlit", "StreamlitName": app})
     child_tag = json.dumps({"StreamlitEngine": "ExecuteStreamlit", "StreamlitName": app, "ChildQuery": "true"})
-    for i, (user, role, days) in enumerate((("ANALYST_CARA", "ANALYST_ROLE", (1, 2, 4, 8)), ("ANALYST_DAN", "ANALYST_ROLE", (1, 3)),
-                                            ("ADMIN_ALICE", "ACCOUNTADMIN", (5,)))):
+    viewers = (("ANALYST_CARA", "ANALYST_ROLE", (1, 2, 4, 8), "203.0.113.21"), ("ANALYST_DAN", "ANALYST_ROLE", (1, 3), "203.0.113.22"),
+               ("ADMIN_ALICE", "ACCOUNTADMIN", (5,), "198.51.100.5"), ("ANALYST_EVA", "ANALYST_ROLE", (6,), "203.0.113.24"))
+    for i, (user, role, days, ip) in enumerate(viewers):
+        sid = 92001 + i
+        b.au("SESSIONS", session_id=sid, created_on=_ts(b.back(9), 8), user_name=user, authentication_method="SAML2",
+             login_event_id=sid, client_application_id="Snowflake UI", client_environment="{}", is_open="NO", closed_reason=None)
+        b.au("LOGIN_HISTORY", event_id=sid, event_timestamp=_ts(b.back(9), 8), event_type="LOGIN", user_name=user, client_ip=ip,
+             reported_client_type="SNOWFLAKE_UI", reported_client_version="1.0", first_authentication_factor="SAML2",
+             second_authentication_factor=None, is_success="YES", connection=None, login_details="{}")
         for k in days:
-            at = _ts(b.back(k), 9 + i)
-            q(f"01st-run-{i}-{k}", user, role, 91002, "SELECT", at, {}, query_tag=run_tag)
-            q(f"01st-child-{i}-{k}", user, role, 91002, "SELECT", _ts(b.back(k), 9 + i, 1), {"base_objects_accessed": [cust]},
-              query_tag=child_tag)
-    # the older text tag still names the app
-    q("01st-old", "ANALYST_EVA", "ANALYST_ROLE", 91002, "SELECT", _ts(b.back(6), 15), {},
-      query_tag=f"ExecuteStreamlit,streamlitName: {app},streamlitId:123456789")
+            # the older text tag still names the app
+            tag = run_tag if user != "ANALYST_EVA" else f"ExecuteStreamlit,streamlitName: {app},streamlitId:123456789"
+            q(f"01st-run-{i}-{k}", user, role, sid, "EXECUTE_STREAMLIT", _ts(b.back(k), 9 + i), {}, query_tag=tag)
+            if user != "ANALYST_EVA":
+                q(f"01st-child-{i}-{k}", "SVC_BI", "BI_ROLE", 91005, "SELECT", _ts(b.back(k), 9 + i, 1), {"base_objects_accessed": [cust]},
+                  query_tag=child_tag)
+    # shared with ANALYST_ROLE a month ago; shared with PUBLIC ten days ago and revoked five days later
+    for priv, grantee, by, made, gone in (("USAGE", "ANALYST_ROLE", "SYSADMIN", 30, None), ("USAGE", "PUBLIC", "BI_ROLE", 10, 5),
+                                          ("OWNERSHIP", "BI_ROLE", "SYSADMIN", 40, None)):
+        b.au("GRANTS_TO_ROLES", created_on=_ts(b.back(made), 11), modified_on=_ts(b.back(made), 11),
+             deleted_on=_ts(b.back(gone), 11) if gone else None, privilege=priv, granted_on="STREAMLIT", name="SALES_DASH",
+             table_catalog="ANALYTICS_DB", table_schema="APPS", granted_to="ROLE", grantee_name=grantee, grant_option=False,
+             granted_by=by, granted_by_role_type="ROLE", object_instance=None)
 
 
 def add(w) -> None:

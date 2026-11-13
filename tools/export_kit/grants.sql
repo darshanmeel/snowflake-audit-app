@@ -8,7 +8,7 @@ GRANT ROLE AUDIT_ROLE TO USER AUDIT_USER;
 -- The ACCOUNT_USAGE views: all of them.
 GRANT IMPORTED PRIVILEGES ON DATABASE SNOWFLAKE TO ROLE AUDIT_ROLE;
 -- Or, when IMPORTED PRIVILEGES is hard to get approved, these four read-only database roles instead.
--- They open 256 of the 305 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
+-- They open 257 of the 306 checks, and 20 more with an organization role below; the rest read "the role can't see it" (the task checks need
 -- TASK_VERSIONS, which none of the four opens).
 --   GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER      TO ROLE AUDIT_ROLE;  -- cost and usage
 --   GRANT DATABASE ROLE SNOWFLAKE.OBJECT_VIEWER     TO ROLE AUDIT_ROLE;  -- tables and objects
