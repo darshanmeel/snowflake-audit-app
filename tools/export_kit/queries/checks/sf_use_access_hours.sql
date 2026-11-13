@@ -32,11 +32,13 @@
 WITH -- ACCESS_HISTORY over :lookback_days flattened to one event per query x object x kind (read, write, ddl),
 -- with the query's role and statement type, its session's client and the user's TYPE today. Columns of
 -- sf_acc_rows: query_id, query_start_time (UTC), user_name, kind, object_domain, object_id, object_name,
--- ddl_operation, statement_type, role_name, client, user_type. sf_acc_seen holds access_rows.
+-- ddl_operation, statement_type, role_name, client, user_type, via. via is 'procedure DB.S.P' when the query ran
+-- inside a CALL (ACCESS_HISTORY.root_query_id) and 'streamlit DB.S.APP' when its QUERY_TAG names a Streamlit app
+-- (only the app name is read from the tag). sf_acc_seen holds access_rows.
 -- Only ids, names and types, never query text.
 sf_acc_ah AS (
   SELECT query_id, query_start_time, user_name, base_objects_accessed, direct_objects_accessed,
-         objects_modified, object_modified_by_ddl
+         objects_modified, object_modified_by_ddl, root_query_id
   FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY
   WHERE query_start_time >= DATEADD(day, -:lookback_days, __AS_OF_DATE__)
     AND query_start_time < __AS_OF_DATE__
@@ -67,8 +69,18 @@ sf_acc_raw AS (
   FROM sf_acc_ah a
   WHERE a.object_modified_by_ddl IS NOT NULL
 ),
+-- the procedure a CALL ran: its queries carry the CALL as root_query_id
+sf_acc_proc AS (
+  SELECT a.query_id, MAX(UPPER(f.value:"objectName"::STRING)) AS proc
+  FROM sf_acc_ah a, LATERAL FLATTEN(input => a.base_objects_accessed) f
+  WHERE UPPER(f.value:"objectDomain"::STRING) = 'PROCEDURE'
+  GROUP BY a.query_id
+),
 sf_acc_qh AS (
-  SELECT query_id, MAX(UPPER(role_name)) AS role_name, MAX(session_id) AS session_id, MAX(query_type) AS query_type
+  SELECT query_id, MAX(UPPER(role_name)) AS role_name, MAX(session_id) AS session_id, MAX(query_type) AS query_type,
+         -- Streamlit tags are JSON ({"StreamlitName": "DB.S.APP"}), or the older text form (streamlitName: DB.S.APP)
+         MAX(UPPER(COALESCE(TRY_PARSE_JSON(query_tag):"StreamlitName"::STRING,
+                            REGEXP_SUBSTR(query_tag, 'streamlitName: ?([^,]+)', 1, 1, 'e', 1)))) AS app
   FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
   WHERE start_time >= DATEADD(day, -(:lookback_days + 1), __AS_OF_DATE__)
     AND query_id IN (SELECT query_id FROM sf_acc_ah)
@@ -94,13 +106,16 @@ sf_acc_rows AS (
          COALESCE(q.role_name, '(unknown role)') AS role_name,
          -- tasks run as SYSTEM with no session; other queries without one are said so, not "unknown"
          COALESCE(NULLIF(s.client, ''), IFF(r.user_name = 'SYSTEM', 'task', 'no session')) AS client,
-         COALESCE(u.user_type, 'UNKNOWN') AS user_type
+         COALESCE(u.user_type, 'UNKNOWN') AS user_type,
+         COALESCE('procedure ' || p.proc, 'streamlit ' || q.app) AS via
   FROM sf_acc_raw r
   -- a MERGE or INSERT ... SELECT from itself is a write, not a read of its target
   LEFT JOIN sf_acc_raw w ON r.kind = 'read' AND w.kind = 'write' AND w.query_id = r.query_id AND w.object_id = r.object_id
   LEFT JOIN sf_acc_qh q ON q.query_id = r.query_id
   LEFT JOIN sf_acc_ss s ON s.session_id = q.session_id
   LEFT JOIN sf_acc_ut u ON u.user_name = r.user_name
+  LEFT JOIN sf_acc_ah ra ON ra.query_id = r.query_id AND ra.root_query_id <> r.query_id
+  LEFT JOIN sf_acc_proc p ON p.query_id = ra.root_query_id
   WHERE r.object_name IS NOT NULL AND w.query_id IS NULL
 ),
 sf_acc_seen AS (

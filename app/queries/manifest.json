@@ -9489,7 +9489,7 @@
       ],
       "confidence": "needs_confirmation",
       "confidence_note": "Not yet run on a live account.",
-      "read_this": "one row = one object x user x role x client x statement type x UTC day (or hour). Every table, view, stage and other object in ACCESS_HISTORY is kept, not only the busy ones. read_queries, write_queries and ddl_queries count distinct queries; reads through a view count on the view and on its base tables. client is the first word of the session's client application (Snowflake UI, JDBC, PythonConnector, ODBC ...), task for tasks and no session when SESSIONS has none. statement_type is the QUERY_HISTORY query type (SELECT, INSERT, MERGE, CREATE_TABLE_AS_SELECT ...) and ddl_operations the DDL operations (CREATE, ALTER, DROP, RENAME ...). user_type is the user's TYPE today (NOT_SET when it has none, UNKNOWN when dropped). No query text or query id is kept: the page has the SQL to list the queries of one object. Off-hours use by people is in sf_use_access_hours.",
+      "read_this": "one row = one object x user x role x client x statement type x UTC day (or hour). Every table, view, stage and other object in ACCESS_HISTORY is kept, not only the busy ones. read_queries, write_queries and ddl_queries count distinct queries; reads through a view count on the view and on its base tables. client is the first word of the session's client application (Snowflake UI, JDBC, PythonConnector, ODBC ...), task for tasks and no session when SESSIONS has none. statement_type is the QUERY_HISTORY query type (SELECT, INSERT, MERGE, CREATE_TABLE_AS_SELECT ...) and ddl_operations the DDL operations (CREATE, ALTER, DROP, RENAME ...). user_type is the user's TYPE today (NOT_SET when it has none, UNKNOWN when dropped). via names the procedure a query ran inside, or the Streamlit app whose QUERY_TAG it carries; NULL for direct queries. No query text or query id is kept: the page has the SQL to list the queries of one object. Off-hours use by people is in sf_use_access_hours.",
       "healthy": "status = OK on every row; this check is a log, it does not judge.",
       "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the lookback.",
       "actions": [
@@ -9631,6 +9631,53 @@
         }
       ],
       "sql_url": "app/queries/checks/sf_use_object_activity.sql"
+    },
+    {
+      "query_id": "sf_use_streamlit_access",
+      "title": "Who opened each Streamlit app, and when",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "apps",
+        "columns": [
+          "app_name"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [
+        {
+          "name": "lookback_days",
+          "default": 90,
+          "meaning": "days of QUERY_HISTORY it reads, counted back from the export date"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account. Snowflake's docs do not say whether user_name on a Streamlit query is the viewer or the app owner; confirm on a live account before reading it as the viewer.",
+      "read_this": "one row = one Streamlit app x user x role x UTC day. Streamlit in Snowflake tags its queries with the app's name ({\"StreamlitEngine\": \"ExecuteStreamlit\", \"StreamlitName\": \"DB.SCHEMA.APP\"}, or the older text form); runs counts the app's own queries (the app starting or rerunning for that user), child_queries the queries the app ran for them (\"ChildQuery\": \"true\"). first_at and last_at are the first and last of them that day. Only the app name is read from the tag; no query text.",
+      "healthy": "status = OK on every row; this check is a log of app use, it does not judge.",
+      "investigate_if": "n/a - inventory of app use",
+      "actions": [
+        "check that each user of an app that shows sensitive data is meant to see it; revoke USAGE on the app otherwise (free)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_use_access_log",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_streamlit_access.sql"
     },
     {
       "query_id": "sf_use_table_readers",

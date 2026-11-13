@@ -1,6 +1,6 @@
 # snowflake-audit-app knowledge graph: index
 
-A read-only Snowflake account audit: 304 SQL checks read `SNOWFLAKE.ACCOUNT_USAGE` / `ORGANIZATION_USAGE`, the export writes the results to a local folder, a loader turns that folder into a DuckDB file, and a FastAPI + React app on the user's machine (or in Streamlit in Snowflake) shows them.
+A read-only Snowflake account audit: 305 SQL checks read `SNOWFLAKE.ACCOUNT_USAGE` / `ORGANIZATION_USAGE`, the export writes the results to a local folder, a loader turns that folder into a DuckDB file, and a FastAPI + React app on the user's machine (or in Streamlit in Snowflake) shows them.
 
 Built at commit `556a877`, cites last updated at commit `8cf5924` (see [README.md](README.md) for counts and how to rebuild).
 
@@ -65,7 +65,7 @@ flowchart LR
 | "–", "…", units, today partial, empty text | [logic/ui-number-rules.md](logic/ui-number-rules.md) |
 | Every HTTP route | [modules/api.md](modules/api.md) |
 | app/core modules | [modules/core.md](modules/core.md) |
-| The 304 checks, header format, includes | [modules/queries.md](modules/queries.md) |
+| The 305 checks, header format, includes | [modules/queries.md](modules/queries.md) |
 | Every tools/ script | [modules/tools.md](modules/tools.md) |
 | The React app (`web/src`) | [modules/web.md](modules/web.md) |
 | DuckDB data model (diagram) | [data/model.md](data/model.md) (machine-readable: [data/model.json](data/model.json)) |
@@ -88,13 +88,13 @@ flowchart LR
 
 | What | Count | Source |
 |---|---|---|
-| Checks | 304 | app/queries/manifest.json; 304 files in app/queries/checks/ |
-| By domain | compute 22 · cost 62 · governance_access 100 · jobs_pipelines 35 · performance 35 · serving_ai 19 · storage 31 | app/queries/manifest.json |
+| Checks | 305 | app/queries/manifest.json; 305 files in app/queries/checks/ |
+| By domain | compute 22 · cost 62 · governance_access 101 · jobs_pipelines 35 · performance 35 · serving_ai 19 · storage 31 | app/queries/manifest.json |
 | Fallbacks | 85 (80 `-- shim: yes` stubs, 5 hand-written) | app/queries/fallback/ |
 | Shims (ACCOUNT_USAGE views rebuilt) | 52 (15 with `each:`) | app/queries/shims/ |
 | Shared SQL includes | 21 | app/queries/common/ |
 | Dims | 5 | app/queries/dims/ |
-| HTTP routes | 44: 29 in app.py, 2 in explorer.py, 8 in access_log.py, 4 in policies.py, 1 in guide.py (43 `/api/*` + the `GET /` no-build fallback) | `@app.get`/`@router.*` in app/api/*.py |
+| HTTP routes | 46: 29 in app.py, 2 in explorer.py, 10 in access_log.py, 4 in policies.py, 1 in guide.py (45 `/api/*` + the `GET /` no-build fallback) | `@app.get`/`@router.*` in app/api/*.py |
 | UI top-level tabs | 19 | web/src/components/tab_registry.tsx:501-504 (`AREA_ORDER`) |
 | UI sub-tabs | 68 | [flows/ui-navigation.md](flows/ui-navigation.md) |
 | Lenses ("View as") | 5 | [flows/roles.md](flows/roles.md) |

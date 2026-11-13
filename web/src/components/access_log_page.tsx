@@ -12,7 +12,7 @@ import { CxStat, CxTable } from "./cx_e";
 import { useJson } from "./use_json";
 import type { Row } from "../types";
 
-type Section = "overview" | "object" | "person";
+type Section = "overview" | "object" | "person" | "apps";
 const plural = (n: number, one: string) => `${fmtInt(n)} ${n === 1 ? one : `${one}s`}`;
 const day = (v: any) => (v ? fmtDayShort(String(v).slice(0, 10)) : "–");
 const utc = (o: number) => `UTC${o >= 0 ? "+" : "−"}${Math.abs(o)}`;
@@ -28,6 +28,9 @@ export function openInAccessLog(p: ApPageProps, name: string) {
   start = { section: "object", object: name };
   p.goTo({ tab: "activity", subtab: "accesslog", focusQueryId: null });
 }
+
+const kindOf = (k: string) => k || undefined;
+const prefixOf = (p: string) => p || undefined;
 
 /** Every day from start to end, so quiet days read as zero rather than vanish. */
 function allDays(s: string, e: string): string[] {
@@ -178,7 +181,7 @@ export function ApActivityAccessLog(p: ApPageProps) {
           <h4>Sections</h4>
           <nav className="al-nav">
             {([["overview", "Overview", "off hours, hours of use, busiest"], ["object", "One object", object || "pick a table, view or stage"],
-              ["person", "One person", person || "pick a user"]] as [Section, string, string][]).map(([k, t, sub]) => (
+              ["person", "One person", person || "pick a user"], ["apps", "Streamlit apps", "who opened which app, when"]] as [Section, string, string][]).map(([k, t, sub]) => (
               <button key={k} type="button" className={section === k ? "on" : ""} aria-current={section === k} onClick={() => setSection(k)}>
                 {t}<small>{sub}</small>
               </button>
@@ -196,6 +199,7 @@ export function ApActivityAccessLog(p: ApPageProps) {
         <div className="al-main">
           {section === "overview" && <Overview p={p} off={off} s={s} go={go} />}
           {section === "object" && <ObjectView p={p} off={off} name={object} onPick={setObject} go={go} />}
+          {section === "apps" && <AppsView p={p} go={go} />}
           {section === "person" && <PersonView p={p} off={off} s={s} name={person} onPick={setPerson} go={go} />}
         </div>
       </div>
@@ -209,8 +213,12 @@ export function ApActivityAccessLog(p: ApPageProps) {
 
 function Overview({ p, off, s, go }: { p: ApPageProps; off: number; s: Row; go: (s: Section, n?: string) => void }) {
   const [heatKind, setHeatKind] = React.useState("sensitive");
+  const [kind, setKind] = React.useState("");
+  const [prefix, setPrefix] = React.useState("");
+  const [level, setLevel] = React.useState("schema");
+  const roll = useJson("/api/access/rollup", { window: p.filters.window, level });
   const ov = useJson("/api/access/overview", { window: p.filters.window, offset: off, heat: heatKind });
-  const objs = useJson("/api/access/log/objects", { window: p.filters.window, limit: 50 });
+  const objs = useJson("/api/access/log/objects", { window: p.filters.window, limit: 200, kind: kindOf(kind), prefix: prefixOf(prefix) });
   const [onlySens, setOnlySens] = React.useState(false);
   const [allPeople, setAllPeople] = React.useState(false);
   const [objN, setObjN] = React.useState(10);
@@ -318,8 +326,33 @@ function Overview({ p, off, s, go }: { p: ApPageProps; off: number; s: Row; go: 
         </Card>
       )}
 
-      <Card title="Objects, busiest first" sub={`All queries in the window · top ${fmtInt(Math.min(objN, list.length))} of ${plural(list.length, "object")} · select a row`}
-        right={<Seg label="Which objects" value={onlySens ? "s" : "a"} options={[["a", "All"], ["s", "Sensitive"]]} onPick={(v) => setOnlySens(v === "s")} />}>
+      <Card title={`By ${level}`} sub={`Every object's activity rolled up to its ${level} · objects of each kind · select a row to list its objects below`}
+        right={<Seg label="Level" value={level} options={[["schema", "Schema"], ["database", "Database"]]} onPick={setLevel} />}>
+        {roll.loading && !roll.data ? <CxStat>…</CxStat> : roll.err ? <CxStat>{`– ${roll.err}`}</CxStat> : (
+          <table className="al-table al-roll">
+            <thead><tr><th>{level === "schema" ? "Schema" : "Database"}</th><th>Objects</th><th>Activity</th><th className="n">Reads</th><th className="n">Writes</th><th className="n">DDL</th><th className="n">Users</th><th className="n">Last</th></tr></thead>
+            <tbody>{((roll.data?.rows || []) as Row[]).slice(0, 15).map((r) => {
+              const rd = numOrZero(r.reads), w = numOrZero(r.writes), dd = numOrZero(r.ddl), tot = rd + w + dd;
+              const rmax = Math.max(1, ...((roll.data.rows as Row[]).map((x) => numOrZero(x.reads) + numOrZero(x.writes) + numOrZero(x.ddl))));
+              const parts = [["tables", "table"], ["views", "view"], ["stages", "stage"], ["procedures", "proc"], ["functions", "fn"], ["streams", "stream"]]
+                .filter(([k]) => numOrZero(r[k]) > 0).map(([k, t]) => `${fmtInt(numOrZero(r[k]))} ${t}`);
+              return (
+                <tr key={String(r.k)} className={`clickable${prefix === r.k ? " on" : ""}`} onClick={() => { setPrefix(prefix === r.k ? "" : String(r.k)); setObjN(10); }}>
+                  <td><span className="al-name"><span className="al-mono">{String(r.k)}</span>{numOrZero(r.sensitive_objects) > 0 && <span className="al-chip d">{`${fmtInt(r.sensitive_objects)} sensitive`}</span>}</span></td>
+                  <td className="al-meta">{`${fmtInt(numOrZero(r.objects))} · ${parts.join(", ")}`}</td>
+                  <td><span className="al-hbar3" style={{ width: `${Math.max(2, (100 * tot) / rmax)}%` }}><i className="w" style={{ width: `${pct(w, tot)}%` }} /><i className="r" style={{ width: `${pct(rd, tot)}%` }} /><i className="d" style={{ width: `${pct(dd, tot)}%` }} /></span></td>
+                  <td className="n">{fmtInt(rd)}</td><td className="n">{fmtInt(w)}</td><td className="n">{fmtInt(dd)}</td><td className="n">{fmtInt(numOrZero(r.users))}</td><td className="n">{day(r.last_at)}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        )}
+      </Card>
+
+      <Card title="Objects, busiest first" sub={`All queries in the window${prefix ? ` · in ${prefix}` : ""} · top ${fmtInt(Math.min(objN, list.length))} of ${plural(list.length, "object")} · select a row`}
+        right={<><Seg label="Kind" value={kind} options={[["", "All kinds"], ["table", "Tables"], ["view", "Views"], ["stage", "Stages"], ["procedure", "Procedures"], ["function", "Functions"], ["other", "Other"]]} onPick={(v) => { setKind(v); setObjN(10); }} />
+          <Seg label="Which objects" value={onlySens ? "s" : "a"} options={[["a", "All"], ["s", "Sensitive"]]} onPick={(v) => setOnlySens(v === "s")} /></>}>
+        {prefix && <div className="al-pick" style={{ marginBottom: 8 }}><span className="al-chip">{prefix}</span><button type="button" className="al-link" onClick={() => setPrefix("")}>clear</button></div>}
         {objs.loading && !objs.data ? <CxStat>…</CxStat> : (
           <>
             <table className="al-table">
@@ -397,11 +430,25 @@ function ObjectView({ p, off, name, onPick, go }: { p: ApPageProps; off: number;
         <>
           <div className="al-objhead"><span className="al-th">Object detail</span><Name fqn={obj} sens={d.sensitive} /></div>
           <div className="al-tiles">
-            <Tile l="Reads" v={fmtInt(numOrZero(t.reads))} s={`${plural(numOrZero(t.users), "user")} · ${plural(numOrZero(t.roles), "role")}`} />
+            <Tile l={d.kind === "PROCEDURE" || d.kind === "FUNCTION" ? "Calls" : "Reads"} v={fmtInt(numOrZero(t.reads))} s={`${plural(numOrZero(t.users), "user")} · ${plural(numOrZero(t.roles), "role")}`} />
             <Tile l="Writes" v={fmtInt(numOrZero(t.writes))} s="INSERT, UPDATE, DELETE, MERGE, COPY" />
             <Tile l="DDL" v={fmtInt(numOrZero(t.ddl))} s={t.ddl_operations || "CREATE, ALTER, DROP and the like"} warn={numOrZero(t.ddl) > 0} />
             <Tile l="Clients" v={fmtInt(numOrZero(t.clients))} s={few(t.client_list)} />
           </div>
+          {d.kind === "PROCEDURE" && (
+            <Card title="What it did" sub="Tables and views the procedure's own queries read and wrote (linked through the CALL) · in the window">
+              {(d.did as Row[]).length ? (
+                <table className="al-table">
+                  <thead><tr><th>Object</th><th>Statements</th><th className="n">Reads</th><th className="n">Writes</th><th className="n">DDL</th><th>Roles</th><th className="n">Last</th></tr></thead>
+                  <tbody>{(d.did as Row[]).map((r) => (
+                    <tr key={String(r.object_fqn)} className="clickable" onClick={() => go("object", String(r.object_fqn))}>
+                      <td><Name fqn={r.object_fqn} /></td><td><Chips list={r.statements} /></td><td className="n">{fmtInt(numOrZero(r.reads))}</td>
+                      <td className="n">{fmtInt(numOrZero(r.writes))}</td><td className="n">{fmtInt(numOrZero(r.ddl))}</td><td className="al-meta">{r.roles}</td><td className="n">{day(r.last_at)}</td>
+                    </tr>))}</tbody>
+                </table>
+              ) : <CxStat>No query ran inside this procedure in the window, or ACCESS_HISTORY has no root query ids for it.</CxStat>}
+            </Card>
+          )}
           <div className="al-split al-split2">
             <ByCard by={d.by} scope="this object" />
             <StatementsCard rows={d.statements} scope="this object" />
@@ -451,7 +498,7 @@ function ObjectView({ p, off, name, onPick, go }: { p: ApPageProps; off: number;
                   <tr key={`${w.user_name}|${w.role_name}|${w.client}|${i}`} className={w.is_person ? "person" : ""}>
                     <td><span className="al-two"><button type="button" className="al-link" onClick={() => go("person", String(w.user_name))}><b className="al-mono">{String(w.user_name)}</b></button>
                       <span className={`al-badge ${w.is_person ? "p" : ""}`}>{w.is_person ? "Person" : w.user_type === "UNKNOWN" ? "System" : "Service"}</span></span></td>
-                    <td><span className="al-two"><span className="al-mono">{String(w.role_name)}</span><span className="al-meta">{String(w.client)}</span></span></td>
+                    <td><span className="al-two"><span className="al-mono">{String(w.role_name)}</span><span className="al-meta">{String(w.client)}</span>{w.via && <span className="al-chip v" title={String(w.via)}>{`via ${String(w.via).replace(/^(procedure|streamlit) /, (m) => m.trim() === "procedure" ? "proc " : "app ").split(".").pop()}`}</span>}</span></td>
                     <td><Chips list={[w.statements, w.ddl_operations].filter(Boolean).join(", ")} /></td>
                     <td className="n"><b>{fmtInt(q)}</b><div className="al-meta">{`${fmtInt(numOrZero(w.writes))} DML · ${fmtInt(numOrZero(w.reads))} rd${numOrZero(w.ddl) ? ` · ${fmtInt(w.ddl)} DDL` : ""}`}</div></td>
                     <td className={`n${numOrZero(w.off_hours) > 0 ? " al-o" : ""}`}>{w.off_hours == null ? "–" : fmtInt(w.off_hours)}</td>
@@ -538,6 +585,71 @@ function PersonView({ p, off, s, name, onPick, go }: { p: ApPageProps; off: numb
           </Card>
         </>
       )}
+    </>
+  );
+}
+
+// ═══════════════════════ Streamlit apps ═══════════════════════
+
+function AppsView({ p, go }: { p: ApPageProps; go: (s: Section, n?: string) => void }) {
+  const [app, setApp] = React.useState("");
+  const ap = useJson("/api/access/apps", { window: p.filters.window, app: app || undefined });
+  const d = ap.data;
+  if (ap.loading && !d) return <CxStat>…</CxStat>;
+  if (ap.err) return <CxStat>{`– ${ap.err}`}</CxStat>;
+  if (!d) return null;
+  const apps: Row[] = d.apps || [];
+  const days = allDays(String(d.start), String(d.end));
+  return (
+    <>
+      <div className="al-tiles">
+        <Tile l="Apps used" v={fmtInt(apps.length)} s="Streamlit apps with at least one run" />
+        <Tile l="People" v={fmtInt(new Set((d.who as Row[]).map((w) => w.user_name)).size)} s={d.app ? `opened ${String(d.app).split(".").pop()}` : "–"} />
+        <Tile l="Runs" v={fmtInt(apps.reduce((a, r) => a + numOrZero(r.runs), 0))} s="the app starting or rerunning for a user" />
+        <Tile l="Queries by apps" v={fmtInt(apps.reduce((a, r) => a + numOrZero(r.queries), 0))} s="run by the apps for their users" />
+      </div>
+      <Card title="Streamlit apps" sub="From the app name Snowflake puts in each Streamlit query's tag · select a row">
+        {!apps.length ? <CxStat>{`No Streamlit app ran in ${day(d.start)}–${day(d.end)}.`}</CxStat> : (
+          <table className="al-table">
+            <thead><tr><th>App</th><th className="n">People</th><th className="n">Runs</th><th className="n">Queries</th><th className="n">Days used</th><th className="n">Last</th></tr></thead>
+            <tbody>{apps.map((r) => (
+              <tr key={String(r.app_name)} className={`clickable${r.app_name === d.app ? " on" : ""}`} onClick={() => setApp(String(r.app_name))}>
+                <td><span className="al-mono">{String(r.app_name)}</span></td><td className="n">{fmtInt(numOrZero(r.users))}</td><td className="n">{fmtInt(numOrZero(r.runs))}</td>
+                <td className="n">{fmtInt(numOrZero(r.queries))}</td><td className="n">{fmtInt(numOrZero(r.days))}</td><td className="n">{day(r.last_at)}</td>
+              </tr>))}</tbody>
+          </table>
+        )}
+      </Card>
+      {d.app && (
+        <Card title={`Who opened ${String(d.app).split(".").pop()}`} sub="One row per user · runs = the app starting or rerunning for them · a tick per day used">
+          <table className="al-table al-apps">
+            <thead><tr><th>User</th><th>Roles</th><th className="n">Runs</th><th className="n">Queries</th><th>Days used · {day(d.start)} – {day(d.end)}</th><th className="n">First → last</th></tr></thead>
+            <tbody>{(d.who as Row[]).map((w) => (
+              <tr key={String(w.user_name)} className={w.user_type === "PERSON" ? "person" : ""}>
+                <td><span className="al-two"><button type="button" className="al-link" onClick={() => go("person", String(w.user_name))}><b className="al-mono">{String(w.user_name)}</b></button>
+                  <span className={`al-badge ${w.user_type === "PERSON" ? "p" : ""}`}>{w.user_type === "PERSON" ? "Person" : "Service"}</span></span></td>
+                <td className="al-meta">{w.roles}</td><td className="n">{fmtInt(numOrZero(w.runs))}</td><td className="n">{fmtInt(numOrZero(w.queries))}</td>
+                <td><div className="al-ticks">{days.map((x) => <i key={x} className={(w.dates || []).includes(x) ? "on" : ""} title={x} />)}</div><span className="al-meta">{`${fmtInt(numOrZero(w.days))} of ${fmtInt(days.length)} days`}</span></td>
+                <td className="n al-meta">{`${day(w.first_at)} → ${day(w.last_at)}`}</td>
+              </tr>))}</tbody>
+          </table>
+        </Card>
+      )}
+      {d.app && (
+        <Card title={`What ${String(d.app).split(".").pop()} read and wrote`} sub="Tables and views the app's queries touched, from their Streamlit tag · select a row">
+          {(d.objects as Row[]).length ? (
+            <table className="al-table">
+              <thead><tr><th>Object</th><th className="n">Reads</th><th className="n">Writes</th><th className="n">DDL</th><th className="n">Users</th><th className="n">Last</th></tr></thead>
+              <tbody>{(d.objects as Row[]).map((o) => (
+                <tr key={String(o.object_fqn)} className="clickable" onClick={() => go("object", String(o.object_fqn))}>
+                  <td><Name fqn={o.object_fqn} sens={o.sensitive} /></td><td className="n">{fmtInt(numOrZero(o.reads))}</td><td className="n">{fmtInt(numOrZero(o.writes))}</td>
+                  <td className="n">{fmtInt(numOrZero(o.ddl))}</td><td className="n">{fmtInt(numOrZero(o.users))}</td><td className="n">{day(o.last_at)}</td>
+                </tr>))}</tbody>
+            </table>
+          ) : <CxStat>The app read no table in the window, or its queries are not in the access log.</CxStat>}
+        </Card>
+      )}
+      <div className="al-meta">Snowflake does not say whether the user on a Streamlit query is the viewer or the app's owner; confirm on your account.</div>
     </>
   );
 }

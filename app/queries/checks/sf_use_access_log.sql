@@ -18,7 +18,8 @@
 --   PythonConnector, ODBC ...), task for tasks and no session when SESSIONS has none. statement_type is
 --   the QUERY_HISTORY query type (SELECT, INSERT, MERGE, CREATE_TABLE_AS_SELECT ...) and ddl_operations
 --   the DDL operations (CREATE, ALTER, DROP, RENAME ...). user_type is the user's TYPE today (NOT_SET when
---   it has none, UNKNOWN when dropped). No query text or query id is kept: the page has the SQL to list
+--   it has none, UNKNOWN when dropped). via names the procedure a query ran inside, or the Streamlit app whose
+--   QUERY_TAG it carries; NULL for direct queries. No query text or query id is kept: the page has the SQL to list
 --   the queries of one object. Off-hours use by people is in sf_use_access_hours.
 -- healthy: status = OK on every row; this check is a log, it does not judge.
 -- investigate_if: NOT_ASSESSED when ACCESS_HISTORY has no rows in the lookback.
@@ -38,7 +39,7 @@ SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, IFF(:bucket_hours = 1, 'h
        SPLIT_PART(MAX(e.object_name), '.', 1) AS database_name, SPLIT_PART(MAX(e.object_name), '.', 2) AS schema_name,
        MAX(e.object_name) AS object_fqn, e.user_name, MAX(e.user_type) AS user_type,
        MAX(e.user_type) = 'PERSON' AND e.user_name <> 'SYSTEM' AS is_person,
-       e.role_name, e.client, e.statement_type,
+       e.role_name, e.client, e.statement_type, e.via,
        COUNT(DISTINCT IFF(e.kind = 'read', e.query_id, NULL)) AS read_queries,
        COUNT(DISTINCT IFF(e.kind = 'write', e.query_id, NULL)) AS write_queries,
        COUNT(DISTINCT IFF(e.kind = 'ddl', e.query_id, NULL)) AS ddl_queries,
@@ -49,12 +50,12 @@ FROM sf_acc_rows e
 -- object_id keeps a dropped and a re-created table apart; a NULL id (some stages) groups by name
 GROUP BY IFF(:bucket_hours = 1, DATE_TRUNC('hour', e.query_start_time), DATE_TRUNC('day', e.query_start_time)),
          e.object_domain, e.object_id, IFF(e.object_id IS NULL, e.object_name, NULL), e.user_name, e.role_name,
-         e.client, e.statement_type
+         e.client, e.statement_type, e.via
 UNION ALL
 SELECT 0, __ACCOUNT_ID__, IFF(:bucket_hours = 1, 'hour', 'day'), CAST(NULL AS TIMESTAMP_NTZ), CAST(NULL AS VARCHAR),
        CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
        CAST(NULL AS VARCHAR), CAST(NULL AS BOOLEAN), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
-       CAST(NULL AS INTEGER), CAST(NULL AS INTEGER), CAST(NULL AS INTEGER), CAST(NULL AS VARCHAR),
+       CAST(NULL AS VARCHAR), CAST(NULL AS INTEGER), CAST(NULL AS INTEGER), CAST(NULL AS INTEGER), CAST(NULL AS VARCHAR),
        CAST(NULL AS TIMESTAMP_NTZ), CAST(NULL AS TIMESTAMP_NTZ), 'no_access_history', 'NOT_ASSESSED'
 FROM sf_acc_seen WHERE access_rows = 0
 ORDER BY bucket_start DESC NULLS FIRST, object_fqn, user_name

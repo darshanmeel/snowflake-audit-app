@@ -149,3 +149,14 @@
 .al-heatwide .al-heat td { min-width: 70px; }
 .al-strow { grid-template-columns: 10px minmax(0, 1.6fr) minmax(0, 1fr) 40px 104px; }
 .al-split2 { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+
+.al-roll th:nth-child(1) { width: 26%; } .al-roll th:nth-child(2) { width: 20%; } .al-roll th:nth-child(3) { width: 18%; }
+.al-table tr.on td { background: color-mix(in srgb, var(--c1) 10%, transparent); }
+.al-chip.v { background: color-mix(in srgb, var(--c4) 22%, transparent); margin-top: 2px; width: fit-content; }
+.al-ticks { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 1px; height: 12px; margin-bottom: 3px; }
+.al-ticks i { background: var(--surface-3); border-radius: 1px; }
+.al-ticks i.on { background: var(--st-warn); }
+.al-apps th:nth-child(5) { width: 34%; }
+.al-head-right .cx-seg button { white-space: nowrap; }
+.al-roll th:nth-child(1) { width: 34%; } .al-roll th:nth-child(2) { width: 16%; } .al-roll th:nth-child(3) { width: 14%; }
+.al-nav button small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

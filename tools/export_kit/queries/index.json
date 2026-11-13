@@ -5092,6 +5092,19 @@
    },
    "needs_enterprise": false
   },
+  "sf_use_streamlit_access": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "lookback_days": 90
+   },
+   "needs_enterprise": false
+  },
   "sf_use_table_activity": {
    "domain": "storage",
    "windowed": true,
@@ -5815,5 +5828,5 @@
   "dim_user",
   "dim_warehouse"
  ],
- "queries_sha256": "fdf0dda34d5347f39f53f19f37c927903feb11fa1674eb6f5428f4a55d069020"
+ "queries_sha256": "bca43c6605665a468b98b02ebeb806b66a5b7a75f0a0dfe497925343175e4698"
 }

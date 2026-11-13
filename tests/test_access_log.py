@@ -70,3 +70,28 @@ def test_the_overview_breaks_all_objects_down_and_the_heatmap_can_show_every_obj
     total = sum(r["reads"] + r["writes"] + r["ddl"] for r in sens["by"]["client"])
     assert total == sens["queries"] == sum(s["queries"] for s in sens["statements"])
     assert set(sens["heat_objects"]) <= set(allo["heat_objects"]) and len(allo["heat_objects"]) >= len(sens["heat_objects"])
+
+
+def test_rollup_counts_every_kind_and_the_kind_filter_finds_procedures():
+    db = client.get("/api/access/rollup", params={"window": 30, "level": "database"}).json()["rows"]
+    analytics = next(r for r in db if r["k"] == "ANALYTICS_DB")
+    assert analytics["procedures"] >= 1 and analytics["functions"] >= 1 and analytics["tables"] >= 1
+    procs = client.get("/api/access/log/objects", params={"window": 30, "kind": "procedure"}).json()["objects"]
+    assert [o["object_fqn"] for o in procs] == ["ANALYTICS_DB.PUBLIC.LOAD_ORDERS_SP"]
+    scoped = client.get("/api/access/log/objects", params={"window": 30, "prefix": "ANALYTICS_DB.MARTS"}).json()["objects"]
+    assert scoped and all(o["object_fqn"].startswith("ANALYTICS_DB.MARTS.") for o in scoped)
+
+
+def test_a_procedure_shows_what_its_queries_did_and_rows_name_it_as_via():
+    body = client.get("/api/access/log", params={"object": "ANALYTICS_DB.PUBLIC.LOAD_ORDERS_SP", "window": 30}).json()
+    did = {r["object_fqn"]: r for r in body["did"]}
+    assert body["kind"] == "PROCEDURE" and did["ANALYTICS_DB.CORE.ORDERS"]["writes"] > 0 and did["RAW_DB.LANDING.ORDERS_RAW"]["reads"] > 0
+    orders = client.get("/api/access/log", params={"object": "ANALYTICS_DB.CORE.ORDERS", "window": 30}).json()
+    assert any("LOAD_ORDERS_SP" in (w["via"] or "") for w in orders["who"])
+
+
+def test_streamlit_apps_list_who_opened_them_and_what_they_read():
+    body = client.get("/api/access/apps", params={"window": 30}).json()
+    assert body["app"] == "ANALYTICS_DB.APPS.SALES_DASH"
+    assert {w["user_name"] for w in body["who"]} == {"ANALYST_CARA", "ANALYST_DAN", "ADMIN_ALICE", "ANALYST_EVA"}
+    assert [o["object_fqn"] for o in body["objects"]] == ["ANALYTICS_DB.CORE.CUSTOMERS"]

@@ -8,6 +8,8 @@ recounted here at the offset the page asks for: every hours row keeps its UTC da
     GET /api/access/log/objects?window=&search=       objects to pick from, busiest first
     GET /api/access/overview?window=&offset=          tiles, off-hours use by person, hours of use
     GET /api/access/log?object=&window=&offset=       one object: per day, by client/role/user, statements, who
+    GET /api/access/rollup?window=&level=             objects rolled up by schema or database, per kind
+    GET /api/access/apps?window=&app=                 Streamlit apps: who opened which, when; what one app read
     GET /api/access/people?window=                    people and other users to pick from
     GET /api/access/person?user=&window=&offset=      one user: per day, objects, hours of use
     GET /api/access/tags, /api/access/tag?tag=        tag values; one tag's objects, who can read, who did
@@ -29,6 +31,11 @@ router = APIRouter()
 
 LOG = "findings.f_sf_use_access_log"
 HOURS = "findings.f_sf_use_access_hours"
+APPS = "findings.f_sf_use_streamlit_access"
+# object kinds the page filters and rolls up by, from ACCESS_HISTORY's objectDomain
+KINDS = {"table": "('TABLE', 'DYNAMIC TABLE', 'ICEBERG TABLE', 'EXTERNAL TABLE', 'HYBRID TABLE')",
+         "view": "('VIEW', 'MATERIALIZED VIEW', 'SECURE VIEW')", "stage": "('STAGE')", "procedure": "('PROCEDURE')",
+         "function": "('FUNCTION', 'EXTERNAL FUNCTION')", "stream": "('STREAM')"}
 TAGS = "findings.f_sf_gov_tag_objects"
 TAGGED = "findings.f_sf_gov_sensitive_columns_unprotected"
 SUGGESTED = "findings.f_sf_gov_sensitive_suggestions"
@@ -178,15 +185,19 @@ def get_settings() -> dict:
 
 
 @router.get("/api/access/log/objects")
-def get_objects(window: int = 30, search: str = "", sensitive: bool = False, limit: int = 200) -> dict:
+def get_objects(window: int = 30, search: str = "", sensitive: bool = False, limit: int = 200,
+                kind: str = "", prefix: str = "") -> dict:
     start, end = _range(window)
+    kind_sql = (f" AND object_domain IN {KINDS[kind]}" if kind in KINDS else
+                " AND object_domain NOT IN (" + ", ".join(v.strip("()") for v in KINDS.values()) + ")" if kind == "other" else "")
     rows = _log_or_503(
         f"SELECT object_fqn, MAX(object_domain) AS object_domain, SUM(read_queries) AS reads, "
         f"SUM(write_queries) AS writes, SUM(ddl_queries) AS ddl, COUNT(DISTINCT user_name) AS users, "
         f"COUNT(DISTINCT role_name) AS roles, COUNT(DISTINCT client) AS clients, MAX(last_at) AS last_at "
         f"FROM {LOG} WHERE object_fqn IS NOT NULL AND bucket_start >= ? AND bucket_start < ? "
-        f"AND object_fqn ILIKE ? GROUP BY object_fqn ORDER BY reads + writes + ddl DESC, object_fqn",
-        [start, end, f"%{search.strip()}%"])
+        f"AND object_fqn ILIKE ? AND (object_fqn = ? OR object_fqn LIKE ? || '.%' OR ? = ''){kind_sql} "
+        f"GROUP BY object_fqn ORDER BY reads + writes + ddl DESC, object_fqn",
+        [start, end, f"%{search.strip()}%", prefix, prefix, prefix])
     sens = _sensitive()
     for r in rows:
         r["sensitive"] = sens.get(r["object_fqn"])
@@ -286,7 +297,8 @@ def get_log(object: str, window: int = 30, split: str = "user", offset: int | No
         f"SELECT user_name, MAX(user_type) AS user_type, BOOL_OR(is_person) AS is_person, role_name, client, "
         f"array_to_string(list_sort(list(DISTINCT statement_type)), ', ') AS statements, SUM(read_queries) AS reads, "
         f"SUM(write_queries) AS writes, SUM(ddl_queries) AS ddl, COUNT(DISTINCT CAST(bucket_start AS DATE)) AS days, "
-        f"MIN(first_at) AS first_at, MAX(last_at) AS last_at, {_merged('ddl_operations')} AS ddl_operations "
+        f"MIN(first_at) AS first_at, MAX(last_at) AS last_at, {_merged('ddl_operations')} AS ddl_operations, "
+        f"array_to_string(list_sort(list(DISTINCT via) FILTER (WHERE via IS NOT NULL)), ', ') AS via "
         f"{where} GROUP BY user_name, role_name, client ORDER BY reads + writes + ddl DESC", params)
     cfg = hours_settings()
     off_sql, off_params = _off(cfg["offset"] if offset is None else offset, cfg["start"], cfg["end"])
@@ -296,9 +308,65 @@ def get_log(object: str, window: int = 30, split: str = "user", offset: int | No
     for w in who:
         w["off_hours"] = offmap.get((w["user_name"], w["role_name"], w["client"]), 0) if w["is_person"] and off is not None else None
         w["user_name"] = _who(w["user_name"])
-    return {"object": object, "window": window, "start": start, "end": end, "sensitive": _sensitive().get(object),
+    # a procedure: what its queries read and wrote (they carry it as via)
+    did = _log_or_503(
+        f"SELECT object_fqn, MAX(object_domain) AS object_domain, SUM(read_queries) AS reads, SUM(write_queries) AS writes, "
+        f"SUM(ddl_queries) AS ddl, array_to_string(list_sort(list(DISTINCT statement_type)), ', ') AS statements, "
+        f"array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles, MAX(last_at) AS last_at FROM {LOG} "
+        f"WHERE via = ? AND bucket_start >= ? AND bucket_start < ? GROUP BY 1 ORDER BY writes DESC, reads DESC",
+        [f"procedure {object}", start, end])
+    kind = _log_or_503(f"SELECT MAX(object_domain) AS d {where}", params)[0]["d"]
+    return {"object": object, "kind": kind, "did": did, "window": window, "start": start, "end": end, "sensitive": _sensitive().get(object),
             "tiles": tiles, "by": by, "statements": statements, "matrix": matrix, "days": days, "who": who,
             "per_day": _series(where, params, split), **_cut()}
+
+
+@router.get("/api/access/rollup")
+def get_rollup(window: int = 30, level: str = "schema") -> dict:
+    """Every object's activity rolled up to its schema or database: objects of each kind, reads, writes, DDL."""
+    start, end = _range(window)
+    key = "database_name" if level == "database" else "database_name || '.' || schema_name"
+    kinds = ", ".join(f"COUNT(DISTINCT object_fqn) FILTER (WHERE object_domain IN {v}) AS {k}s" for k, v in KINDS.items())
+    rows = _log_or_503(
+        f"SELECT {key} AS k, COUNT(DISTINCT object_fqn) AS objects, {kinds}, SUM(read_queries) AS reads, "
+        f"SUM(write_queries) AS writes, SUM(ddl_queries) AS ddl, COUNT(DISTINCT user_name) AS users, "
+        f"COUNT(DISTINCT client) AS clients, COUNT(DISTINCT via) AS vias, MAX(last_at) AS last_at FROM {LOG} "
+        f"WHERE bucket_start >= ? AND bucket_start < ? AND schema_name IS NOT NULL AND schema_name <> '' "
+        f"GROUP BY 1 ORDER BY reads + writes + ddl DESC", [start, end])
+    sens = _sensitive()
+    for r in rows:
+        r["sensitive_objects"] = sum(1 for f in sens if f == r["k"] or f.startswith(f"{r['k']}."))
+    return {"window": window, "start": start, "end": end, "level": "database" if level == "database" else "schema",
+            "kinds": list(KINDS), "rows": rows}
+
+
+@router.get("/api/access/apps")
+def get_apps(window: int = 30, app: str = "") -> dict:
+    """Streamlit apps from their query tags: who opened which app and when; what one app read and wrote."""
+    start, end = _range(window)
+    try:
+        apps = _rows(f"SELECT app_name, COUNT(DISTINCT user_name) AS users, SUM(runs) AS runs, SUM(child_queries) AS queries, "
+                     f"COUNT(DISTINCT usage_date) AS days, MAX(last_at) AS last_at FROM {APPS} WHERE app_name IS NOT NULL "
+                     f"AND usage_date >= ? AND usage_date < ? GROUP BY 1 ORDER BY users DESC, runs DESC", [start, end])
+    except duckdb.Error:
+        raise HTTPException(503, "No Streamlit app log in this export: run it again with sf_use_streamlit_access.")
+    name = app or (apps[0]["app_name"] if apps else "")
+    who = _rows(f"SELECT user_name, MAX(user_type) AS user_type, array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles, "
+                f"SUM(runs) AS runs, SUM(child_queries) AS queries, COUNT(DISTINCT usage_date) AS days, MIN(first_at) AS first_at, "
+                f"MAX(last_at) AS last_at, list(DISTINCT CAST(usage_date AS VARCHAR)) AS dates FROM {APPS} WHERE app_name = ? "
+                f"AND usage_date >= ? AND usage_date < ? GROUP BY 1 ORDER BY runs DESC", [name, start, end]) if name else []
+    for w in who:
+        w["user_name"] = _who(w["user_name"])
+        w["dates"] = sorted(w["dates"] or [])
+    read = _log_or_503(
+        f"SELECT object_fqn, MAX(object_domain) AS object_domain, SUM(read_queries) AS reads, SUM(write_queries) AS writes, "
+        f"SUM(ddl_queries) AS ddl, COUNT(DISTINCT user_name) AS users, MAX(last_at) AS last_at FROM {LOG} WHERE via = ? "
+        f"AND bucket_start >= ? AND bucket_start < ? GROUP BY 1 ORDER BY reads + writes + ddl DESC",
+        [f"streamlit {name}", start, end]) if name else []
+    sens = _sensitive()
+    for r in read:
+        r["sensitive"] = sens.get(r["object_fqn"])
+    return {"window": window, "start": start, "end": end, "apps": apps, "app": name, "who": who, "objects": read}
 
 
 @router.get("/api/access/people")

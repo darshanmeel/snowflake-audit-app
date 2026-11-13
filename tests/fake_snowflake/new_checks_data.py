@@ -10,6 +10,7 @@ the previous window the 30 before that.
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 
 def _ts(day: dt.date, hour: int = 0, minute: int = 0) -> dt.datetime:
@@ -804,7 +805,8 @@ def access_extras(b: _B) -> None:
         b.au("QUERY_HISTORY", query_id=qid, user_name=user, role_name=role, session_id=sid, query_type=qtype,
              execution_status="SUCCESS", warehouse_id=1003, warehouse_name="WH_BI", start_time=at,
              end_time=at, execution_time=900, total_elapsed_time=900, **extra)
-        b.au("ACCESS_HISTORY", query_id=qid, query_start_time=at, user_name=user, root_query_id=qid,
+        root = ah.pop("root_query_id", qid)
+        b.au("ACCESS_HISTORY", query_id=qid, query_start_time=at, user_name=user, root_query_id=root,
              **{"direct_objects_accessed": [], "base_objects_accessed": [], "objects_modified": [], "policies_referenced": [], **ah})
 
     sat = b.back(2)   # the as-of date is a Monday, so two days back is a Saturday
@@ -818,6 +820,33 @@ def access_extras(b: _B) -> None:
     q("01ddl-hugo", "DEV_HUGO", "DATA_ADMIN", 91004, "ALTER_TABLE_ADD_COLUMN", _ts(sat, 23, 30),
       {"object_modified_by_ddl": {"objectDomain": "Table", "objectId": 5008, "objectName": "ANALYTICS_DB.CORE.CUSTOMERS",
                                   "operationType": "ALTER"}})
+
+    # a procedure: SVC_ETL calls LOAD_ORDERS_SP, which reads ORDERS_RAW and merges into ORDERS (root_query_id links them)
+    proc = {"objectDomain": "Procedure", "objectId": 8801, "objectName": "ANALYTICS_DB.PUBLIC.LOAD_ORDERS_SP"}
+    raw = {"objectDomain": "Table", "objectId": 5001, "objectName": "RAW_DB.LANDING.ORDERS_RAW", "columns": [{"columnId": 1, "columnName": "ID"}]}
+    for k in range(1, 8):
+        call = f"01sp-call-{k}"
+        q(call, "SVC_ETL", "ETL_ROLE", 91003, "CALL", _ts(b.back(k), 3), {"base_objects_accessed": [proc]})
+        q(f"01sp-merge-{k}", "SVC_ETL", "ETL_ROLE", 91003, "MERGE", _ts(b.back(k), 3, 1),
+          {"base_objects_accessed": [raw], "objects_modified": [orders], "root_query_id": call})
+    # a function: ANALYST_DAN calls a UDF in a SELECT
+    fn = {"objectDomain": "Function", "objectId": 8802, "objectName": "ANALYTICS_DB.PUBLIC.FORMAT_PHONE"}
+    for k in range(1, 4):
+        q(f"01fn-{k}", "ANALYST_DAN", "ANALYST_ROLE", 91002, "SELECT", _ts(b.back(k), 10), {"base_objects_accessed": [fn, cust]})
+    # a Streamlit app: three people open SALES_DASH; its child queries read CUSTOMERS
+    app = "ANALYTICS_DB.APPS.SALES_DASH"
+    run_tag = json.dumps({"StreamlitEngine": "ExecuteStreamlit", "StreamlitName": app})
+    child_tag = json.dumps({"StreamlitEngine": "ExecuteStreamlit", "StreamlitName": app, "ChildQuery": "true"})
+    for i, (user, role, days) in enumerate((("ANALYST_CARA", "ANALYST_ROLE", (1, 2, 4, 8)), ("ANALYST_DAN", "ANALYST_ROLE", (1, 3)),
+                                            ("ADMIN_ALICE", "ACCOUNTADMIN", (5,)))):
+        for k in days:
+            at = _ts(b.back(k), 9 + i)
+            q(f"01st-run-{i}-{k}", user, role, 91002, "SELECT", at, {}, query_tag=run_tag)
+            q(f"01st-child-{i}-{k}", user, role, 91002, "SELECT", _ts(b.back(k), 9 + i, 1), {"base_objects_accessed": [cust]},
+              query_tag=child_tag)
+    # the older text tag still names the app
+    q("01st-old", "ANALYST_EVA", "ANALYST_ROLE", 91002, "SELECT", _ts(b.back(6), 15), {},
+      query_tag=f"ExecuteStreamlit,streamlitName: {app},streamlitId:123456789")
 
 
 def add(w) -> None:
