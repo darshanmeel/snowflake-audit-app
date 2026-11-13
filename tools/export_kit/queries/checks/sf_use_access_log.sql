@@ -35,7 +35,8 @@
 WITH -- ACCESS_HISTORY over :lookback_days flattened to one event per query x object x kind (read, write, ddl),
 -- with the query's role and statement type, its session's client and the user's TYPE today. Columns of
 -- sf_acc_rows: query_id, query_start_time (UTC), user_name, kind, object_domain, object_id, object_name,
--- ddl_operation, statement_type, role_name, client, user_type, via. via is 'procedure DB.S.P' when the query ran
+-- ddl_operation, statement_type (with ' (source)' when a write statement only read the object), role_name, client,
+-- user_type, via. via is 'procedure DB.S.P' when the query ran
 -- inside a CALL (ACCESS_HISTORY.root_query_id) and 'streamlit DB.S.APP' when its QUERY_TAG names a Streamlit app
 -- (only the app name is read from the tag). sf_acc_seen holds access_rows.
 -- Only ids, names and types, never query text.
@@ -105,7 +106,10 @@ sf_acc_ut AS (
 ),
 sf_acc_rows AS (
   SELECT DISTINCT r.query_id, r.query_start_time, r.user_name, r.kind, r.object_domain, r.object_id, r.object_name,
-         r.ddl_operation, COALESCE(q.query_type, 'UNKNOWN') AS statement_type,
+         r.ddl_operation,
+         -- an object only read by a write statement (INSERT ... SELECT FROM a view) is its source, not its target
+         IFF(r.kind = 'read' AND q.query_type IS NOT NULL AND q.query_type NOT IN ('SELECT', 'UNKNOWN', 'GET_FILES', 'CALL', 'DESCRIBE', 'SHOW'),
+             q.query_type || ' (source)', COALESCE(q.query_type, 'UNKNOWN')) AS statement_type,
          COALESCE(q.role_name, '(unknown role)') AS role_name,
          -- tasks run as SYSTEM with no session; other queries without one are said so, not "unknown"
          COALESCE(NULLIF(s.client, ''), IFF(r.user_name = 'SYSTEM', 'task', 'no session')) AS client,
