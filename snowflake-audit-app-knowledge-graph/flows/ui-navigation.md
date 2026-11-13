@@ -127,7 +127,7 @@ Every row: the sub-tab is registered by `registerAreaContent` (`tab_area.tsx:472
 | activity | schemas (no own ids) | `:412` | `ApActivitySchemas` `area_activity.tsx:152` | |
 | activity | tables | `:413` | `ApActivityTables` `area_activity.tsx:263` | |
 | activity | lastactive | `:414` | `ApActivityLastActive` `area_activity.tsx:990` | |
-| accesslog | log | `ACCESSLOG_SUBTABS` | `ApActivityAccessLog` `access_log_page.tsx` | its own tab: left panel (Overview, One object by type incl. Streamlit apps, One user or role), UTC-offset slider; old `activity/accesslog` links redirect (`App.tsx` `applyOldKeyRedirects`) |
+| accesslog | log | `ACCESSLOG_SUBTABS` | `ApActivityAccessLog` `access_log_page.tsx` | its own tab: left panel (Overview with Look into first `/api/access/flags`, One object by type incl. Streamlit apps with owner and who can grant, One user or role), UTC-offset slider; old `activity/accesslog` links redirect (`App.tsx` `applyOldKeyRedirects`) |
 | activity | users | `:415` | `ApActivityUsers` `area_activity.tsx:623` | |
 | activity | objects | `:416` | `ApActivityObjects` `area_activity.tsx:772` | |
 | sharing (Sharing & org) | shares | `:423` | `ApSharingShares` `area_governance.tsx:1261` | |
