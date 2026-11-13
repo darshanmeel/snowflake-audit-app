@@ -38,8 +38,19 @@ def _rows(sql: str, params: list) -> list[dict]:
 def _range(window: int) -> tuple[str, str]:
     """[start, end) of the window, ending at the export's as-of date (the one money cut-off)."""
     info = app_core_data.direct_export_info() or {}
-    end = date.fromisoformat(str(info.get("as_of_date"))[:10]) if info.get("as_of_date") else date.today()
+    if not info.get("as_of_date"):
+        raise HTTPException(503, "This export has no as-of date: load it again.")
+    end = date.fromisoformat(str(info["as_of_date"])[:10])
     return str(end - timedelta(days=int(window))), str(end)
+
+
+def _cut() -> dict:
+    """Whether the export cut the log at its row cap, and from when it is complete (it keeps the newest)."""
+    if not app_core_data.truncation_info("sf_use_access_log").get("truncated"):
+        return {"truncated": False, "complete_from": None}
+    first = _log_or_503(f"SELECT MIN(bucket_start) AS b FROM {LOG}", [])[0]["b"]
+    # the oldest bucket kept may be partial, so the log is complete from the next one
+    return {"truncated": True, "complete_from": str(first)[:10] if first else None}
 
 
 def _sensitive() -> dict:
@@ -88,7 +99,7 @@ def get_objects(window: int = 30, search: str = "", sensitive: bool = False, lim
     if sensitive:
         rows = [r for r in rows if r["sensitive"]]
     return {"window": window, "start": start, "end": end, "grain": rows[0]["grain"] if rows else None,
-            "total": len(rows), "objects": rows[:max(1, min(limit, 2000))]}
+            "total": len(rows), "objects": rows[:max(1, min(limit, 2000))], **_cut()}
 
 
 @router.get("/api/access/log")
@@ -110,7 +121,7 @@ def get_log(object: str, window: int = 30) -> dict:
         w["user_name"] = _who(w["user_name"])
     grain = _log_or_503(f"SELECT MAX(grain) AS g FROM {LOG}", [])[0]["g"]
     return {"object": object, "window": window, "start": start, "end": end, "grain": grain,
-            "sensitive": _sensitive().get(object), "buckets": buckets, "who": who}
+            "sensitive": _sensitive().get(object), "buckets": buckets, "who": who, **_cut()}
 
 
 @router.get("/api/access/log/offhours")
@@ -130,7 +141,7 @@ def get_offhours(window: int = 30) -> dict:
     # sensitive objects first, then changes (DDL, writes) before reads, then the most off-hours queries
     rows.sort(key=lambda r: (r["sensitive"] is None, not ((r["ddl"] or 0) + (r["writes"] or 0)), -(r["off_hours"] or 0)))
     return {"window": window, "start": start, "end": end, "rows": rows,
-            "users": len({r["user_name"] for r in rows}), "objects": len({r["object_fqn"] for r in rows})}
+            "users": len({r["user_name"] for r in rows}), "objects": len({r["object_fqn"] for r in rows}), **_cut()}
 
 
 @router.get("/api/access/tags")
@@ -158,20 +169,29 @@ def get_tag(tag: str, value: str | None = None, window: int = 30) -> dict:
         g = None
     mask = identity.masking_enabled()
     for o in objs:
-        # a database or schema row stands for every table in it; match the log by prefix
-        prefix = ".".join(p for p in (o["database_name"], o["schema_name"], o["table_name"]) if p)
-        o["object"] = prefix
-        exact = o["level"] in ("TABLE", "COLUMN")
-        try:
-            used = _rows(f"SELECT user_name, role_name, SUM(read_queries) AS reads, SUM(write_queries) AS writes "
-                         f"FROM {LOG} WHERE bucket_start >= ? AND bucket_start < ? AND "
-                         f"(object_fqn = ? OR (? AND object_fqn LIKE ? || '.%')) GROUP BY 1, 2 "
-                         f"ORDER BY reads + writes DESC", [start, end, prefix, not exact, prefix])
+        o["object"] = ".".join(p for p in (o["database_name"], o["schema_name"], o["table_name"]) if p)
+    # a database or schema row stands for every table in it, matched by prefix; a table or column row exactly
+    exact = {}
+    for o in objs:
+        exact[o["object"]] = exact.get(o["object"], False) or o["level"] in ("TABLE", "COLUMN")
+    used: dict | None = {}
+    if exact:
+        try:  # one scan for every object
+            for u in _rows(
+                    f"SELECT o.prefix, l.user_name, l.role_name, SUM(l.read_queries) AS reads, "
+                    f"SUM(l.write_queries) AS writes FROM {LOG} l "
+                    f"JOIN (SELECT UNNEST(?::VARCHAR[]) AS prefix, UNNEST(?::BOOLEAN[]) AS exact) o "
+                    f"ON l.object_fqn = o.prefix OR (NOT o.exact AND l.object_fqn LIKE o.prefix || '.%') "
+                    f"WHERE l.bucket_start >= ? AND l.bucket_start < ? GROUP BY 1, 2, 3 ORDER BY 4 + 5 DESC",
+                    [list(exact), list(exact.values()), start, end]):
+                used.setdefault(u.pop("prefix"), []).append({**u, "user_name": _who(u["user_name"])})
         except duckdb.Error:
             used = None
-        o["queried_by"] = None if used is None else [{**u, "user_name": _who(u["user_name"])} for u in used]
+    for o in objs:
+        prefix = o["object"]
+        o["queried_by"] = None if used is None else used.get(prefix, [])
         o["can_read"] = None
-        if g is not None and exact and g["holders"].get(prefix):
+        if g is not None and o["level"] in ("TABLE", "COLUMN") and g["holders"].get(prefix):
             roles = [r for r, priv, on, _ in g["holders"][prefix] if explorer.priv_class(priv, on) in ("read", "own")]
             holders = explorer._holders_of(g, roles, mask) if roles else []
             o["can_read"] = sorted({h["name"] for h in holders if h["kind"] == "user"})

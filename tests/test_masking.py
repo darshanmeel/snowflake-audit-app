@@ -174,3 +174,14 @@ def test_refresh_uses_the_setting(monkeypatch):
     monkeypatch.setattr(app_config, "load_settings", lambda: {"privacy": {"mask_fields": ["role", "warehouse"]}})
     assert ex.mask_kinds(None) == ["warehouse", "role"]
     assert ex.mask_kinds("") == [] and ex.mask_kinds("all") == list(masking.MASK_KINDS)
+
+
+def test_fixed_values_stay_when_a_name_equals_them():
+    """A role called UNKNOWN must not turn the access log's client 'unknown' into a role token."""
+    m = masking.Masker(list(masking.MASK_KINDS), "x")
+    m.collect(pa.table({"role_name": ["UNKNOWN"]}))
+    m.freeze()
+    out = m.mask_table(pa.table({"client": ["unknown"], "statement_types": ["SELECT, MERGE"], "role_name": ["UNKNOWN"]}))
+    assert out.column("client").to_pylist() == ["unknown"]
+    assert out.column("statement_types").to_pylist() == ["SELECT, MERGE"]
+    assert out.column("role_name").to_pylist() != ["UNKNOWN"]

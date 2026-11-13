@@ -31,8 +31,13 @@ flowchart LR
 ## Rules with examples
 
 - **Row cap per check.** A check that declares `:row_cap` gets that cap instead of the export's 50,000 (tools/export_results.py `_run_check`, tools/export_kit/run_export.py `run_windows`).
-- **Window.** The log is exported once; the API cuts it to `[as_of_date - window, as_of_date)` (app/api/access_log.py `_range`).
+- **Window.** The log is exported once; the API cuts it to `[as_of_date - window, as_of_date)` (app/api/access_log.py `_range`), and a missing as-of date is a 503, never today.
+- **Row cap reached.** The export keeps the newest buckets; the API returns `truncated` and `complete_from` (`_cut`) and the page says from when counts are complete.
+- **SESSIONS bound.** Sessions are read from `lookback_days + 7` days back, so the export never scans a year of them.
+- **Masking.** The new value columns (client, statement_types, ddl_operations, categories, kind, level, grain, user_type, confidence, apply_method) are fixed words, never masked as names (app/core/masking.py `_FIXED_WORDS`). A user stage reads `(user stage)`, so the user's name sits only in the masked user_name.
+- **Chart.** Every day (or hour) of the window is drawn, zero when quiet (web/src/components/area_access_log.tsx `allBuckets`).
+- **Tests.** tests/test_access_log.py covers the five routes; tests/test_masking.py `test_fixed_values_stay_when_a_name_equals_them` the masking fix.
 - **Sensitive.** A table is `tagged` when `f_sf_gov_sensitive_columns_unprotected` lists it, else `suggested` when `f_sf_gov_sensitive_suggestions` does (app/api/access_log.py `_sensitive`).
-- **Person.** `USERS.TYPE = PERSON` (NULL reads as PERSON) and not SYSTEM; dropped users are not flagged.
-- **Name patterns.** FIRST_NAME, CUSTOMER_NAME_X, LASTNAME match NAME; TABLE_NAME, CLASSNAME do not; USAGE and PAGE do not match AGE (fake rows in tests/fake_snowflake/new_checks_data.py `sensitive_names`).
+- **Person.** The raw `USERS.TYPE` is PERSON and the user is not SYSTEM. A user with no TYPE reads `NOT_SET` and is not flagged, because older service users often have none; dropped users read `UNKNOWN`.
+- **Name patterns.** FIRST_NAME, CUSTOMER_NAME_X, LASTNAME match NAME; TABLE_NAME, CLASSNAME do not; USAGE and PAGE do not match AGE; MAC_ADDRESS and WALLET_ADDRESS are not street addresses (fake rows in tests/fake_snowflake/new_checks_data.py `sensitive_names`).
 - **No result downloads.** Snowflake logs no Snowsight or driver result downloads; the log's `client` shows which client read the data.

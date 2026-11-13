@@ -23,8 +23,9 @@
 --   MERGE, DELETE, CREATE_TABLE_AS_SELECT ...) and ddl_operations the DDL operations (CREATE, ALTER, DROP,
 --   RENAME ...) in the bucket. No query text or query id is kept: the Guide has the SQL to list
 --   the queries of one object.
---   off_hours_queries counts the queries outside business hours; user_type is the user's type today and
---   is_person is FALSE for service users, SYSTEM (tasks) and dropped users.
+--   off_hours_queries counts the queries outside business hours; user_type is the user's TYPE today
+--   (NOT_SET when the user has none, UNKNOWN when dropped) and is_person is TRUE only for TYPE PERSON, so
+--   service users, SYSTEM (tasks), users with no type and dropped users are never flagged.
 -- healthy: status = OK when people use objects in business hours; service users and pipelines are never
 --   flagged.
 -- investigate_if: WARN when a person ran queries on the object outside business hours; NOT_ASSESSED when
@@ -38,22 +39,11 @@
 -- caveats: ACCESS_HISTORY lags up to 3 hours and skips failed queries, reader accounts and data-sharing
 --   consumers. The role is the query's primary role. Downloads of query results (Snowsight, drivers) are
 --   not logged by Snowflake; GET and unloads are in sf_gov_file_downloads.
-WITH -- Live users with the auth flags normalised: DISABLED and EXT_AUTHN_DUO can come back as VARIANT
--- text, and a NULL TYPE behaves as PERSON.
-sf_sec_users AS (
-  SELECT TO_VARCHAR(user_id) AS user_id, name AS user_name, email, created_on,
-         COALESCE(UPPER(type), 'PERSON') AS user_type,
-         COALESCE(TRY_TO_BOOLEAN(TO_VARCHAR(disabled)), FALSE) AS is_disabled,
-         COALESCE(has_password, FALSE) AS has_password,
-         COALESCE(has_mfa, FALSE) AS has_mfa,
-         COALESCE(TRY_TO_BOOLEAN(TO_VARCHAR(ext_authn_duo)), FALSE) AS has_duo,
-         COALESCE(has_rsa_public_key, FALSE) AS has_rsa_key,
-         UPPER(default_role) AS default_role, UPPER(default_secondary_role) AS default_secondary_role,
-         last_success_login, password_last_set_time, locked_until_time, owner
+WITH ut AS (
+  -- the raw TYPE: older service users often have none, and must not read as people
+  SELECT name AS user_name, COALESCE(UPPER(type), 'NOT_SET') AS user_type
   FROM SNOWFLAKE.ACCOUNT_USAGE.USERS
-  -- Snowflake-managed users (SNOWFLAKE, WORKSHEETS_APP_USER) are not the customer's to change.
-  WHERE deleted_on IS NULL AND COALESCE(UPPER(type), '') <> 'SNOWFLAKE_SERVICE'
-    AND UPPER(name) NOT IN ('SNOWFLAKE', 'WORKSHEETS_APP_USER')
+  WHERE deleted_on IS NULL
 ),
 ah AS (
   SELECT query_id, query_start_time, user_name, base_objects_accessed, direct_objects_accessed,
@@ -99,13 +89,18 @@ qh AS (
 ss AS (
   SELECT session_id, MAX(SPLIT_PART(client_application_id, ' ', 1)) AS client
   FROM SNOWFLAKE.ACCOUNT_USAGE.SESSIONS
-  WHERE session_id IN (SELECT session_id FROM qh)
+  -- a margin for sessions opened before the lookback; without a bound Snowflake scans a year of sessions
+  WHERE created_on >= DATEADD(day, -(:lookback_days + 7), __AS_OF_DATE__)
+    AND session_id IN (SELECT session_id FROM qh)
   GROUP BY session_id
 ),
 ev AS (
   SELECT DISTINCT r.query_id, r.query_start_time, r.user_name, r.kind, r.object_domain, r.object_id, r.object_name,
          r.ddl_operation, q.query_type,
-         COALESCE(q.role_name, '(unknown role)') AS role_name, COALESCE(NULLIF(s.client, ''), 'unknown') AS client
+         COALESCE(q.role_name, '(unknown role)') AS role_name, COALESCE(NULLIF(s.client, ''), 'unknown') AS client,
+         DAYOFWEEKISO(CONVERT_TIMEZONE(:business_tz, r.query_start_time)) >= 6
+           OR HOUR(CONVERT_TIMEZONE(:business_tz, r.query_start_time)) < :business_start_hour
+           OR HOUR(CONVERT_TIMEZONE(:business_tz, r.query_start_time)) >= :business_end_hour AS is_off_hours
   FROM raw r
   -- a MERGE or INSERT ... SELECT from itself is a write, not a read of its target
   LEFT JOIN raw w ON r.kind = 'read' AND w.kind = 'write' AND w.query_id = r.query_id AND w.object_id = r.object_id
@@ -124,23 +119,17 @@ SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, :grain AS grain,
        COUNT(DISTINCT IFF(ev.kind = 'read', ev.query_id, NULL)) AS read_queries,
        COUNT(DISTINCT IFF(ev.kind = 'write', ev.query_id, NULL)) AS write_queries,
        COUNT(DISTINCT IFF(ev.kind = 'ddl', ev.query_id, NULL)) AS ddl_queries,
-       COUNT(DISTINCT IFF(DAYOFWEEKISO(CONVERT_TIMEZONE(:business_tz, ev.query_start_time)) >= 6
-                          OR HOUR(CONVERT_TIMEZONE(:business_tz, ev.query_start_time)) < :business_start_hour
-                          OR HOUR(CONVERT_TIMEZONE(:business_tz, ev.query_start_time)) >= :business_end_hour,
-                          ev.query_id, NULL)) AS off_hours_queries,
+       COUNT(DISTINCT IFF(ev.is_off_hours, ev.query_id, NULL)) AS off_hours_queries,
        MAX(COALESCE(u.user_type, 'UNKNOWN')) AS user_type,
        COALESCE(BOOLOR_AGG(u.user_type = 'PERSON' AND ev.user_name <> 'SYSTEM'), FALSE) AS is_person,
        LISTAGG(DISTINCT ev.query_type, ', ') WITHIN GROUP (ORDER BY ev.query_type) AS statement_types,
        LISTAGG(DISTINCT ev.ddl_operation, ', ') WITHIN GROUP (ORDER BY ev.ddl_operation) AS ddl_operations,
        MIN(ev.query_start_time)::TIMESTAMP_NTZ AS first_at, MAX(ev.query_start_time)::TIMESTAMP_NTZ AS last_at,
        CAST(NULL AS VARCHAR) AS not_assessed_reason,
-       CASE WHEN COALESCE(BOOLOR_AGG(u.user_type = 'PERSON' AND ev.user_name <> 'SYSTEM'), FALSE)
-                 AND COUNT(DISTINCT IFF(DAYOFWEEKISO(CONVERT_TIMEZONE(:business_tz, ev.query_start_time)) >= 6
-                          OR HOUR(CONVERT_TIMEZONE(:business_tz, ev.query_start_time)) < :business_start_hour
-                          OR HOUR(CONVERT_TIMEZONE(:business_tz, ev.query_start_time)) >= :business_end_hour,
-                          ev.query_id, NULL)) > 0 THEN 'WARN' ELSE 'OK' END AS status
+       IFF(COALESCE(BOOLOR_AGG(u.user_type = 'PERSON' AND ev.user_name <> 'SYSTEM'), FALSE)
+           AND COUNT(DISTINCT IFF(ev.is_off_hours, ev.query_id, NULL)) > 0, 'WARN', 'OK') AS status
 FROM ev
-LEFT JOIN sf_sec_users u ON u.user_name = ev.user_name
+LEFT JOIN ut u ON u.user_name = ev.user_name
 -- object_id keeps a dropped and a re-created table apart; a NULL id (some stages) groups by name
 GROUP BY DATE_TRUNC(:grain, ev.query_start_time), ev.object_domain, ev.object_id,
          IFF(ev.object_id IS NULL, ev.object_name, NULL), ev.user_name, ev.role_name, ev.client

@@ -15,7 +15,8 @@
 --   UNLOAD = COPY INTO a stage or location) x stage. queries counts the statements, rows_unloaded and
 --   outbound_gb come from QUERY_HISTORY. source_tables lists the tables an unload read (up to 10, with
 --   source_table_count exact), sensitive_tables those of them with a sensitive-tagged column. stage_name is
---   the stage (a user stage is named after its user); the external URL is not kept.
+--   the named or table stage, or '(user stage)'; the external URL is not kept. GB leaving the account and
+--   its destinations are in sf_gov_data_egress, which also counts unloads: read GB there, not here.
 -- healthy: status = OK for service users and for downloads with no sensitive source table.
 -- investigate_if: WARN when a person unloaded a table with sensitive columns, or downloaded files with
 --   GET from a stage that such an unload wrote to in the window.
@@ -148,7 +149,9 @@ ah AS (
     AND query_id IN (SELECT query_id FROM q)
 ),
 stages AS (
-  SELECT a.query_id, MAX(UPPER(f.value:"objectName"::STRING)) AS stage_name
+  -- a user stage is named after its user: keep the user in user_name (masked as a user), not here
+  SELECT a.query_id, MAX(IFF(f.value:"stageKind"::STRING ILIKE 'user%', '(user stage)',
+                             UPPER(f.value:"objectName"::STRING))) AS stage_name
   FROM ah a, LATERAL FLATTEN(input => ARRAY_CAT(COALESCE(a.objects_modified, ARRAY_CONSTRUCT()),
                                                  COALESCE(a.direct_objects_accessed, ARRAY_CONSTRUCT()))) f
   WHERE f.value:"stageKind" IS NOT NULL OR UPPER(f.value:"objectDomain"::STRING) = 'STAGE'
@@ -170,7 +173,8 @@ src_s AS (
 ss AS (
   SELECT session_id, MAX(SPLIT_PART(client_application_id, ' ', 1)) AS client
   FROM SNOWFLAKE.ACCOUNT_USAGE.SESSIONS
-  WHERE session_id IN (SELECT session_id FROM q)
+  WHERE created_on >= DATEADD(day, -(:period_days + 7), __AS_OF_DATE__)
+    AND session_id IN (SELECT session_id FROM q)
   GROUP BY session_id
 ),
 rows_q AS (

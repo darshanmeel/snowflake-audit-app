@@ -738,9 +738,9 @@ def lineage_audit(b: _B) -> None:
 
 def sensitive_names(b: _B) -> None:
     """Untagged columns whose names look sensitive, for sf_gov_sensitive_suggestions: an email and a password
-    (WARN), a city (OK), and a TABLE_NAME that must not match."""
+    (WARN), a city (OK), and a TABLE_NAME and a MAC_ADDRESS that must not match."""
     for i, (col, typ) in enumerate((("CONTACT_EMAIL", "TEXT"), ("USER_PASSWORD", "TEXT"), ("CITY", "TEXT"),
-                                    ("TABLE_NAME", "TEXT"), ("DATE_OF_BIRTH", "DATE"))):
+                                    ("TABLE_NAME", "TEXT"), ("DATE_OF_BIRTH", "DATE"), ("MAC_ADDRESS", "TEXT"))):
         b.au("COLUMNS", table_catalog="SANDBOX_DB", table_schema="SCRATCH", table_name="LEADS", table_id=9101,
              column_id=9200 + i, column_name=col, data_type=typ, ordinal_position=i + 1, is_nullable="YES",
              kind="COLUMN", deleted=None)

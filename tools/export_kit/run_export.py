@@ -145,7 +145,8 @@ _LIST_COLUMNS = {
 # Fixed words the checks write, never names: free-text masking would turn a value into a token when
 # a customer's table happens to be called TASK or VIEW, and the page could no longer read the row.
 _FIXED_WORDS = {"row_level", "object_kind", "object_domain", "domain", "object_subtype", "active_band", "use_pattern",
-                "status"}
+                "status", "grain", "client", "statement_types", "ddl_operations", "user_type", "kind", "level",
+                "apply_method", "suggested_category", "privacy_category", "confidence"}
 # Name columns shared by every kind of object: these say which kind each row is, so a warehouse named
 # in object_name gets the same wh_ token as in warehouse_name (tags join on it).
 _ROW_KIND_COLUMNS = ("object_kind", "object_domain", "domain")

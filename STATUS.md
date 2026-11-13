@@ -20,6 +20,19 @@ The POC is feature-complete and on `main`. It has run on one small live trial ac
   - **PII › Who reads it:** GET and unloads per user and stage, with the sensitive source tables.
   - A check can declare `:row_cap` to raise the 50,000-row export cap; the access log uses 1,000,000.
   - Checked on the fake account through the SQL smoke run and the API; not yet run live.
+  - **Review fixes (13 Nov 2026):** the review's Should findings are fixed:
+    - masking no longer turns fixed values into name tokens;
+    - users with no TYPE are not flagged as people;
+    - SESSIONS reads are bounded;
+    - the page says when the log was cut at its row cap;
+    - the tag explorer uses one query;
+    - the chart shows every day;
+    - the detail SQL is bounded and includes DDL;
+    - the counts come from every row;
+    - the search is debounced;
+    - the routes have tests.
+    Off-hours rows by people stay WARN, and business hours default to UTC.
+  - **Not done:** `tools/export_kit/run_export.py` repeats the exporter's run logic, so every exporter change is made twice. Sharing one run function is its own change (effort M).
   - **Pending:** the Playwright check of the two new pages and the two changed PII pages (the Playwright plugin was not loaded); `tests/test_export_kit.py::test_ctrl_c_keeps_what_ran_and_writes_the_report` stops pytest with KeyboardInterrupt on Windows, on the code before this change too; `path:line` cites in graph pages for `app/api/app.py` (2 lines down after line 107), `web/src/components/area_activity.tsx`, `area_governance.tsx` and `tab_registry.tsx`; and `docs/*.html` for the new pages.
 - **Last active:** Activity › Last active shows tables, and separately other objects, by time since last active (under 30, 30–90, 90–180, 180–360, over 360 days); picking a bar lists them oldest first, with a CSV. One check, `sf_use_last_active`, scans up to 365 days of `ACCESS_HISTORY` once. On an account with less history, longer gaps read as "nothing in the N days of history", and bands it can't reach read "–". The Database and Schema filters narrow the bars too; the Owner filter doesn't reach this page. `sf_storage_unused_tables` stays at 90 days, so the Waste figure doesn't change. Run live on one small account; not yet on a busy one.
 - **Access explorer:** Access › Explorer picks a user, role or object and shows every privilege with every path through the roles, and who else holds it A graph draws an arrow per grant: a few users on the left, the roles, then what they reach grouped by schema (counts, sensitive badge, arrows coloured by privilege class); a schema box opens to its objects, "Path to" shows the routes to a second name, a table row shows its own paths. Link params: `explore=`, `to=`, `open=`. (`app/api/explorer.py` walks `sf_acc_grant_links`; database roles are nodes; links can open it with `&explore=role:NAME`). Five rule checks sit on the pages that own them: `sf_acc_roles_used_both_ways`, `sf_acc_redundant_role_grants`, `sf_acc_readonly_roles_write` (Roles & grants), `sf_acc_disabled_users_roles` (Users), `sf_acc_sensitive_reach` (PII › Who reads it: who *can* read each sensitive table). Rules come from grant data, not role-name conventions.

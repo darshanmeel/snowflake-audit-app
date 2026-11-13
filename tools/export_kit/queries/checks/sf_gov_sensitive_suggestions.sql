@@ -153,6 +153,8 @@ matched AS (
   SELECT c.*, r.category, r.privacy_category, r.confidence, r.priority
   FROM cols c
   JOIN rules r ON REGEXP_LIKE(c.column_name, r.pattern)
+   -- device and wallet addresses are not postal addresses
+   AND NOT (r.category = 'STREET_ADDRESS' AND REGEXP_LIKE(c.column_name, '.*(MAC|WALLET|BTC|ETH|CONTRACT)_?ADDR.*'))
   QUALIFY ROW_NUMBER() OVER (PARTITION BY c.table_id, c.column_name ORDER BY r.priority) = 1
 )
 SELECT 0 AS window_days, __ACCOUNT_ID__ AS account_id, m.database_name, m.schema_name, m.table_name,

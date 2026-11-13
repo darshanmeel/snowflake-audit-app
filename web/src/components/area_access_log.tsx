@@ -4,7 +4,7 @@
 import React from "react";
 import { getJson } from "../api";
 import { fmtDayShort, fmtInt } from "../format";
-import { numOrZero } from "./hooks";
+import { numOrZero, useFindingAgg } from "./hooks";
 import type { ApPageProps } from "./area_pages";
 import { IssueTile } from "./blocks";
 import { Columns } from "./charts_more";
@@ -36,16 +36,32 @@ function useJson(path: string | null, params: Record<string, any>): { data: any;
 
 /** The SQL a reader runs in Snowflake for the single queries behind one object: ids, times, user, role, no text. */
 function detailSql(object: string, start: string, end: string): string {
+  // QUERY_HISTORY bounded to the same days: unbounded, the join scans a year of it
   return [
-    "SELECT ah.query_id, ah.query_start_time, ah.user_name, q.role_name, q.query_type,",
+    "SELECT DISTINCT ah.query_id, ah.query_start_time, ah.user_name, q.role_name, q.query_type,",
     "       f.value:\"objectDomain\"::STRING AS object_domain",
-    "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah,",
-    "     LATERAL FLATTEN(input => ARRAY_CAT(ah.base_objects_accessed, ah.objects_modified)) f",
+    "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah",
+    "CROSS JOIN LATERAL FLATTEN(input => ARRAY_CAT(ARRAY_CAT(ah.base_objects_accessed, ah.objects_modified),",
+    "                                              ARRAY_CONSTRUCT_COMPACT(ah.object_modified_by_ddl))) f",
     "LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY q ON q.query_id = ah.query_id",
+    `  AND q.start_time >= ${sqlLit(start)} AND q.start_time < DATEADD(day, 1, ${sqlLit(end)})`,
     `WHERE UPPER(f.value:"objectName"::STRING) = ${sqlLit(object)}`,
     `  AND ah.query_start_time >= ${sqlLit(start)} AND ah.query_start_time < ${sqlLit(end)}`,
     "ORDER BY ah.query_start_time DESC;",
   ].join("\n");
+}
+
+/** Every day (or hour) from start to end, so quiet ones read as zero rather than vanish. */
+function allBuckets(start: string, end: string, grain: string): string[] {
+  const step = grain === "hour" ? 3600e3 : 864e5, n = grain === "hour" ? 13 : 10, out: string[] = [];
+  for (let t = Date.parse(`${start}T00:00:00Z`); t < Date.parse(`${end}T00:00:00Z`); t += step) out.push(new Date(t).toISOString().slice(0, n));
+  return out;
+}
+
+/** The note when the export cut the log at its row cap: older days are incomplete. */
+function CutNote({ d }: { d: any }) {
+  if (!d?.truncated) return null;
+  return <CxStat>{`The export kept the newest rows only (row cap reached): counts before ${day(d.complete_from)} are incomplete.`}</CxStat>;
 }
 
 function Sensitivity({ v }: { v: string | null | undefined }) {
@@ -65,7 +81,10 @@ export function openInAccessLog(p: ApPageProps, name: string) {
 export function ApActivityAccessLog(p: ApPageProps) {
   const c = useAggCheck(p, "sf_use_access_log", [], "read_queries", []);
   const ran = !c.loading && !c.why;
+  const [typed, setTyped] = React.useState("");
   const [search, setSearch] = React.useState("");
+  // one request when typing pauses, not one full scan of the log per key
+  React.useEffect(() => { const t = setTimeout(() => setSearch(typed.trim()), 300); return () => clearTimeout(t); }, [typed]);
   const [onlySensitive, setOnlySensitive] = React.useState(false);
   const [picked, setPicked] = React.useState(() => { const s = startObject; startObject = ""; return s; });
   const list = useJson(ran ? "/api/access/log/objects" : null, { window: p.filters.window, search, sensitive: onlySensitive, limit: 200 });
@@ -82,14 +101,16 @@ export function ApActivityAccessLog(p: ApPageProps) {
   useLede(p, c.loading || list.loading, list.data ? `${plural(numOrZero(list.data.total), "object")} were read or changed in this window. Pick one to see who, with which role and client, and when.` : null);
 
   const buckets: Row[] = d?.buckets || [];
-  const labels = buckets.map((b) => String(b.bucket).slice(0, grain === "hour" ? 13 : 10));
+  const byBucket = new Map(buckets.map((b) => [String(b.bucket).slice(0, grain === "hour" ? 13 : 10), b]));
+  const labels = d ? allBuckets(String(d.start), String(d.end), grain) : [];
+  const series = (k: string) => labels.map((l) => numOrZero(byBucket.get(l)?.[k]));
   return (
     <div className="ais-page cx-e">
       {!ran && <CxStat>{c.loading ? "…" : `– ${c.why}`}</CxStat>}
       {ran && (
         <div className="ax-bar">
-          <input className="ax-input wide" value={search} placeholder="Filter tables, views and stages" aria-label="Object name filter"
-            onChange={(e) => setSearch(e.target.value)} />
+          <input className="ax-input wide" value={typed} placeholder="Filter tables, views and stages" aria-label="Object name filter"
+            onChange={(e) => setTyped(e.target.value)} />
           <div className="cx-seg" role="group" aria-label="Which objects">
             <button type="button" className={!onlySensitive ? "on" : ""} aria-pressed={!onlySensitive} onClick={() => setOnlySensitive(false)}>All</button>
             <button type="button" className={onlySensitive ? "on" : ""} aria-pressed={onlySensitive} onClick={() => setOnlySensitive(true)}>Sensitive</button>
@@ -98,6 +119,7 @@ export function ApActivityAccessLog(p: ApPageProps) {
           {list.err && <span className="cx-muted">{`– ${list.err}`}</span>}
         </div>
       )}
+      {ran && <CutNote d={list.data} />}
       {ran && off.data && (
         <ChartCard title="Off-hours use by people" subtitle="Queries by people outside business hours or at weekends · service users and pipelines left out · sensitive and changes first · select a row" takeaway={null}>
           {offRows.length ? (
@@ -134,11 +156,11 @@ export function ApActivityAccessLog(p: ApPageProps) {
         </SummaryTileRow>
       )}
       {d && buckets.length > 0 && (
-        <ChartCard title={`${name}, per ${grain}`} subtitle={`Queries a ${grain} · every ${grain} with use in the window`} takeaway={null}>
+        <ChartCard title={`${name}, per ${grain}`} subtitle={`Queries a ${grain} · every ${grain} of the window`} takeaway={null}>
           <Columns days={labels} unitLabel={`queries / ${grain}`} ariaLabel={`Queries on ${name} per ${grain}`}
-            series={[{ name: "Reads", id: "reads", values: buckets.map((b) => numOrZero(b.reads)) },
-              { name: "Writes", id: "writes", values: buckets.map((b) => numOrZero(b.writes)) },
-              { name: "DDL", id: "ddl", values: buckets.map((b) => numOrZero(b.ddl)) }]} />
+            series={[{ name: "Reads", id: "reads", values: series("reads") },
+              { name: "Writes", id: "writes", values: series("writes") },
+              { name: "DDL", id: "ddl", values: series("ddl") }]} />
         </ChartCard>
       )}
       {d && (
@@ -150,7 +172,7 @@ export function ApActivityAccessLog(p: ApPageProps) {
                 key: `${r.user_name}|${r.role_name}|${r.client}|${i}`, status: r.is_person && numOrZero(r.off_hours) > 0 ? "WARN" : undefined,
                 cells: [String(r.user_name || "–"), String(r.role_name || "–"), String(r.client || "–"),
                   <span className="cx-code">{[r.statement_types, r.ddl_operations].filter(Boolean).join(" · ") || "–"}</span>,
-                  fmtInt(numOrZero(r.reads)), fmtInt(numOrZero(r.writes)), fmtInt(numOrZero(r.ddl)), r.is_person ? fmtInt(numOrZero(r.off_hours)) : "service", fmtInt(numOrZero(r.buckets)), at(r.first_at, grain), at(r.last_at, grain)],
+                  fmtInt(numOrZero(r.reads)), fmtInt(numOrZero(r.writes)), fmtInt(numOrZero(r.ddl)), r.is_person ? fmtInt(numOrZero(r.off_hours)) : "not a person", fmtInt(numOrZero(r.buckets)), at(r.first_at, grain), at(r.last_at, grain)],
               }))} />
           ) : <CxStat>{`No data for this in ${day(d.start)}–${day(d.end)}`}</CxStat>}
         </ChartCard>
@@ -169,7 +191,7 @@ export function ApActivityAccessLog(p: ApPageProps) {
 // ═══════════════════════ PII › Tags ═══════════════════════
 
 export function ApPiiTags(p: ApPageProps) {
-  const c = useCheck(p, "sf_gov_tag_objects");
+  const c = useAggCheck(p, "sf_gov_tag_objects", [], "column_count", []);
   const ran = !c.loading && !c.why;
   const tags = useJson(ran ? "/api/access/tags" : null, {});
   const list: Row[] = tags.data?.tags || [];
@@ -223,6 +245,12 @@ export function ApPiiTags(p: ApPageProps) {
 
 export function PiiSuggestions({ p }: { p: ApPageProps }) {
   const c = useCheck(p, "sf_gov_sensitive_suggestions");
+  // the page loads one 5,000-row page; the counts come from every row
+  const id = c.f ? "sf_gov_sensitive_suggestions" : null;
+  const st = useFindingAgg(id, p.filters.window, p.filters.accountIds, ["status"], "count");
+  const tb = useFindingAgg(id, p.filters.window, p.filters.accountIds, ["database_name", "schema_name", "table_name"], "count");
+  const all = numOrZero(st.data?.rows_total);
+  const warn = numOrZero((st.data?.groups || []).find((g: Row) => g.key?.[0] === "WARN")?.value);
   return (
     <Slot c={c} title="Columns that look sensitive but carry no tag" subtitle="From column names only · confirm with Snowflake classification, which reads the data · select a row">
       {(rows) => {
@@ -232,8 +260,9 @@ export function PiiSuggestions({ p }: { p: ApPageProps }) {
           .sort((a, b) => b.flagged - a.flagged || b.rs.length - a.rs.length);
         return (
           <div>
-            <CxStat>{<span><b>{`${fmtInt(rows.filter(isFlagged).length)} of ${plural(rows.length, "column")}`}</b>{` look like identifiers or secrets, in ${plural(groups.length, "table")}.`}</span>}</CxStat>
+            <CxStat>{st.data ? <span><b>{`${fmtInt(warn)} of ${plural(all, "column")}`}</b>{` look like identifiers or secrets, in ${plural(numOrZero(tb.data?.group_count), "table")}.`}</span> : "…"}</CxStat>
             <CxTable ariaLabel="Columns that look sensitive" n={10}
+              foot={rows.length < all ? `Tables of the first ${fmtInt(rows.length)} of ${plural(all, "column")}; the full list is in the check's rows.` : undefined}
               cols={[{ label: "Table" }, { label: "Columns and suggested category" }, { label: "Classify it" }]}
               rows={groups.map((g) => ({
                 key: g.k, status: g.flagged ? "WARN" : "OK",
@@ -252,6 +281,8 @@ export function PiiSuggestions({ p }: { p: ApPageProps }) {
 
 export function PiiDownloads({ p }: { p: ApPageProps }) {
   const c = useCheck(p, "sf_gov_file_downloads");
+  const n = useFindingAgg(c.f ? "sf_gov_file_downloads" : null, p.filters.window, p.filters.accountIds, [], "count");
+  const all = numOrZero(n.data?.rows_total);
   return (
     <Slot c={c} title="Files taken out: GET and unloads" subtitle="Per user, role and stage in the window · result downloads from Snowsight or drivers are not logged by Snowflake">
       {(rows) => {
@@ -270,6 +301,7 @@ export function PiiDownloads({ p }: { p: ApPageProps }) {
         const groups = [...m.values()].sort((a, b) => Number(b.flagged) - Number(a.flagged) || b.n - a.n);
         return (
           <CxTable ariaLabel="Files taken out" n={10}
+            foot={rows.length < all ? `From the first ${fmtInt(rows.length)} of ${fmtInt(all)} rows; the full list is in the check's rows.` : undefined}
             cols={[{ label: "User" }, { label: "Role" }, { label: "Kind" }, { label: "Stage" }, { label: "Queries", num: true }, { label: "Days", num: true }, { label: "Sensitive tables" }, { label: "Last", num: true }]}
             rows={groups.map((g, i) => ({
               key: `${g.user_name}|${g.role_name}|${g.kind}|${g.stage_name}|${i}`, status: g.flagged ? "WARN" : "OK",
