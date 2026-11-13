@@ -2143,6 +2143,22 @@
     ]
    }
   },
+  "sf_gov_policy_hits": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.MASKING_POLICIES",
+    "ACCOUNT_USAGE.ROW_ACCESS_POLICIES"
+   ],
+   "params": {
+    "lookback_days": 90,
+    "row_cap": 500000
+   },
+   "needs_enterprise": true
+  },
   "sf_gov_policy_separation_of_duties": {
    "domain": "governance_access",
    "windowed": false,
@@ -5783,5 +5799,5 @@
   "dim_user",
   "dim_warehouse"
  ],
- "queries_sha256": "b5565f9abdecca71b02d1707f6012a59981d066faa4c1848a939ca1de980f599"
+ "queries_sha256": "ff3ec1084d242b46c35ccd3b0eda9bd71bdf4aff0c50bb68957fb53fa388e09c"
 }

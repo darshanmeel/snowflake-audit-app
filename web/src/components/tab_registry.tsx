@@ -362,7 +362,7 @@ export const PII_SUBTABS: SubtabDef[] = [
   },
   {
     key: "policies", label: "Masking & row policies",
-    ids: ["sf_secx_unused_policies", "sf_secx_policy_body_exemptions", "sf_gov_privacy_policies_unattached", "sf_gov_policy_separation_of_duties"],
+    ids: ["sf_secx_unused_policies", "sf_secx_policy_body_exemptions", "sf_gov_privacy_policies_unattached", "sf_gov_policy_separation_of_duties", "sf_gov_policy_hits"],
     refIds: ["access_column_masks_inventory", "access_row_filters_inventory"],
   },
   {

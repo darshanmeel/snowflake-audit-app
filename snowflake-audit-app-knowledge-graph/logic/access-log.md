@@ -1,4 +1,4 @@
-# Access log, off-hours use, tag explorer, suggested tags, downloads
+# Access log, off-hours use, tag explorer, suggested tags, downloads, policies in use
 
 Who read, changed or ran DDL on any table, view or stage, when and how often, without query text; which untagged columns look sensitive; which objects a tag sits on and who can read and did read them; and which files left through GET or unloads.
 
@@ -26,6 +26,7 @@ flowchart LR
 | sf_use_access_log | object x user x role x client x bucket | `windowed: no`; reads `:lookback_days` (90) once; `:grain` day or hour; `:row_cap` 1,000,000; reads, writes, DDL counted as distinct queries; a MERGE or INSERT ... SELECT on its own target counts as a write only; `statement_types`, `ddl_operations`; `off_hours_queries` against `:business_tz`, `:business_start_hour`, `:business_end_hour`, weekends off; WARN for a person with off-hours queries | app/queries/checks/sf_use_access_log.sql |
 | sf_gov_sensitive_suggestions | column | name patterns per Snowflake semantic category plus CREDENTIAL; columns already sensitive-tagged left out; WARN for identifiers, sensitive and credentials at high or medium confidence | app/queries/checks/sf_gov_sensitive_suggestions.sql |
 | sf_gov_tag_objects | tag value x database / schema / table / columns of a table | direct tags only; a database or schema row stands for every table in it | app/queries/checks/sf_gov_tag_objects.sql |
+| sf_gov_policy_hits | day x user x role x policy x protected object | `windowed: no`, 90 days, one ACCESS_HISTORY scan keeping only rows with POLICIES_REFERENCED; masking policies per column read, row access per object; names only, never the body | app/queries/checks/sf_gov_policy_hits.sql |
 | sf_gov_file_downloads | day x user x role x client x kind x stage | GET_FILES and UNLOAD from QUERY_HISTORY; stage and source tables from ACCESS_HISTORY; WARN when a person unloads a sensitive table or GETs from a stage such an unload wrote to | app/queries/checks/sf_gov_file_downloads.sql |
 
 ## Rules with examples
@@ -41,3 +42,7 @@ flowchart LR
 - **Person.** The raw `USERS.TYPE` is PERSON and the user is not SYSTEM. A user with no TYPE reads `NOT_SET` and is not flagged, because older service users often have none; dropped users read `UNKNOWN`.
 - **Name patterns.** FIRST_NAME, CUSTOMER_NAME_X, LASTNAME match NAME; TABLE_NAME, CLASSNAME do not; USAGE and PAGE do not match AGE; MAC_ADDRESS and WALLET_ADDRESS are not street addresses (fake rows in tests/fake_snowflake/new_checks_data.py `sensitive_names`).
 - **No result downloads.** Snowflake logs no Snowsight or driver result downloads; the log's `client` shows which client read the data.
+- **Who saw clear text.** A masking hit under a role the policy body lets through (sf_secx_policy_body_exemptions): CURRENT_ROLE matches the primary role only, IS_ROLE_IN_SESSION also roles it inherits, PUBLIC lets everyone through, a lookup or no role check reads unknown. Secondary roles are not in ACCESS_HISTORY (app/api/policies.py `_verdict`). Example on the fake account: ADMIN_ALICE as ACCOUNTADMIN reads CUSTOMERS.EMAIL under MASK_PII_TAG in clear; ANALYST_DAN as ANALYST_ROLE reads it masked.
+- **Who can bypass.** Users who can use an exempt role, through the grant walk of explorer.py; per table from direct masks, tag masks (sf_gov_sensitive_columns_unprotected `masked_via`) and row filters.
+- **Policy changes.** Access-log DDL rows whose object domain names a policy. Attaching a policy to a table shows as that table's ALTER, not here.
+- **Pages.** PII › Masking & row policies (`PolicyUse`) and Audit › Changes (`PolicyChanges`) in web/src/components/area_policies.tsx. Tests: tests/test_policies.py.

@@ -6258,6 +6258,61 @@
       "sql_url": "app/queries/checks/sf_gov_ownership_concentration.sql"
     },
     {
+      "query_id": "sf_gov_policy_hits",
+      "title": "Which queries each masking and row access policy fired on, by user and role",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "policies",
+        "columns": [
+          "policy_fqn"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.MASKING_POLICIES",
+        "SNOWFLAKE.ACCOUNT_USAGE.ROW_ACCESS_POLICIES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition",
+      "params": [
+        {
+          "name": "lookback_days",
+          "default": 90,
+          "meaning": "days of ACCESS_HISTORY it reads, counted back from the export date"
+        },
+        {
+          "name": "row_cap",
+          "default": 500000,
+          "meaning": "rows: the export keeps at most this many, newest days first"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one day x user x role x policy x protected object where the policy was enforced. A masking policy is enforced per column read (columns lists them), a row access policy per table or view read. queries counts distinct queries. Whether the user saw clear text or all rows depends on the policy's exempt roles (sf_secx_policy_body_exemptions); the app joins the two. Names only, never the policy body.",
+      "healthy": "status = OK on every row; this check is a log for the policy pages.",
+      "investigate_if": "NOT_ASSESSED when ACCESS_HISTORY has no rows in the lookback.",
+      "actions": [
+        "check on PII › Masking & row policies who saw clear text and who can bypass each policy (free)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_secx_policy_body_exemptions",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_gov_policy_hits.sql"
+    },
+    {
       "query_id": "sf_gov_policy_separation_of_duties",
       "title": "Masking and row access policies owned by the same role as the data they protect",
       "domain": "governance_access",

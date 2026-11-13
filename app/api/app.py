@@ -38,6 +38,9 @@ Routes:
     GET /api/access/log*, /api/access/tags, /api/access/tag
                                          app/api/access_log.py: who touched an object, off-hours
                                          use by people, and the tag explorer.
+    GET /api/policies/{hits,clear-text,reach,changes}
+                                         app/api/policies.py: who saw clear text, who can bypass
+                                         each policy, and policy changes.
     GET /api/rollup, /api/rollup/keys
                                          the nested cost or performance rollup for one tag key.
                                          area=cost (default) or performance; 422 for a bad area, a
@@ -109,6 +112,7 @@ if str(_ROOT) not in sys.path:
 from app.api import guide as guide_api  # noqa: E402
 from app.api import access_log as access_log_api  # noqa: E402
 from app.api import explorer as explorer_api  # noqa: E402
+from app.api import policies as policies_api  # noqa: E402
 from app.api import refresh as app_refresh  # noqa: E402
 from app.api import service  # noqa: E402
 from app.core import config as app_config  # noqa: E402
@@ -737,6 +741,7 @@ def get_guide() -> dict:
 app.include_router(guide_api.router)
 app.include_router(explorer_api.router)
 app.include_router(access_log_api.router)
+app.include_router(policies_api.router)
 
 
 # -------------------------------------------------------------------------------------------

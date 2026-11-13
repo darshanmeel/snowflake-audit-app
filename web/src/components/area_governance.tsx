@@ -32,6 +32,7 @@ import type { FetchState, Finding, Row } from "../types";
 import { ApLineageExplorer } from "./area_lineage_explorer";
 import { AccDisabledUsers, AccRoleModel, AccSensitiveReach, ApAccessExplorer } from "./area_access_explorer";
 import { ApPiiTags, PiiDownloads, PiiSuggestions } from "./area_access_log";
+import { PolicyChanges, PolicyUse } from "./area_policies";
 
 // ═══════════════════════ shared helpers ═══════════════════════
 
@@ -796,6 +797,7 @@ export function ApAuditChanges(p: ApPageProps) {
           }}
         </Slot>
       </Row2>
+      <PolicyChanges p={p} />
     </div>
   );
 }
@@ -1008,6 +1010,7 @@ export function ApPiiPolicies(p: ApPageProps) {
           );
         }}
       </Slot>
+      <PolicyUse p={p} />
       <GovPolicyOwnerFit p={p} />
     </div>
   );

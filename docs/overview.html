@@ -54,7 +54,7 @@ svg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
   <div class="card">
     <h3>What it does</h3>
     <ul>
-      <li>Runs 302 checks on your Snowflake usage records.</li>
+      <li>Runs 303 checks on your Snowflake usage records.</li>
       <li>Shows spend, possible waste and set-up gaps in one place.</li>
       <li>Never changes anything in your account.</li>
     </ul>
@@ -131,7 +131,7 @@ svg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
 <table>
   <thead><tr><th>#</th><th>Step</th><th>In</th><th>Out</th></tr></thead>
   <tbody>
-    <tr><td>1</td><td>Admin starts the export; one command, sign-in once</td><td><span class="chip">usage records</span></td><td><span class="chip">302 check results</span></td></tr>
+    <tr><td>1</td><td>Admin starts the export; one command, sign-in once</td><td><span class="chip">usage records</span></td><td><span class="chip">303 check results</span></td></tr>
     <tr><td>2</td><td>Results are saved as files on the same machine</td><td><span class="chip">check results</span></td><td><span class="chip">one local file</span></td></tr>
     <tr><td>3</td><td>The app opens that file and shows it</td><td><span class="chip">local file</span></td><td><span class="chip">pages and charts</span></td></tr>
   </tbody>
@@ -151,7 +151,7 @@ svg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
     <tr><td><b>Cost, Waste &amp; savings</b></td><td>Spend by service and team; possible waste; who is untagged.</td></tr>
     <tr><td><b>Warehouses, Serverless features, Queries</b></td><td>Idle or oversized machines; heavy, slow and failing queries.</td></tr>
     <tr><td><b>Tasks &amp; pipelines, Data loading, Storage, AI &amp; apps</b></td><td>Failing jobs; data loading; storage growth; AI usage cost.</td></tr>
-    <tr><td><b>Access, PII &amp; policies, Lineage, Activity, Audit, Sharing &amp; org</b></td><td>Who can reach what; unprotected sensitive data; the audit trail. Who read or changed any table, view or stage, with which role and tool, day by day; people working on data outside business hours; columns that look sensitive but carry no tag; who can read and who did read each tagged table; files taken out through downloads from stages and unloads.</td></tr>
+    <tr><td><b>Access, PII &amp; policies, Lineage, Activity, Audit, Sharing &amp; org</b></td><td>Who can reach what; unprotected sensitive data; the audit trail. Who read or changed any table, view or stage, with which role and tool, day by day; people working on data outside business hours; columns that look sensitive but carry no tag; who can read and who did read each tagged table; files taken out through downloads from stages and unloads. For masking and row access policies: who read masked data in clear because their role is let through, who can bypass each policy, how often each policy is used, and who changed one.</td></tr>
     <tr><td><b>All findings, Coverage &amp; Gaps</b></td><td>Every check in one list; what the audit could not look at, and why.</td></tr>
   </tbody>
 </table>
@@ -211,7 +211,7 @@ svg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
   <thead><tr><th>Risk</th><th>Impact</th><th>What to do</th></tr></thead>
   <tbody>
     <tr><td><b>1. Numbers lag</b></td><td>Snowflake publishes usage with delays of hours; billing views lag up to 72 hours. Today is shown as partial.</td><td>Read the last full days; re-run to refresh.</td></tr>
-    <tr><td><b>2. Some checks need more</b></td><td>Higher Snowflake edition or extra privileges are needed for some areas; those show a dash, so the picture can be incomplete.</td><td>Check the coverage count: "checks that ran" out of 302.</td></tr>
+    <tr><td><b>2. Some checks need more</b></td><td>Higher Snowflake edition or extra privileges are needed for some areas; those show a dash, so the picture can be incomplete.</td><td>Check the coverage count: "checks that ran" out of 303.</td></tr>
     <tr><td><b>3. Prices are estimates</b></td><td>Dollars come from the contract rate sheet if readable, else the last 90 days of invoices, else a default ($3.00 per credit). Defaults can be off.</td><td>Make the rate sheet readable, or set your real price.</td></tr>
   </tbody>
 </table>
@@ -220,7 +220,7 @@ svg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
 <ul>
   <li>Proof of concept, feature-complete on the main branch.</li>
   <li>Run on one small live account (3 days of data) plus demo accounts. The Snowflake-hosted option has not run in Snowflake.</li>
-  <li>The access log, off-hours use, suggested tags, tag explorer and downloads are tested on demo data only, not yet on a live account. Snowflake does not record downloads of query results from its web interface or from drivers, so those cannot be shown.</li>
+  <li>The access log, off-hours use, suggested tags, tag explorer, downloads and the policy views are tested on demo data only, not yet on a live account. Snowflake does not record downloads of query results from its web interface or from drivers, so those cannot be shown.</li>
 </ul>
 
 </main>

@@ -20,7 +20,7 @@ const at = (v: any, grain: string) => (!v ? "–" : grain === "hour" ? `${day(v)
 const sqlLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 /** A GET that keeps only the answer to the last request. */
-function useJson(path: string | null, params: Record<string, any>): { data: any; err: string | null; loading: boolean } {
+export function useJson(path: string | null, params: Record<string, any>): { data: any; err: string | null; loading: boolean } {
   const [st, setSt] = React.useState<{ data: any; err: string | null; loading: boolean }>({ data: null, err: null, loading: false });
   const key = JSON.stringify(params);
   React.useEffect(() => {

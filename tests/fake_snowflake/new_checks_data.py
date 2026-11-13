@@ -746,6 +746,38 @@ def sensitive_names(b: _B) -> None:
              kind="COLUMN", deleted=None)
 
 
+def policy_hits(b: _B) -> None:
+    """Policies enforced, as ACCESS_HISTORY.POLICIES_REFERENCED nests them: ADMIN_ALICE reads the
+    MASK_PII_TAG column as ACCOUNTADMIN (exempt: clear text), ANALYST_DAN as ANALYST_ROLE (masked), and
+    RAP_REGION filters ORDERS for ANALYST_DAN."""
+    mask = {"policyName": "MASK_PII_TAG", "policyId": 9401, "policyKind": "MASKING_POLICY"}
+    rap = {"policyName": "RAP_REGION", "policyId": 9450, "policyKind": "ROW_ACCESS_POLICY"}
+    reads = [("ADMIN_ALICE", "ACCOUNTADMIN", [{"objectDomain": "Table", "objectId": 5008,
+              "objectName": "ANALYTICS_DB.CORE.CUSTOMERS", "columns": [{"columnId": 2, "columnName": "EMAIL", "policies": [mask]}]}]),
+             ("ANALYST_DAN", "ANALYST_ROLE", [{"objectDomain": "Table", "objectId": 5008,
+              "objectName": "ANALYTICS_DB.CORE.CUSTOMERS", "columns": [{"columnId": 2, "columnName": "EMAIL", "policies": [mask]}]},
+              {"objectDomain": "Table", "objectId": 5007, "objectName": "ANALYTICS_DB.CORE.ORDERS", "columns": [],
+               "policies": [rap]}])]
+    for k in range(3):
+        for i, (user, role, pols) in enumerate(reads):
+            qid = f"01pol-{i}-{k}"
+            b.au("QUERY_HISTORY", query_id=qid, user_name=user, role_name=role, query_type="SELECT",
+                 execution_status="SUCCESS", warehouse_id=1003, warehouse_name="WH_BI", start_time=_ts(b.back(2 + k), 11),
+                 end_time=_ts(b.back(2 + k), 11, 1), execution_time=1000, total_elapsed_time=1000)
+            b.au("ACCESS_HISTORY", query_id=qid, query_start_time=_ts(b.back(2 + k), 11), user_name=user,
+                 direct_objects_accessed=[], base_objects_accessed=[], objects_modified=[],
+                 policies_referenced=pols, root_query_id=qid)
+    # a policy changed: SECURITYADMIN alters MASK_EMAIL
+    b.au("QUERY_HISTORY", query_id="01pol-ddl", user_name="ADMIN_ALICE", role_name="SECURITYADMIN",
+         query_type="ALTER_MASKING_POLICY", execution_status="SUCCESS", warehouse_id=1003, warehouse_name="WH_BI",
+         start_time=_ts(b.back(4), 22), end_time=_ts(b.back(4), 22, 1), execution_time=500, total_elapsed_time=500)
+    b.au("ACCESS_HISTORY", query_id="01pol-ddl", query_start_time=_ts(b.back(4), 22), user_name="ADMIN_ALICE",
+         direct_objects_accessed=[], base_objects_accessed=[], objects_modified=[], policies_referenced=[],
+         object_modified_by_ddl={"objectDomain": "Masking Policy", "objectId": 9400,
+                                 "objectName": "ANALYTICS_DB.PUBLIC.MASK_EMAIL", "operationType": "ALTER"},
+         root_query_id="01pol-ddl")
+
+
 def add(w) -> None:
     b = _B(w)
     ai(b)
@@ -755,3 +787,4 @@ def add(w) -> None:
     loading(b)
     lineage_audit(b)
     sensitive_names(b)
+    policy_hits(b)
