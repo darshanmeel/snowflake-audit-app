@@ -225,14 +225,20 @@ export function ApActivityAccessLog(p: ApPageProps) {
 // ═══════════════════════ Overview ═══════════════════════
 
 /** What to look into first: admin roles on data or apps, risky app setup, service logins in Snowsight, sensitive changes off hours. */
-function LookFirst({ p, off, go }: { p: ApPageProps; off: number; go: (s: Section, n?: string, k?: string) => void }) {
-  const fl = useJson("/api/access/flags", { window: p.filters.window, offset: off });
+function LookFirst({ p, off, go, object, kind }: { p: ApPageProps; off: number; go: (s: Section, n?: string, k?: string) => void;
+  object?: string; kind?: string }) {
+  // on an object page: this object's flags, or every object's of its type
+  const [scope, setScope] = React.useState("one");
+  const typeName = kind === "streamlit" ? "Streamlit apps" : (TYPES.find(([k]) => k === kind)?.[1] || "objects").toLowerCase();
+  const fl = useJson("/api/access/flags", { window: p.filters.window, offset: off,
+    object: object && scope === "one" ? object : undefined, kind: object && (scope === "type" || kind === "streamlit") ? kind || undefined : undefined });
   const [n, setN] = React.useState(6);
   if (fl.loading && !fl.data) return <Card title="Look into first"><CxStat>…</CxStat></Card>;
   if (fl.err) return <Card title="Look into first"><CxStat>{`– ${fl.err}`}</CxStat></Card>;
   const flags: Row[] = fl.data?.flags || [];
   return (
-    <Card title="Look into first" sub={`Admin roles on data or apps, risky app sharing, service logins used in Snowsight, sensitive data changed off hours · ${fmtInt(fl.data?.high || 0)} high, ${fmtInt(fl.data?.medium || 0)} medium`}>
+    <Card title="Look into first" sub={`Admin roles on data or apps, risky app sharing, service logins used in Snowsight, sensitive data changed off hours · ${fmtInt(fl.data?.high || 0)} high, ${fmtInt(fl.data?.medium || 0)} medium`}
+      right={object ? <Seg label="Flags for" value={scope} options={[["one", kind === "streamlit" ? "This app" : "This object"], ["type", kind ? `All ${typeName}` : "All objects"]]} onPick={setScope} /> : undefined}>
       {!flags.length ? <CxStat>{`Nothing to flag in ${day(fl.data?.start)} – ${day(fl.data?.end)}.`}</CxStat> : (
         <div className="al-flags">
           {flags.slice(0, n).map((f, i) => (
@@ -507,6 +513,7 @@ function ObjectView({ p, off, name, onPick, go, otype, setOtype }: { p: ApPagePr
             <Tile l="Clients" v={fmtInt(numOrZero(t.clients))} s={few(t.client_list)} />
           </div>
           <Control c={d.control} verb="grant access" />
+          <LookFirst p={p} off={off} go={go} object={obj} kind={otype} />
           {d.kind === "PROCEDURE" && (
             <Card title="What it did" sub="Tables and views the procedure's own queries read and wrote (linked through the CALL) · in the window">
               {(d.did as Row[]).length ? (
@@ -729,6 +736,7 @@ function AppDetail({ p, go, app, onPick, otype, setOtype }: { p: ApPageProps; go
               s={d.rights === "caller" ? "restricted caller's rights: the app's queries run with the viewer's own role" : d.rights === "owner" ? `owner's rights: the app's queries run as the owner${d.owner_role ? ` (${d.owner_role})` : ""}` : "the app ran no queries in the window"} />
           </div>
           <Control c={d.control} verb="share it" />
+          <LookFirst p={p} off={0} go={go} object={d.app} kind="streamlit" />
           <Card title="Who opened it" sub="One row per user · runs = the app starting or rerunning for them · a tick per day used · client and sign-in IP of their session">
             {(d.who as Row[]).length ? (
               <table className="al-table al-apps">

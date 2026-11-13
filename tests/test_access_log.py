@@ -144,3 +144,11 @@ def test_owner_and_who_can_share_an_app_or_grant_on_a_table():
     assert app["owner"] == "BI_ROLE" and {"role": "BI_ROLE", "why": "owner"} in app["granters"]
     assert any(g["why"] == "manage grants" for g in app["granters"]) and app["granter_users"]
     assert client.get("/api/access/log", params={"window": 30, "object": "ANALYTICS_DB.CORE.CUSTOMERS"}).json()["control"]["owner"]
+
+
+def test_flags_narrow_to_one_object_one_type_or_apps():
+    get = lambda **q: client.get("/api/access/flags", params={"window": 30, **q}).json()["flags"]
+    one = get(object="ANALYTICS_DB.CORE.ORDERS")
+    assert one and all(f.get("object") == "ANALYTICS_DB.CORE.ORDERS" for f in one)
+    assert all(f["kind"] in ("admin_app", "app_public", "app_owner_admin") for f in get(kind="streamlit"))
+    assert not {"admin_app", "app_public", "app_owner_admin"} & {f["kind"] for f in get(kind="table")}

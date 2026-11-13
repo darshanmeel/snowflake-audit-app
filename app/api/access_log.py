@@ -448,9 +448,16 @@ def _sev(role: str) -> str:
 
 
 @router.get("/api/access/flags")
-def get_flags(window: int = 30, offset: int | None = None) -> dict:
-    """What to look into first, from the rows already exported. Each flag names who, with which role, on what."""
+def get_flags(window: int = 30, offset: int | None = None, object: str = "", kind: str = "") -> dict:
+    """What to look into first, from the rows already exported. Each flag names who, with which role, on what.
+    object= keeps one object's (or app's) flags, kind= one object type's ('streamlit' for apps); neither, all."""
     start, end = _range(window)
+    apps_only = kind == "streamlit"
+    data = not apps_only            # flags on tables, views and the like
+    app_flags = apps_only or not (object or kind)
+    obj_sql, obj_params = (" AND object_fqn = ?", [object]) if object and data else (
+        f" AND object_domain IN {KINDS[kind]}", []) if kind in KINDS else ("", [])
+    app_sql, app_params = (" AND app_name = ?", [object]) if object and apps_only else ("", [])
     cfg = hours_settings()
     offset = cfg["offset"] if offset is None else offset
     sens = _sensitive()
@@ -461,8 +468,8 @@ def get_flags(window: int = 30, offset: int | None = None) -> dict:
     for r in _log_or_503(
             f"SELECT user_name, role_name, MAX(user_type) AS user_type, bool_or(is_person) AS person, SUM({Q}) AS queries, "
             f"SUM(write_queries + ddl_queries) AS changes, list(DISTINCT object_fqn) AS objects, MAX(last_at) AS last_at "
-            f"FROM {LOG} WHERE role_name IN ({marks}) AND (via IS NULL OR via NOT LIKE 'streamlit %') "
-            f"AND bucket_start >= ? AND bucket_start < ? GROUP BY 1, 2", [*admin, start, end]):
+            f"FROM {LOG} WHERE role_name IN ({marks}) AND (via IS NULL OR via NOT LIKE 'streamlit %') {obj_sql} "
+            f"AND bucket_start >= ? AND bucket_start < ? GROUP BY 1, 2", [*admin, *obj_params, start, end]) if data else []:
         if r["role_name"] in ADMIN_MED and not r["person"]:
             continue
         objs = sorted(r["objects"] or [], key=lambda f: sens.get(f) is None)
@@ -474,8 +481,8 @@ def get_flags(window: int = 30, offset: int | None = None) -> dict:
                                 f"({n_sens} sensitive), {r['changes'] or 0} of them changes · use a role made for the job"})
     try:
         opens = _rows(f"SELECT app_name, user_name, role_name, SUM(queries) AS runs, MAX(last_at) AS last_at FROM {APPS} "
-                      f"WHERE kind = 'open' AND role_name IN ({marks}) AND usage_date >= ? AND usage_date < ? GROUP BY 1, 2, 3",
-                      [*admin, start, end])
+                      f"WHERE kind = 'open' AND role_name IN ({marks}) {app_sql} AND usage_date >= ? AND usage_date < ? GROUP BY 1, 2, 3",
+                      [*admin, *app_params, start, end]) if app_flags else []
     except duckdb.Error:
         opens = []
     for r in opens:
@@ -484,7 +491,8 @@ def get_flags(window: int = 30, offset: int | None = None) -> dict:
                       "app": r["app_name"], "count": r["runs"] or 0, "last_at": r["last_at"],
                       "detail": f"{_n(r['runs'], 'run')} · share the app with a viewer role and open it with that"})
     try:
-        shares = _rows(f"SELECT app_name, privilege, grantee_name, granted_at FROM {SHARES} WHERE revoked_at IS NULL", [])
+        shares = _rows(f"SELECT app_name, privilege, grantee_name, granted_at FROM {SHARES} WHERE revoked_at IS NULL {app_sql}",
+                       app_params) if app_flags else []
     except duckdb.Error:
         shares = []
     for r in shares:
@@ -502,7 +510,7 @@ def get_flags(window: int = 30, offset: int | None = None) -> dict:
             f"SELECT user_name, MAX(user_type) AS user_type, array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles, "
             f"SUM({Q}) AS queries, list(DISTINCT object_fqn) AS objects, MAX(last_at) AS last_at FROM {LOG} "
             f"WHERE user_type IN ('SERVICE', 'LEGACY_SERVICE') AND (upper(client) LIKE 'SNOWFLAKE%' OR upper(client) LIKE 'SNOWSIGHT%') "
-            f"AND bucket_start >= ? AND bucket_start < ? GROUP BY 1", [start, end]):
+            f"{obj_sql} AND bucket_start >= ? AND bucket_start < ? GROUP BY 1", [*obj_params, start, end]) if data else []:
         objs = sorted(r["objects"] or [], key=lambda f: sens.get(f) is None)
         flags.append({"severity": "medium", "kind": "service_ui", "area": "Security", "title": "Service login used from Snowsight",
                       "user": _who(r["user_name"]), "role": r["roles"], "object": objs[0] if objs else None,
@@ -510,11 +518,11 @@ def get_flags(window: int = 30, offset: int | None = None) -> dict:
                       "detail": f"{_n(r['queries'], 'query', 'queries')} on {_n(len(objs), 'object')} · a person is working with a pipeline's login"})
     # people changing sensitive objects off hours
     off_sql, off_params = _off(offset, cfg["start"], cfg["end"])
-    for r in _hours_or_none(
+    for r in (_hours_or_none(
             f"SELECT user_name, object_fqn, array_to_string(list_sort(list(DISTINCT role_name)), ', ') AS roles, "
             f"SUM(write_queries + ddl_queries) AS changes, MAX(usage_date) AS last_at FROM {HOURS} WHERE user_name IS NOT NULL "
-            f"AND usage_date >= ? AND usage_date < ? AND {off_sql} GROUP BY 1, 2 HAVING SUM(write_queries + ddl_queries) > 0",
-            [start, end, *off_params]) or []:
+            f"{obj_sql} AND usage_date >= ? AND usage_date < ? AND {off_sql} GROUP BY 1, 2 HAVING SUM(write_queries + ddl_queries) > 0",
+            [*obj_params, start, end, *off_params]) or []) if data else []:
         if sens.get(r["object_fqn"]):
             flags.append({"severity": "medium", "kind": "off_hours_change", "area": "Security",
                           "title": "Sensitive data changed off hours", "user": _who(r["user_name"]), "role": r["roles"],
