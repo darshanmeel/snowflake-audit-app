@@ -1007,6 +1007,8 @@ def _run_check(cur, qid: str, text: str, *, labels_days: list[tuple[int, int]], 
                ctx: dict, max_rows: int, sql_dir: Path, pre: list[str] | None = None) -> tuple[pa.Table, list[int]]:
     pre = app_registry.by_id(qid).pre if pre is None else pre
     tables, truncated = [], []
+    # a log-like check declares its own, larger cap (:row_cap)
+    max_rows = int(params.get("row_cap") or max_rows)
     for label, days in labels_days:
         show_ids = [run_show(cur, stmt) for stmt in pre]
         sql = pin_result_scans(render(text, days=days, params=params, ctx=ctx, sql_dir=sql_dir), show_ids)

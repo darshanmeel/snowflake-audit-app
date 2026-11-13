@@ -1170,6 +1170,8 @@ def _labelled(table: pa.Table, label: int) -> pa.Table:
 
 def run_windows(cur, name: str, text: str, *, labels_days, params, pre, ctx, max_rows, check: bool):
     tables, truncated = [], []
+    # a log-like check declares its own, larger cap (:row_cap)
+    max_rows = int(params.get("row_cap") or max_rows)
     for label, days in labels_days:
         for stmt in pre:
             run_show(cur, stmt)

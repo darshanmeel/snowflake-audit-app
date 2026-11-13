@@ -4,6 +4,7 @@
 // the storage of never-used schemas, which sf_use_database_activity carries.
 // Registered into AREA_CHART_PAGES by area_pages.tsx.
 import React from "react";
+import { ApActivityAccessLog } from "./area_access_log";
 import { fmtDayShort, fmtDuration, fmtInt, fmtMoney } from "../format";
 import { numOrZero } from "./hooks";
 import { CsvButton } from "./csv";
@@ -1021,6 +1022,6 @@ export function ApActivityLastActive(p: ApPageProps) {
 
 /** The Activity sub-tab pages, merged into AREA_CHART_PAGES by area_pages.tsx. */
 export const ACTIVITY_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) => React.JSX.Element>> = {
-  activity: { databases: ApActivityDatabases, schemas: ApActivitySchemas, tables: ApActivityTables, lastactive: ApActivityLastActive, users: ApActivityUsers, objects: ApActivityObjects },
+  activity: { databases: ApActivityDatabases, schemas: ApActivitySchemas, tables: ApActivityTables, lastactive: ApActivityLastActive, accesslog: ApActivityAccessLog, users: ApActivityUsers, objects: ApActivityObjects },
 };
 Object.values(ACTIVITY_CHART_PAGES).forEach((m) => Object.values(m).forEach((fn) => { (fn as any).ownsTiles = true; (fn as any).ownsLede = true; }));

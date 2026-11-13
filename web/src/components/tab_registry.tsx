@@ -357,7 +357,7 @@ export const AUDIT_SUBTABS: SubtabDef[] = [
 export const PII_SUBTABS: SubtabDef[] = [
   {
     key: "sensitive", label: "Sensitive data",
-    ids: ["sf_gov_classification_coverage", "sf_gov_classification_denominator", "sf_gov_sensitive_columns_unprotected", "sf_secx_sensitive_lineage_untagged"],
+    ids: ["sf_gov_classification_coverage", "sf_gov_classification_denominator", "sf_gov_sensitive_columns_unprotected", "sf_secx_sensitive_lineage_untagged", "sf_gov_sensitive_suggestions"],
     refIds: ["access_tags_inventory"],
   },
   {
@@ -367,9 +367,10 @@ export const PII_SUBTABS: SubtabDef[] = [
   },
   {
     key: "reads", label: "Who reads it, where it goes",
-    ids: ["sf_gov_sensitive_data_access", "sf_acc_sensitive_reach", "sf_gov_data_egress", "sf_gov_shares_sensitive_columns", "sf_sec_data_movement_violations", "sf_gov_ai_agent_data_access"],
+    ids: ["sf_gov_sensitive_data_access", "sf_acc_sensitive_reach", "sf_gov_data_egress", "sf_gov_file_downloads", "sf_gov_shares_sensitive_columns", "sf_sec_data_movement_violations", "sf_gov_ai_agent_data_access"],
     refIds: [],
   },
+  { key: "tags", label: "Tags", ids: ["sf_gov_tag_objects"], refIds: [] },
   {
     key: "quality", label: "Data quality",
     ids: ["sf_gov_dmf_coverage", "sf_gov_dmf_expectation_failures", "sf_gov_dmf_static_table_schedules"],
@@ -399,6 +400,7 @@ export const ACTIVITY_SUBTABS: SubtabDef[] = [
   { key: "schemas", label: "Schemas", ids: [], refIds: [] },
   { key: "tables", label: "Tables", ids: ["sf_use_table_activity", "sf_use_table_daily", "sf_use_table_heaviest", "sf_use_table_perf_daily", "sf_use_table_columns", "sf_use_query_profile", "sf_use_top_query_shapes"], refIds: [] },
   { key: "lastactive", label: "Last active", ids: ["sf_use_last_active"], refIds: [] },
+  { key: "accesslog", label: "Access log", ids: ["sf_use_access_log"], refIds: [] },
   { key: "users", label: "Users & roles", ids: ["sf_use_user_activity", "sf_use_user_data_io", "sf_use_table_readers"], refIds: ["sf_use_query_profile", "sf_use_top_query_shapes"] },
   { key: "objects", label: "Stages & other objects", ids: ["sf_use_object_activity", "sf_lin_unused_views"], refIds: ["sf_acct_object_counts"] },
 ];

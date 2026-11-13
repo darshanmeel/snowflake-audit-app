@@ -736,6 +736,16 @@ def lineage_audit(b: _B) -> None:
     session(9_600_004, "ADMIN_ALICE", "KEYPAIR", 2, False)
 
 
+def sensitive_names(b: _B) -> None:
+    """Untagged columns whose names look sensitive, for sf_gov_sensitive_suggestions: an email and a password
+    (WARN), a city (OK), and a TABLE_NAME that must not match."""
+    for i, (col, typ) in enumerate((("CONTACT_EMAIL", "TEXT"), ("USER_PASSWORD", "TEXT"), ("CITY", "TEXT"),
+                                    ("TABLE_NAME", "TEXT"), ("DATE_OF_BIRTH", "DATE"))):
+        b.au("COLUMNS", table_catalog="SANDBOX_DB", table_schema="SCRATCH", table_name="LEADS", table_id=9101,
+             column_id=9200 + i, column_name=col, data_type=typ, ordinal_position=i + 1, is_nullable="YES",
+             kind="COLUMN", deleted=None)
+
+
 def add(w) -> None:
     b = _B(w)
     ai(b)
@@ -744,3 +754,4 @@ def add(w) -> None:
     performance(b)
     loading(b)
     lineage_audit(b)
+    sensitive_names(b)

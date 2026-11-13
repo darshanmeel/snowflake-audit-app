@@ -3,3 +3,12 @@
 # first match wins. An empty file is valid: every threshold not listed here falls through to its
 # header default. The Settings page renders its editor from the registry's params, not from this
 # file's keys alone.
+
+# The access log (Activity › Access log): counts per day by default; hour gives up to 24 times the rows.
+# Business hours decide what reads as off-hours use by people. Next export.
+# sf_use_access_log:
+#   grain: day            # day or hour
+#   lookback_days: 90
+#   business_tz: UTC      # e.g. Europe/Zurich
+#   business_start_hour: 7
+#   business_end_hour: 19

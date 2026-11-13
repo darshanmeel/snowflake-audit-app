@@ -31,6 +31,7 @@ import type { CxBarRow, CxRankItem } from "./cx_e";
 import type { FetchState, Finding, Row } from "../types";
 import { ApLineageExplorer } from "./area_lineage_explorer";
 import { AccDisabledUsers, AccRoleModel, AccSensitiveReach, ApAccessExplorer } from "./area_access_explorer";
+import { ApPiiTags, PiiDownloads, PiiSuggestions } from "./area_access_log";
 
 // ═══════════════════════ shared helpers ═══════════════════════
 
@@ -880,6 +881,7 @@ export function ApPiiSensitive(p: ApPageProps) {
           }}
         </Slot>
       </Row2>
+      <PiiSuggestions p={p} />
       <GovLineageUntagged p={p} />
       <Slot c={uc} title="Tables with unmasked sensitive columns" subtitle="Worst first · bar = unmasked share of the table's sensitive columns · select a row">
         {(rows) => {
@@ -1107,6 +1109,7 @@ export function ApPiiReads(p: ApPageProps) {
         )}
       </Slot>
       <AccSensitiveReach p={p} />
+      <PiiDownloads p={p} />
       <GovAgentsFit p={p} />
     </div>
   );
@@ -1957,7 +1960,7 @@ function GovMaskAttachment({ p }: { p: ApPageProps }) {
 export const GOV_CHART_PAGES: Record<string, Record<string, (p: ApPageProps) => React.JSX.Element>> = {
   access: { roles: ApAccessRoles, users: ApAccessUsers, perimeter: ApAccessPerimeter, explorer: ApAccessExplorer },
   audit: { admins: ApAuditAdmins, changes: ApAuditChanges },
-  pii: { sensitive: ApPiiSensitive, policies: ApPiiPolicies, reads: ApPiiReads, quality: ApPiiQuality },
+  pii: { sensitive: ApPiiSensitive, policies: ApPiiPolicies, reads: ApPiiReads, tags: ApPiiTags, quality: ApPiiQuality },
   lineage: { dependencies: ApLineageDeps, explorer: ApLineageExplorer },
   sharing: { shares: ApSharingShares, accounts: ApSharingAccounts, spend: ApSharingSpend, replication: ApSharingReplication },
 };

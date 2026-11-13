@@ -35,6 +35,9 @@ Routes:
     GET /api/access/names, /api/access/explore
                                          app/api/explorer.py: the Access explorer's paths from
                                          user through roles to objects.
+    GET /api/access/log*, /api/access/tags, /api/access/tag
+                                         app/api/access_log.py: who touched an object, off-hours
+                                         use by people, and the tag explorer.
     GET /api/rollup, /api/rollup/keys
                                          the nested cost or performance rollup for one tag key.
                                          area=cost (default) or performance; 422 for a bad area, a
@@ -104,6 +107,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from app.api import guide as guide_api  # noqa: E402
+from app.api import access_log as access_log_api  # noqa: E402
 from app.api import explorer as explorer_api  # noqa: E402
 from app.api import refresh as app_refresh  # noqa: E402
 from app.api import service  # noqa: E402
@@ -732,6 +736,7 @@ def get_guide() -> dict:
 
 app.include_router(guide_api.router)
 app.include_router(explorer_api.router)
+app.include_router(access_log_api.router)
 
 
 # -------------------------------------------------------------------------------------------

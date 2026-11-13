@@ -6108,6 +6108,61 @@
       "sql_url": "app/queries/checks/sf_gov_dmf_static_table_schedules.sql"
     },
     {
+      "query_id": "sf_gov_file_downloads",
+      "title": "Files taken out: GET from stages and unloads, by user, stage and source table",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": true,
+      "pre": [],
+      "empty_if": [
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "downloads",
+        "columns": [
+          "user_name",
+          "role_name",
+          "kind",
+          "stage_name"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.SESSIONS",
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES",
+        "SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition for the stage and source tables",
+      "params": [
+        {
+          "name": "period_days",
+          "default": 30,
+          "meaning": "days of history the check looks at, counted back from the export date"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one day x user x role x client x kind (GET = files downloaded from a stage, UNLOAD = COPY INTO a stage or location) x stage. queries counts the statements, rows_unloaded and outbound_gb come from QUERY_HISTORY. source_tables lists the tables an unload read (up to 10, with source_table_count exact), sensitive_tables those of them with a sensitive-tagged column. stage_name is the stage (a user stage is named after its user); the external URL is not kept.",
+      "healthy": "status = OK for service users and for downloads with no sensitive source table.",
+      "investigate_if": "WARN when a person unloaded a table with sensitive columns, or downloaded files with GET from a stage that such an unload wrote to in the window.",
+      "actions": [
+        "ask the user why the data left and where it went (free)",
+        "attach a data movement policy to the sensitive tables to alert on or block unloads and downloads (config)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_sec_data_movement_violations",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_gov_file_downloads.sql"
+    },
+    {
       "query_id": "sf_gov_integrations_exposure",
       "title": "Integrations that open paths in or out of the account",
       "domain": "governance_access",
@@ -6449,6 +6504,55 @@
       "sql_url": "app/queries/checks/sf_gov_sensitive_data_access.sql"
     },
     {
+      "query_id": "sf_gov_sensitive_suggestions",
+      "title": "Columns whose names look sensitive but carry no sensitive tag",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [],
+      "money": null,
+      "entity": {
+        "noun": "columns",
+        "columns": [
+          "database_name",
+          "schema_name",
+          "table_name",
+          "column_name"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.COLUMNS",
+        "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES",
+        "SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database",
+      "params": [
+        {
+          "name": "row_cap",
+          "default": 200000,
+          "meaning": "rows: the export keeps at most this many, identifiers first"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account. Name matching only; no column value is read.",
+      "read_this": "one row = one live column with no sensitive tag whose name matches a pattern for one of Snowflake's semantic categories (EMAIL, PHONE_NUMBER, NATIONAL_IDENTIFIER ...) or CREDENTIAL (not a Snowflake category: passwords, tokens, secrets). suggested_category and privacy_category are what SNOWFLAKE.CORE.SEMANTIC_CATEGORY and PRIVACY_CATEGORY would most likely say; confidence is high when the name is unambiguous (EMAIL, SSN, IBAN), medium when it often is (ADDRESS, ACCOUNT_NUMBER), low for quasi-identifiers that are often harmless (CITY, AGE). Snowflake classification, which reads the data, confirms it.",
+      "healthy": "status = OK when nothing that looks like an identifier is untagged.",
+      "investigate_if": "WARN for an untagged column that looks like an IDENTIFIER or SENSITIVE with high or medium confidence or a credential; OK for the rest, listed as a suggestion.",
+      "actions": [
+        "run Snowflake classification on the tables listed (CALL SYSTEM$CLASSIFY with auto_tag, or a classification profile on the database) so the system tags are set from the data (serverless credits)",
+        "put masking policies on the classification tags (config)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_gov_classification_coverage",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_gov_sensitive_suggestions.sql"
+    },
+    {
       "query_id": "sf_gov_shares_and_listings",
       "title": "Data shared out of the account and who reads it",
       "domain": "governance_access",
@@ -6597,6 +6701,58 @@
         }
       ],
       "sql_url": "app/queries/checks/sf_gov_tag_hygiene.sql"
+    },
+    {
+      "query_id": "sf_gov_tag_objects",
+      "title": "Which databases, schemas, tables and columns carry each tag",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "tagged objects",
+        "columns": [
+          "tag_fqn",
+          "tag_value",
+          "level",
+          "database_name",
+          "schema_name",
+          "table_name"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition for tags",
+      "params": [
+        {
+          "name": "row_cap",
+          "default": 200000,
+          "meaning": "rows: the export keeps at most this many"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one tag value set directly on one database, schema or table (views included), or on columns of one table (level COLUMN, with the columns listed). A tag on a database or schema also reaches every table in it by inheritance; that row stands for all of them. apply_method is MANUAL, CLASSIFIED (set by Snowflake classification) or PROPAGATED. Tag names and values only.",
+      "healthy": "status = OK on every row; this check is an inventory for the tag explorer.",
+      "investigate_if": "n/a - inventory",
+      "actions": [
+        "pick a tag on PII › Tags to see who can reach its tables and who queried them (free)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_acc_sensitive_reach",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_gov_tag_objects.sql"
     },
     {
       "query_id": "sf_gov_unused_object_grants",
@@ -9160,6 +9316,82 @@
       ],
       "next": [],
       "sql_url": "app/queries/checks/sf_share_inbound_databases.sql"
+    },
+    {
+      "query_id": "sf_use_access_log",
+      "title": "Who read or changed each table, view and stage, when and how often",
+      "domain": "governance_access",
+      "tier": "standard",
+      "runnable": true,
+      "windowed": false,
+      "pre": [],
+      "empty_if": [
+        "edition_too_low",
+        "role_cannot_see",
+        "no_activity"
+      ],
+      "money": null,
+      "entity": {
+        "noun": "objects",
+        "columns": [
+          "object_fqn"
+        ]
+      },
+      "reads": [
+        "SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY",
+        "SNOWFLAKE.ACCOUNT_USAGE.SESSIONS",
+        "SNOWFLAKE.ACCOUNT_USAGE.USERS"
+      ],
+      "requires": "IMPORTED PRIVILEGES on the SNOWFLAKE database; Enterprise edition",
+      "params": [
+        {
+          "name": "lookback_days",
+          "default": 90,
+          "meaning": "days of ACCESS_HISTORY it reads, counted back from the export date"
+        },
+        {
+          "name": "grain",
+          "default": "day",
+          "meaning": "day or hour: the time bucket each row counts in (hour gives up to 24 times the rows)"
+        },
+        {
+          "name": "row_cap",
+          "default": 1000000,
+          "meaning": "rows: the export keeps at most this many, newest buckets first"
+        },
+        {
+          "name": "business_tz",
+          "default": "UTC",
+          "meaning": "time zone business hours are in (e.g. Europe/Zurich)"
+        },
+        {
+          "name": "business_start_hour",
+          "default": 7,
+          "meaning": "hour business hours start"
+        },
+        {
+          "name": "business_end_hour",
+          "default": 19,
+          "meaning": "hour they end (Saturday and Sunday are off hours all day)"
+        }
+      ],
+      "confidence": "needs_confirmation",
+      "confidence_note": "Not yet run on a live account.",
+      "read_this": "one row = one object x user x role x client x time bucket (bucket_start, :grain). Every table, view, stage and other object in ACCESS_HISTORY is kept, not only the busy ones. read_queries, write_queries and ddl_queries count distinct queries; reads through a view count on the view and on its base tables. client is the first word of the session's client application (Snowflake UI, JDBC, PythonConnector, ODBC ...), unknown when the session is not in SESSIONS. first_at and last_at are the first and last query in the bucket. statement_types lists the QUERY_HISTORY query types (SELECT, INSERT, MERGE, DELETE, CREATE_TABLE_AS_SELECT ...) and ddl_operations the DDL operations (CREATE, ALTER, DROP, RENAME ...) in the bucket. No query text or query id is kept: the Guide has the SQL to list the queries of one object. off_hours_queries counts the queries outside business hours; user_type is the user's type today and is_person is FALSE for service users, SYSTEM (tasks) and dropped users.",
+      "healthy": "status = OK when people use objects in business hours; service users and pipelines are never flagged.",
+      "investigate_if": "WARN when a person ran queries on the object outside business hours; NOT_ASSESSED when ACCESS_HISTORY has no rows in the lookback.",
+      "actions": [
+        "check that each user and role reading a sensitive object needs it; revoke the role otherwise (free)",
+        "list the single queries of one object with the SQL in the Guide (free)"
+      ],
+      "next": [
+        {
+          "query_id": "sf_gov_sensitive_data_access",
+          "if": ""
+        }
+      ],
+      "sql_url": "app/queries/checks/sf_use_access_log.sql"
     },
     {
       "query_id": "sf_use_last_active",

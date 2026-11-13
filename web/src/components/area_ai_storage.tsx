@@ -54,7 +54,7 @@ export function useCheck(p: ApPageProps, id: string, allPages?: boolean): Chk {
 }
 
 /** A check summed by the aggregate route, as a Chk whose rows are its groups ({key, value, also}). */
-function useAggCheck(p: ApPageProps, id: string, group: string[], value: string, also: string[]): Chk {
+export function useAggCheck(p: ApPageProps, id: string, group: string[], value: string, also: string[]): Chk {
   const f = findingAnywhere(p, id);
   const state = useFindingAgg(f ? id : null, p.filters.window, p.filters.accountIds, group, "sum", value, { also }) as FetchState;
   return { ...chkOf(p, id, f, state, (d) => d.groups), open: () => DrawerBus.open({ id }) };

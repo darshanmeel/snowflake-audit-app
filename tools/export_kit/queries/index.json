@@ -2072,6 +2072,21 @@
    },
    "needs_enterprise": true
   },
+  "sf_gov_file_downloads": {
+   "domain": "governance_access",
+   "windowed": true,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.USERS",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {},
+   "needs_enterprise": true
+  },
   "sf_gov_integrations_exposure": {
    "domain": "governance_access",
    "windowed": false,
@@ -2241,6 +2256,20 @@
    },
    "needs_enterprise": false
   },
+  "sf_gov_sensitive_suggestions": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.COLUMNS",
+    "ACCOUNT_USAGE.TAG_REFERENCES",
+    "ACCOUNT_USAGE.POLICY_REFERENCES"
+   ],
+   "params": {
+    "row_cap": 200000
+   },
+   "needs_enterprise": false
+  },
   "sf_gov_shares_and_listings": {
    "domain": "governance_access",
    "windowed": true,
@@ -2295,6 +2324,18 @@
    "params": {
     "grace_days": 30,
     "free_values": 20
+   },
+   "needs_enterprise": true
+  },
+  "sf_gov_tag_objects": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.TAG_REFERENCES"
+   ],
+   "params": {
+    "row_cap": 200000
    },
    "needs_enterprise": true
   },
@@ -4903,6 +4944,26 @@
    },
    "needs_enterprise": false
   },
+  "sf_use_access_log": {
+   "domain": "governance_access",
+   "windowed": false,
+   "pre": [],
+   "sources": [
+    "ACCOUNT_USAGE.ACCESS_HISTORY",
+    "ACCOUNT_USAGE.QUERY_HISTORY",
+    "ACCOUNT_USAGE.SESSIONS",
+    "ACCOUNT_USAGE.USERS"
+   ],
+   "params": {
+    "lookback_days": 90,
+    "grain": "day",
+    "row_cap": 1000000,
+    "business_tz": "UTC",
+    "business_start_hour": 7,
+    "business_end_hour": 19
+   },
+   "needs_enterprise": true
+  },
   "sf_use_database_activity": {
    "domain": "storage",
    "windowed": true,
@@ -5722,5 +5783,5 @@
   "dim_user",
   "dim_warehouse"
  ],
- "queries_sha256": "4e135b38ff5b2f33933c6175f01a53370d0ec3bfd8b9dbfb38a050d184afb549"
+ "queries_sha256": "4f57eb5fb0a207e94bba12dea2b56c1f2c615c67bcd89fe4ceae313280d1b15f"
 }
